@@ -9,8 +9,13 @@ TYPE
                   scoremid : smallint;
                   scoreend : smallint;
                   PasserBB : TBitBoard;
-                  wshelter : integer;
-                  bshelter : integer;
+                  wsafety : smallint;
+                  bsafety : smallint;
+                  wking   : byte;
+                  bking   : byte;
+                  blocked : integer;
+                  wcastle : byte;
+                  bcastle : byte;
                 end;
 CONST
     PawnIsoMaskBB : TBBLine =
@@ -114,292 +119,591 @@ $0200000000000000,$0500000000000000,$0A00000000000000,$1400000000000000,$2800000
  1,2,3,4,5,6,7,8,
  1,2,3,4,5,6,7,8);
 
+ BlockedPawn :TbytesArray =
+
+( 0, 0, 0, 0, 0, 0, 0, 0,
+  1, 1, 2, 2, 2, 2, 1, 1,
+  1, 2, 3, 3, 3, 3, 2, 1,
+  1, 2, 3, 5, 5, 3, 2, 1,
+  1, 2, 3, 5, 5, 3, 2, 1,
+  1, 2, 3, 3, 3, 3, 2, 1,
+  1, 1, 2, 2, 2, 2, 1, 1,
+  0, 0, 0, 0, 0, 0, 0, 0
+);
 
     WPMidSQ : TbytesArray =
      (
           0,  0,  0,  0,  0,  0,  0,  0,
-        -10, -5,  0,  5,  5,  0, -5, -10,
-        -10, -5,  4, 15 ,15 , 4, -5, -10,
-        -10, -5,  8, 25, 25,  8, -5, -10,
-        -10, -5,  4, 15, 15,  4, -5, -10,
-        -10, -5,  2,  5,  5,  2, -5, -10,
-        -10, -5,  0,  5,  5,  0, -5, -10,
+         -8, -2,  2,  5,  5,  2, -2, -8,
+         -8, -2,  2, 12, 12,  2, -2, -8,
+         -8, -2,  5, 18, 18,  5, -2, -8,
+         -8, -2,  2, 12, 12,  2, -2, -8,
+         -8, -2,  2,  5,  5,  2, -2, -8,
+         -8, -2,  1,  5,  5,  1, -2, -8,
           0,  0,  0,  0,  0,  0,  0,   0
       );
 
-DoubledPawnMid  = 8;
-DoubledPawnEnd  = 16;
-IsolatedPawnMid = 14;
-IsolatedPawnEnd = 14;
-BackWardPawnMid = 10;
-BackWardPawnEnd = 12;
-OpenIsoMid=10;
-OpenIsoEnd=0;
-OpenBackMid=10;
-OpenBackEnd=0;
-OpenDoubledMid=0;
-OpenDoubledEnd=0;
+IslandMid=0;
+IslandEnd=5;
+ChainMid=2;
+ChainEnd=0;
+HoleMid=1;
+HoleEnd=2;
+DoubledClosedMid    =2;
+DoubledClosedEnd    =5;
+DoubledIsoClosedMid =3;
+DoubledIsoClosedEnd =5;
+DoubledOpenMid      =5;
+DoubledOpenEnd      =10;
+DoubledIsoOpenMid   =10;
+DoubledIsoOpenEnd   =15;
 
-ChainPawnMid   : TFileArray = ( 4, 4, 4, 5, 5, 4, 4, 4);
-ChainPawnEnd   : TFileArray = ( 0, 0, 0, 0, 0, 0, 0, 0);
+IsolatedClosedMid   =7;
+IsolatedClosedEnd   =10;
+IsolatedOpenMid     =15;
+IsolatedOpenEnd     =20;
 
-CandidatPasserMid : TRankArray = (0,2,2, 5,13,32,0,0);
-CandidatPasserEnd : TRankArray = (0,4,4,10,26,64,0,0);
+BackWardClosedMid   =5;
+BackWardClosedEnd   =7;
+BackWardOpenMid     =10;
+BackWardOpenEnd     =15;
 
-PasserBaseMid  : TRankArray = (0, 0, 0,15,45,90,150,0);
-PasserBaseEnd  : TrankArray = (0,10,10,20,40,80,120,0);
-QueenEnd       : TrankArray = (0, 0, 0, 5,10,20, 40,0);
-PasserStrongEnd: TRankArray = (0,0,8,16,24,32,40,0);
+CandidatPasserMid : TRankArray = (0,0,0,5,10,20,0,0);
+CandidatPasserEnd : TRankArray = (0,0,0,5,15,25,0,0);
 
-MyKingDist     : TRankArray = (0,0,0,3, 9,18,30,0);
-OPKingDist     : TRankArray = (0,0,0,5,14,27,45,0);
+PasserBaseMid  : TRankArray = (0, 0,  0,10,20,40,60,0);
+PasserBaseEnd  : TrankArray = (0, 5,  5,10,25,50,80,0);
+KingSupported  : TRankArray = (0, 0,  0, 5,12,25,50,0);
+OutPasserMid  : TRankArray = (0, 0, 0, 0, 2, 5,10,0);
+OutPasserEnd  : TrankArray = (0, 0, 0, 0, 5,10,20,0);
 
-FreePasserSupported    : TRankArray = (0,0,0,13,40,80,120,0);
-FreePasser             : TrankArray = (0,0,0,12,35,70,110,0);
+ConnectedPawnMid : TRankArray = (0, 0, 0, 0, 5,10,20,0);
+ConnectedPawnEnd : TRankArray = (0, 0, 0, 0,10,15,30,0);
 
-BlockedPasserSupported : TrankArray = (0,0,0,10,30,60,100,0);
-BlockedPasser          : TrankArray = (0,0,0, 6,18,36, 60,0);
+ProtectedPawnMid : TRankArray = (0, 0, 0, 0, 5,10,15,0);
+ProtectedPawnEnd : TRankArray = (0, 0, 0, 0,10,15,25,0);
 
-FreeWay                : TrankArray = (0,0,0, 1,3,5,10,0);
+QueenEnd       : TrankArray = (0, 0, 0, 5,10,20,40,0);
 
+MyKingDist     : TRankArray = (0,0,0,1,2,3, 5,0);
+OpKingDist     : TRankArray = (0,0,0,2,4,6,10,0);
 
+FreePasser : TrankArray = (0,0,0,0,10,20,40,0);
+NotBlocked : TrankArray = (0,0,0,2, 3, 5,10,0);
+
+OpFreeWay  : TrankArray = (0,0,0,0,10,30,50,0);
+MeFreeWay  : TrankArray = (0,0,0,0, 0, 5,10,0);
+
+BadRook  : TrankArray=(0,0,0,0,0,25,50,0);
+BadQueen : TrankArray=(0,0,0,0,0, 0,10,0);
+
+CutKing : TrankArray =(0,0,0,5,10,20,30,0);
 
 
 VAR
    PawnTable : array of TPawnHash;
+   ConnectedMaskBB,LeftFlangBB,RightFlangBB,HoleBB :array[a1 .. h8] of TBitBoard;
 
 Function EvalPawn(var Board:Tboard):integer;
 Function KingDist(kingsq:Tsquare;PawnSQ:Tsquare):integer;
 Procedure EvalPasser(var Board:Tboard;var scoremid:integer;var scoreend:integer;PassersBB:TbitBoard;Watt:TbitBoard;BAtt:TbitBoard;indexmat:integer);
+Function WPawnKingDist(kingsq:Tsquare;WPawnSQ:Tsquare):integer; inline;
+Function BPawnKingDist(kingsq:Tsquare;BPawnSQ:Tsquare):integer; inline;
+
 implementation
 uses BitBoards,movegen,safety,attacks,evaluation;
 
 Function EvalPawn(var Board:Tboard):integer;
 var
    index,scoremid,scoreend,att,def,x,y : integer;
-   sq,i : TSquare;
-   PasserBB,Temp,temp1,WhitePawns,BlackPawns,AllPawns : TBitBoard;
-   passer,strong,isolated,backward,doubled,candidat : Boolean;
-   p1,p2,p3,p4 : int64;
-   r:int64;
-    wkside,wqside,wd,we,bkside,bqside,bd,be,wlight,blight,wdark,bdark : integer;
-
+   sq,sq1,i : TSquare;
+   PasserBB,Temp,temp1,WhitePawns,BlackPawns,AllPawns,ConnPawns : TBitBoard;
+   passer,open,isolated,backward,doubled,chain : Boolean;
+   wlight,blight,wdark,bdark: integer;
 begin
   index:=Board.Pawnkey and HashPawnMask;
   result:=index;
-  if Board.Pawnkey=PawnTable[index].PawnKey then exit;
+  if (Board.Pawnkey=PawnTable[index].PawnKey)  then exit;
   scoremid:=0;
   scoreend:=0;
   PasserBB:=0;
+  ConnPawns:=0;
   wlight:=0;blight:=0;wdark:=0;bdark:=0;
   WhitePawns:=Board.Pieses[WhitePawn];
   BlackPawns:=Board.Pieses[BlackPawn];
   AllPawns:=WhitePawns or BlackPawns;
+
+  // Штрафуем пешечные островки
+  sq:=0;
+  for i:=1 to 8 do
+    begin
+      if (WhitePawns and FilesBB[i])=0
+        then sq:=0
+        else  begin
+                if sq=0 then
+                  begin
+                    scoremid:=scoremid-IslandMid;
+                    scoreend:=scoreend-IslandEnd;
+                  end;
+                 sq:=1;
+              end;
+    end;
+
+    // Теперь пешки
   Temp:=WhitePawns;
   while temp<>0 do
     begin
       sq:=BitScanForward(temp);
       x:=Posx[sq];
       y:=Posy[sq];
+      // Заполняем штрафы для слонов, блокированных нашими пешками
+      if (OnlyR00[sq] and Light)<>0 then
+        begin
+          wlight:=wlight+BlockedPawn[sq];
+          if (Board.pos[sq+8]=BlackPawn) then wlight:=wlight+BlockedPawn[sq];
+        end else
+        begin
+          wdark:=wdark+BlockedPawn[sq];
+          if (Board.pos[sq+8]=BlackPawn) then wdark:=wdark+BlockedPawn[sq];
+        end;
+      // PST
       scoremid:=scoremid+WPMidSQ[sq];
+      // Оцениваем "дырявость пешки"
+      if ((WhitePawns and HoleBB[sq])<>0) and ((WhitePawns and WForward[sq-8] and FilesBB[x-1])=0) then
+        begin
+          scoremid:=scoremid-HoleMid;
+          scoreend:=scoreend-HoleEnd;
+        end;
+
+      // Статусы  пешек
       if ((PawnOpenFileMaskBB[white,sq] and WhitePawns)<>0) then doubled:=true else doubled:=false;
-      if ((PawnChainMaskBB[white,sq] and WhitePawns)<>0) then strong:=true else strong:=false;
+      if ((PawnOpenFileMaskBB[white,sq] and AllPawns)=0) then open:=true else open:=false;
       if ((PawnPasserMaskBB[white,sq] and BlackPawns)=0) then passer:=true else passer:=false;
       if ((PawnIsoMaskBB[sq] and WhitePawns)=0) then isolated:=true else isolated:=false;
-      if (passer) or (strong) or (isolated) or ((PawnBackWardMaskBB[white,sq] and WhitePawns)<>0) or ((PawnAttacksBB[white,sq] and BlackPawns)<>0) then backward:=false else
-        begin
-          backward:=true;
-          i:=sq;
-          while i<a8 do
-            begin
-              if (OnlyR00[i+8] and AllPawns)<>0 then break;
-              if (PawnAttacksBB[white,i+8] and BlackPawns)<>0 then break;
-              if (PawnAttacksBB[black,i+8] and WhitePawns)<>0 then
+      if ((PawnChainMaskBB[white,sq] and WhitePawns)<>0) then chain:=true else chain:=false;
+      if open then
+        BEGIN
+          // для пешки на открытой вертикали
+          if doubled then
+           begin
+            scoremid:=scoremid-DoubledOpenMid;
+            scoreend:=scoreend-DoubledOpenEnd;
+            if isolated then
+             begin
+              scoremid:=scoremid-DoubledIsoOpenMid;
+              scoreend:=scoreend-DoubledIsoOpenEnd;
+             end;
+           end;
+          if chain then
+           begin
+             scoremid:=scoremid+ChainMid;
+             scoreend:=scoreend+ChainEnd;
+           end;
+          if isolated then
+           begin
+            scoremid:=scoremid-IsolatedOpenMid;
+            scoreend:=scoreend-IsolatedOpenEnd;
+           end;
+          backward:=false;
+          if (not passer) and (not isolated) and (not chain) and ((PawnAttacksBB[white,sq] and BlackPawns)=0) and (y<6) then
+           begin
+             // Определяем отсталость пешки - кандидатом будет пешка у которой рядом или сзади нет поддержки
+             if ((PawnBackWardMaskBB[white,sq] and WhitePawns)=0) then
                begin
-                backward:=false;
-                break;
+                 i:=sq+8;
+                 // Если пешка блокирована или поле перед ней контролируется вражеской пешкой - она отсталая
+                 if ((OnlyR00[i] and AllPawns)<>0) or ((PawnAttacksBB[white,i] and BlackPawns)<>0)  then backward:=true else
+                   begin
+                     // Если сделав ход рядом не окажется дружеской пешки - смотрим движение еще на 1 поле вперед
+                     if (PawnAttacksBB[white,sq] and WhitePawns)=0 then
+                       begin
+                         i:=i+8;
+                         // Если и это поле блокировано или под контролем вражеской пешки - отсталая
+                         if ((OnlyR00[i] and AllPawns)<>0) or ((PawnAttacksBB[white,i] and BlackPawns)<>0)  then backward:=true else
+                          begin
+                            // Если даже пройдя на 2 поля рядом не будет дружеской пешки - значит отсталая
+                            if (PawnAttacksBB[white,sq+8] and WhitePawns)=0 then backward:=true;
+                          end;
+                       end;
+                   end;
                end;
-              i:=i+8;
+           end;
+           if backward then
+            begin
+             scoremid:=scoremid-BackWardOpenMid;
+             scoreend:=scoreend-BackWardOpenEnd;
             end;
-        end;
-      candidat:=false;
-      if (not passer) and ((PawnOpenFileMaskBB[white,sq] and BlackPawns)=0) then
-        begin
-          temp1:=PawnBackWardMaskBB[white,sq] and WhitePawns;
-          att:=BitCount(temp1);
-          temp1:=PawnBackWardMaskBB[black,sq+8] and BlackPawns;
-          def:=BitCount(temp1);
-          if att>=def then candidat:=true;
-        end;
-      if (passer) and (doubled)  then passer:=false;
-      if passer then
-        begin
-          PasserBB:=PasserBB or OnlyR00[sq];
-          scoremid:=scoremid+PasserBaseMid[y];
-        end;
-      if isolated then
-        begin
-          scoremid:=scoremid-IsolatedPawnMid;
-          scoreend:=scoreend-IsolatedPawnEnd;
-          if ((PawnOpenFileMaskBB[white,sq] and BlackPawns)=0) then
+        END   else
+        BEGIN
+         // для пешки на закрытой вертикали
+          if doubled then
            begin
-            scoremid:=scoremid-OpenIsoMid;
-            scoreend:=scoreend-OpenIsoEnd;
+            scoremid:=scoremid-DoubledClosedMid;
+            scoreend:=scoreend-DoubledClosedEnd;
+            if isolated then
+             begin
+              scoremid:=scoremid-DoubledIsoClosedMid;
+              scoreend:=scoreend-DoubledIsoClosedEnd;
+             end;
            end;
-        end;
-      if backward then
-        begin
-          scoremid:=scoremid-BackWardPawnMid;
-          scoreend:=scoreend-BackWardPawnEnd;
-          if ((PawnOpenFileMaskBB[white,sq] and BlackPawns)=0) then
+          if chain then
            begin
-             scoremid:=scoremid-OpenBackMid;
-             scoreend:=scoreend-OpenBackEnd;
+             scoremid:=scoremid+ChainMid;
+             scoreend:=scoreend+ChainEnd;
            end;
-        end;
-      if doubled then
-        begin
-          scoremid:=scoremid-DoubledPawnMid;
-          scoreend:=scoreend-DoubledPawnEnd;
-          if ((PawnOpenFileMaskBB[white,sq] and BlackPawns)=0) then
+          if isolated then
            begin
-             scoremid:=scoremid-OpenDoubledMid;
-             scoreend:=scoreend-OpenDoubledEnd;
+            scoremid:=scoremid-IsolatedClosedMid;
+            scoreend:=scoreend-IsolatedClosedEnd;
            end;
-        end;
-      if strong then
-        begin
-          scoremid:=scoremid+ChainPawnMid[x];
-          scoreend:=scoreend+ChainPawnEnd[x];
-        end;
-      if candidat then
-        begin
-          scoremid:=scoremid+CandidatPasserMid[y];
-          scoreend:=scoreend+CandidatPasserEnd[y];
-        end;
+          backward:=false;
+         if (not passer) and (not isolated) and (not chain) and ((PawnAttacksBB[white,sq] and BlackPawns)=0) and (y<6) then
+           begin
+             // Определяем отсталость пешки - кандидатом будет пешка у которой рядом или сзади нет поддержки
+             if ((PawnBackWardMaskBB[white,sq] and WhitePawns)=0) then
+               begin
+                 i:=sq+8;
+                 // Если пешка блокирована или поле перед ней контролируется вражеской пешкой - она отсталая
+                 if ((OnlyR00[i] and AllPawns)<>0) or ((PawnAttacksBB[white,i] and BlackPawns)<>0)  then backward:=true else
+                   begin
+                     // Если сделав ход рядом не окажется дружеской пешки - смотрим движение еще на 1 поле вперед
+                     if (PawnAttacksBB[white,sq] and WhitePawns)=0 then
+                       begin
+                         i:=i+8;
+                         // Если и это поле блокировано или под контролем вражеской пешки - отсталая
+                         if ((OnlyR00[i] and AllPawns)<>0) or ((PawnAttacksBB[white,i] and BlackPawns)<>0)  then backward:=true else
+                          begin
+                            // Если даже пройдя на 2 поля рядом не будет дружеской пешки - значит отсталая
+                            if (PawnAttacksBB[white,sq+8] and WhitePawns)=0 then backward:=true;
+                          end;
+                       end;
+                   end;
+               end;
+           end;
+           if backward then
+            begin
+             scoremid:=scoremid-BackWardClosedMid;
+             scoreend:=scoreend-BackWardClosedEnd;
+            end;
+        END;
+        // Проходные и кандидаты
+        if passer then
+            begin
+             if (not doubled) then
+              begin
+               PasserBB:=PasserBB or OnlyR00[sq];
+               scoremid:=scoremid+PasserBaseMid[y];
+               scoreend:=scoreend+PasserBaseEnd[y];
+               if (PawnAttacksBB[black,sq] and WhitePawns)<>0 then
+                begin
+                 scoremid:=scoremid+ProtectedPawnMid[y];
+                 scoreend:=scoreend+ProtectedPawnEnd[y];
+                end;
+               if ((LeftFlangBB[sq] and BlackPawns)=0) or ((RightFlangBB[sq] and BlackPawns)=0) then
+                begin
+                 scoremid:=scoremid+OutPasserMid[y];
+                 scoreend:=scoreend+OutPasserEnd[y];
+                end;
+               temp1:=ConnPawns and ConnectedMaskBB[sq];
+               ConnPawns:=ConnPawns or OnlyR00[sq];
+               if temp1<>0 then
+                 begin
+                   sq1:=BitScanBackWard(temp1);
+                   temp1:=temp1 and NotOnlyR00[sq1];
+                   if y>=posy[sq1] then
+                     begin
+                      scoremid:=scoremid+ConnectedPawnMid[y]+ConnectedPawnMid[posy[sq1]];
+                      scoreend:=scoreend+ConnectedPawnEnd[y]+ConnectedPawnEnd[posy[sq1]];
+                     end;
+                   if temp1<>0 then
+                    begin
+                     sq1:=BitScanBackWard(temp1);
+                     if y>=posy[sq1] then
+                       begin
+                        scoremid:=scoremid+ConnectedPawnMid[y]+ConnectedPawnMid[posy[sq1]];
+                        scoreend:=scoreend+ConnectedPawnEnd[y]+ConnectedPawnEnd[posy[sq1]];
+                       end;
+                    end;
+                 end;
+              end;
+            end else
+            if open then
+              begin
+                temp1:=PawnBackWardMaskBB[white,sq] and WhitePawns;
+                att:=BitCount(temp1);
+                temp1:=PawnBackWardMaskBB[black,sq+8] and BlackPawns;
+                def:=BitCount(temp1);
+                if att>=def then
+                  begin
+                    scoremid:=scoremid+CandidatPasserMid[y];
+                    scoreend:=scoreend+CandidatPasserEnd[y];
+                  end;
+              end;
       temp:=temp and NotOnlyR00[sq];
     end;
+  ConnPawns:=0;
+  // Штрафуем пешечные островки
+  sq:=0;
+  for i:=1 to 8 do
+    begin
+      if (BlackPawns and FilesBB[i])=0
+        then sq:=0
+        else  begin
+                if sq=0 then
+                  begin
+                    scoremid:=scoremid+IslandMid;
+                    scoreend:=scoreend+IslandEnd;
+                  end;
+                 sq:=1;
+              end;
+    end;
+  // Черные пешки
   Temp:=BlackPawns;
   while temp<>0 do
     begin
       sq:=BitScanForward(temp);
       x:=Posx[sq];
-      y:=9-Posy[sq];
+      y:=Posy[sq];
+      // Заполняем штрафы для слонов, блокированных нашими пешками
+      if (OnlyR00[sq] and Light)<>0 then
+        begin
+          blight:=blight+BlockedPawn[sq];
+          if (Board.pos[sq-8]=WhitePawn) then blight:=blight+BlockedPawn[sq];
+        end else
+        begin
+          bdark:=bdark+BlockedPawn[sq];
+          if (Board.pos[sq-8]=WhitePawn) then bdark:=bdark+BlockedPawn[sq];
+        end;
+      // PST
       scoremid:=scoremid-WPMidSQ[63-sq];
+      // Оцениваем "дырявость пешки"
+      if ((BlackPawns and HoleBB[sq])<>0) and ((BlackPawns and BForward[sq+8] and FilesBB[x-1])=0) then
+        begin
+          scoremid:=scoremid+HoleMid;
+          scoreend:=scoreend+HoleEnd;
+        end;
+
+      // Статусы  пешек
       if ((PawnOpenFileMaskBB[black,sq] and BlackPawns)<>0) then doubled:=true else doubled:=false;
-      if ((PawnChainMaskBB[black,sq] and BlackPawns)<>0) then strong:=true else strong:=false;
+      if ((PawnOpenFileMaskBB[black,sq] and AllPawns)=0) then open:=true else open:=false;
       if ((PawnPasserMaskBB[black,sq] and WhitePawns)=0) then passer:=true else passer:=false;
       if ((PawnIsoMaskBB[sq] and BlackPawns)=0) then isolated:=true else isolated:=false;
-      if (passer) or (strong) or (isolated) or ((PawnBackWardMaskBB[black,sq] and BlackPawns)<>0) or ((PawnAttacksBB[black,sq] and WhitePawns)<>0) then backward:=false else
-        begin
-          backward:=true;
-          i:=sq;
-          while i>h1 do
-            begin
-              if (OnlyR00[i-8] and AllPawns)<>0 then break;
-              if (PawnAttacksBB[black,i-8] and WhitePawns)<>0 then break;
-              if (PawnAttacksBB[white,i-8] and BlackPawns)<>0 then
+      if ((PawnChainMaskBB[black,sq] and BlackPawns)<>0) then chain:=true else chain:=false;
+      if open then
+        BEGIN
+          // для пешки на открытой вертикали
+          if doubled then
+           begin
+            scoremid:=scoremid+DoubledOpenMid;
+            scoreend:=scoreend+DoubledOpenEnd;
+            if isolated then
+             begin
+              scoremid:=scoremid+DoubledIsoOpenMid;
+              scoreend:=scoreend+DoubledIsoOpenEnd;
+             end;
+           end;
+          if chain then
+           begin
+             scoremid:=scoremid-ChainMid;
+             scoreend:=scoreend-ChainEnd;
+           end;
+          if isolated then
+           begin
+            scoremid:=scoremid+IsolatedOpenMid;
+            scoreend:=scoreend+IsolatedOpenEnd;
+           end;
+          backward:=false;
+          if (not passer) and (not isolated) and (not chain) and ((PawnAttacksBB[black,sq] and WhitePawns)=0) and (y>3) then
+           begin
+             // Определяем отсталость пешки - кандидатом будет пешка у которой рядом или сзади нет поддержки
+             if ((PawnBackWardMaskBB[black,sq] and BlackPawns)=0) then
                begin
-                backward:=false;
-                break;
+                 i:=sq-8;
+                 // Если пешка блокирована или поле перед ней контролируется вражеской пешкой - она отсталая
+                 if ((OnlyR00[i] and AllPawns)<>0) or ((PawnAttacksBB[black,i] and WhitePawns)<>0)  then backward:=true else
+                   begin
+                     // Если сделав ход рядом не окажется дружеской пешки - смотрим движение еще на 1 поле вперед
+                     if (PawnAttacksBB[black,sq] and BlackPawns)=0 then
+                       begin
+                         i:=i-8;
+                         // Если и это поле блокировано или под контролем вражеской пешки - отсталая
+                         if ((OnlyR00[i] and AllPawns)<>0) or ((PawnAttacksBB[black,i] and WhitePawns)<>0)  then backward:=true else
+                          begin
+                            // Если даже пройдя на 2 поля рядом не будет дружеской пешки - значит отсталая
+                            if (PawnAttacksBB[black,sq-8] and BlackPawns)=0 then backward:=true;
+                          end;
+                       end;
+                   end;
                end;
-              i:=i-8;
+           end;
+           if backward then
+            begin
+             scoremid:=scoremid+BackWardOpenMid;
+             scoreend:=scoreend+BackWardOpenEnd;
             end;
-        end;
-      candidat:=false;
-      if (not passer) and ((PawnOpenFileMaskBB[black,sq] and WhitePawns)=0) then
-        begin
-          temp1:=PawnBackWardMaskBB[black,sq] and BlackPawns;
-          att:=BitCount(temp1);
-          temp1:=PawnBackWardMaskBB[white,sq-8] and WhitePawns;
-          def:=BitCount(temp1);
-          if att>=def then candidat:=true;
-        end;
-      if (passer) and (doubled)  then passer:=false;
-      if passer then
-        begin
-          PasserBB:=PasserBB or OnlyR00[sq];
-          scoremid:=scoremid-PasserBaseMid[y];
-        end;
-      if isolated then
-        begin
-          scoremid:=scoremid+IsolatedPawnMid;
-          scoreend:=scoreend+IsolatedPawnEnd;
-          if ((PawnOpenFileMaskBB[black,sq] and WhitePawns)=0) then
+        END   else
+        BEGIN
+         // для пешки на закрытой вертикали
+          if doubled then
            begin
-            scoremid:=scoremid+OpenIsoMid;
-            scoreend:=scoreend+OpenIsoEnd;
+            scoremid:=scoremid+DoubledClosedMid;
+            scoreend:=scoreend+DoubledClosedEnd;
+            if isolated then
+             begin
+              scoremid:=scoremid+DoubledIsoClosedMid;
+              scoreend:=scoreend+DoubledIsoClosedEnd;
+             end;
            end;
-        end;
-      if backward then
-        begin
-          scoremid:=scoremid+BackWardPawnMid;
-          scoreend:=scoreend+BackWardPawnEnd;
-          if ((PawnOpenFileMaskBB[black,sq] and WhitePawns)=0) then
+          if chain then
            begin
-            scoremid:=scoremid+OpenBackMid;
-            scoreend:=scoreend+OpenBackEnd;
+             scoremid:=scoremid-ChainMid;
+             scoreend:=scoreend-ChainEnd;
            end;
-        end;
-      if doubled then
-        begin
-          scoremid:=scoremid+DoubledPawnMid;
-          scoreend:=scoreend+DoubledPawnEnd;
-          if ((PawnOpenFileMaskBB[black,sq] and WhitePawns)=0) then
+          if isolated then
            begin
-            scoremid:=scoremid+OpenDoubledMid;
-            scoreend:=scoreend+OpenDoubledEnd;
+            scoremid:=scoremid+IsolatedClosedMid;
+            scoreend:=scoreend+IsolatedClosedEnd;
            end;
-        end;
-      if strong then
-        begin
-          scoremid:=scoremid-ChainPawnMid[x];
-          scoreend:=scoreend-ChainPawnEnd[x];
-        end;
-      if candidat then
-        begin
-          scoremid:=scoremid-CandidatPasserMid[y];
-          scoreend:=scoreend-CandidatPasserEnd[y];
-        end;
+         backward:=false;
+         if (not passer) and (not isolated) and (not chain) and ((PawnAttacksBB[black,sq] and WhitePawns)=0) and (y>3) then
+           begin
+             // Определяем отсталость пешки - кандидатом будет пешка у которой рядом или сзади нет поддержки
+             if ((PawnBackWardMaskBB[black,sq] and BlackPawns)=0) then
+               begin
+                 i:=sq-8;
+                 // Если пешка блокирована или поле перед ней контролируется вражеской пешкой - она отсталая
+                 if ((OnlyR00[i] and AllPawns)<>0) or ((PawnAttacksBB[black,i] and WhitePawns)<>0)  then backward:=true else
+                   begin
+                     // Если сделав ход рядом не окажется дружеской пешки - смотрим движение еще на 1 поле вперед
+                     if (PawnAttacksBB[black,sq] and BlackPawns)=0 then
+                       begin
+                         i:=i-8;
+                         // Если и это поле блокировано или под контролем вражеской пешки - отсталая
+                         if ((OnlyR00[i] and AllPawns)<>0) or ((PawnAttacksBB[black,i] and WhitePawns)<>0)  then backward:=true else
+                          begin
+                            // Если даже пройдя на 2 поля рядом не будет дружеской пешки - значит отсталая
+                            if (PawnAttacksBB[black,sq-8] and BlackPawns)=0 then backward:=true;
+                          end;
+                       end;
+                   end;
+               end;
+           end;
+           if backward then
+            begin
+             scoremid:=scoremid+BackWardClosedMid;
+             scoreend:=scoreend+BackWardClosedEnd;
+            end;
+        END;
+        // Проходные и кандидаты
+        if passer then
+            begin
+             if (not doubled) then
+              begin
+               PasserBB:=PasserBB or OnlyR00[sq];
+               scoremid:=scoremid-PasserBaseMid[9-y];
+               scoreend:=scoreend-PasserBaseEnd[9-y];
+               if (PawnAttacksBB[white,sq] and BlackPawns)<>0 then
+                begin
+                 scoremid:=scoremid-ProtectedPawnMid[9-y];
+                 scoreend:=scoreend-ProtectedPawnEnd[9-y];
+                end;
+               if ((LeftFlangBB[sq] and WhitePawns)=0) or ((RightFlangBB[sq] and WhitePawns)=0) then
+                begin
+                 scoremid:=scoremid-OutPasserMid[9-y];
+                 scoreend:=scoreend-OutPasserEnd[9-y];
+                end;
+               temp1:=ConnPawns and ConnectedMaskBB[sq];
+               ConnPawns:=ConnPawns or OnlyR00[sq];
+               if temp1<>0 then
+                 begin
+                   sq1:=BitScanForWard(temp1);
+                   temp1:=temp1 and NotOnlyR00[sq1];
+                   if y<=posy[sq1] then
+                    begin
+                     scoremid:=scoremid-ConnectedPawnMid[9-y]-ConnectedPawnMid[9-posy[sq1]];
+                     scoreend:=scoreend-ConnectedPawnEnd[9-y]-ConnectedPawnEnd[9-posy[sq1]];
+                    end;
+                   if temp1<>0 then
+                    begin
+                     sq1:=BitScanForWard(temp1);
+                     if y<=posy[sq1] then
+                      begin
+                       scoremid:=scoremid-ConnectedPawnMid[9-y]-ConnectedPawnMid[9-posy[sq1]];
+                       scoreend:=scoreend-ConnectedPawnEnd[9-y]-ConnectedPawnEnd[9-posy[sq1]];
+                      end;
+                    end;
+                 end;
+              end;
+            end else
+            if open then
+              begin
+                temp1:=PawnBackWardMaskBB[black,sq] and BlackPawns;
+                att:=BitCount(temp1);
+                temp1:=PawnBackWardMaskBB[white,sq-8] and WhitePawns;
+                def:=BitCount(temp1);
+                if att>=def then
+                  begin
+                    scoremid:=scoremid-CandidatPasserMid[9-y];
+                    scoreend:=scoreend-CandidatPasserEnd[9-y];
+                  end;
+              end;
       temp:=temp and NotOnlyR00[sq];
     end;
-  // Прикрытия для короля
-  wkside:=Wlocation(Board,7,8,6); if wkside>255 then wkside:=255;
-  wqside:=Wlocation(Board,2,1,3); if wqside>255 then wqside:=255;
-  wd:=Wlocation(Board,4,3,5);if wd>255 then wd:=255;
-  we:=Wlocation(Board,5,6,4);if we>255 then we:=255;
-  bkside:=Blocation(Board,7,8,6); if bkside>255 then bkside:=255;
-  bqside:=Blocation(Board,2,1,3); if bqside>255 then bqside:=255;
-  bd:=Blocation(Board,4,3,5);if bd>255 then bd:=255;
-  be:=Blocation(Board,5,6,4);if be>255 then be:=255;
- // Сохраняем
+   // Сохраняем
+  if wlight>255 then wlight:=255;
+  if blight>255 then blight:=255;
+  if wdark>255 then wdark:=255;
+  if bdark>255 then bdark:=255;
   PawnTable[index].PawnKey:=Board.Pawnkey;
   PawnTable[index].scoremid:=scoremid;
   PawnTable[index].scoreend:=scoreend;
   PawnTable[index].PasserBB:=PasserBB;
-  PawnTable[index].Wshelter:=wqside or (wd shl 8) or (we shl 16) or (wkside shl 24);
-  PawnTable[index].Bshelter:=bqside or (bd shl 8) or (be shl 16) or (bkside shl 24);
-
+  PawnTable[index].wking:=255;
+  PawnTable[index].bking:=255;
+  PawnTable[index].wcastle:=Board.Castle and 3;
+  PawnTable[index].bcastle:=Board.Castle and 12;
+  PawnTable[index].blocked:=wlight or (wdark shl 8) or (blight shl 16) or (bdark shl 24);
 end;
+
 Procedure EvalPasser(var Board:Tboard;var scoremid:integer;var scoreend:integer;PassersBB:TbitBoard;Watt:TbitBoard;BAtt:TbitBoard;indexmat:integer);
 var
   temp,way,behind,MY,OPP,t1 : TBitBoard;
-  sq,major : Tsquare;
-  y,bonus : integer;
+  sq,major,wking,bking : Tsquare;
+  x,y : integer;
 begin
+  wking:=Board.KingSq[white];
+  bking:=Board.KingSq[black];
   temp:=PassersBB and Board.Pieses[WhitePawn];
   while temp<>0 do
     begin
       sq:=BitScanForward(temp);
+      x:=posx[sq];
       y:=posy[sq];
       temp:=temp and NotOnlyR00[sq];
-      bonus:=PasserBaseEnd[y];
-      if (MatTable[indexmat].flag and QueenEndgame)<>0 then bonus:=bonus+QueenEnd[y];
-      if ((PawnChainMaskBB[White,sq] and Board.Pieses[WhitePawn])<>0) then bonus:=bonus+PasserStrongEnd[y];
-      bonus:=bonus+KingDist(Board.KingSq[black],sq+8)*OpKingDist[y];
-      bonus:=bonus-KingDist(Board.KingSq[white],sq+8)*MyKingDist[y];
-      if (Board.Pos[sq+8]=Empty) then
+      if y>3 then
        begin
+        if (MatTable[indexmat].flag and QueenEndgame)<>0 then
+         begin
+          scoremid:=scoremid+QueenEnd[y];
+          scoreend:=scoreend+QueenEnd[y];
+          if ((PawnOpenFileMaskBB[white,sq] and Board.Pieses[WhiteQueen])<>0) then scoreend:=scoreend-BadQueen[y];
+         end;
+        if (MatTable[indexmat].flag and RookEndgame)<>0 then
+         begin
+          if ((PawnOpenFileMaskBB[white,sq] and Board.Pieses[WhiteRook])<>0) then  scoreend:=scoreend-BadRook[y];
+          if ((x=1) and ((FilesBB[2] and Board.Pieses[BlackRook])<>0)) or ((x=8) and ((FilesBB[7] and Board.Pieses[BlackRook])<>0)) then scoreend:=scoreend-CutKing[y];
+         end;
+        scoreend:=scoreend+WPawnKingDist(bking,sq+8)*OpKingDist[y];
+        scoreend:=scoreend-WPawnKingDist(wking,sq+8)*MyKingDist[y];
+        if ((KingAttacksBB[sq+8] and OnlyR00[wking])<>0) then
+          begin
+            if (posy[wking]>y)
+              then scoreend:=scoreend+KingSupported[y]
+              else scoreend:=scoreend+(KingSupported[y] div 2);
+          end;
+        if (Board.Pos[sq+8]=Empty) then scoreend:=scoreend+NotBlocked[y];
+        if ((PawnOpenFileMaskBB[white,sq] and Board.CPieses[white])=0) then scoreend:=scoreend+MeFreeWay[y];
+        if ((PawnOpenFileMaskBB[white,sq] and Board.CPieses[black])=0) then scoreend:=scoreend+OpFreeWay[y];
         way:=PawnOpenFileMaskBB[white,sq];
         behind:=PawnOpenFileMaskBB[black,sq];
         MY:=way and Watt;
@@ -410,74 +714,52 @@ begin
            major:=BitScanBackWard(t1);
            if (Intersect[major,sq] and Board.AllPieses)=0 then opp:=way;
          end;
-        if opp=0 then
-            begin
-               if way=My
-                then bonus:=bonus+FreePasserSupported[y]
-                else bonus:=bonus+FreePasser[y];
-            end else
-            begin
-              if ((opp and My)=opp)
-               then bonus:=bonus+BlockedPasserSupported[y]
-               else bonus:=bonus+BlockedPasser[y];
-            end;
-       if (way and Board.CPieses[white])=0 then bonus:=bonus+FreeWay[y];
-      end;
-     if  ((MatTable[indexmat].flag and RookEndgame)<>0) and ((PawnOpenFileMaskBB[white,sq] and Board.Pieses[WhiteRook])<>0) then  bonus:=bonus-BadRook[y];
-     if  ((MatTable[indexmat].flag and QueenEndgame)<>0) and ((PawnOpenFileMaskBB[white,sq] and Board.Pieses[WhiteQueen])<>0) then bonus:=bonus-BadQueen[y];
-     if bonus<0 then bonus:=0;
-     if (posx[sq] in [1,8]) then
-       begin
-         if (Board.Pieses[BlackQueen] or Board.Pieses[BlackRook])<>0 then bonus:=bonus-(bonus div 4) else
-           if Board.Pieses[BlackBishop]=0 then bonus:=bonus+(bonus div 4);
+        if ((opp and My)=opp) then scoreend:=scoreend+FreePasser[y];
        end;
-     scoreend:=scoreend+bonus;
     end;
   temp:=PassersBB and Board.Pieses[BlackPawn];
   while temp<>0 do
     begin
-     sq:=BitScanForward(temp);
-     y:=9-posy[sq];
-     temp:=temp and NotOnlyR00[sq];
-     bonus:=PasserBaseEnd[y];
-     if (MatTable[indexmat].flag and QueenEndgame)<>0 then bonus:=bonus+QueenEnd[y];
-     if ((PawnChainMaskBB[black,sq] and Board.Pieses[BlackPawn])<>0) then bonus:=bonus+PasserStrongEnd[y];
-     bonus:=bonus+KingDist(Board.KingSq[white],sq-8)*OpKingDist[y];
-     bonus:=bonus-KingDist(Board.KingSq[black],sq-8)*MyKingDist[y];
-     if (Board.Pos[sq-8]=Empty) then
-      begin
-       way:=PawnOpenFileMaskBB[black,sq];
-       behind:=PawnOpenFileMaskBB[white,sq];
-       MY:=way and Batt;
-       OPP:=way and (Watt or Board.CPieses[white]);
-       t1:=(Board.Pieses[WhiteRook] or Board.Pieses[WhiteQueen]);
-       if ( t1 and behind)<>0 then
-        begin
-          major:=BitScanForWard(t1);
-          if (Intersect[major,sq] and Board.AllPieses)=0 then opp:=way;
-        end;
-       if opp=0 then
-            begin
-               if way=My
-                then bonus:=bonus+FreePasserSupported[y]
-                else bonus:=bonus+FreePasser[y];
-            end else
-            begin
-              if ((opp and My)=opp)
-               then bonus:=bonus+BlockedPasserSupported[y]
-               else bonus:=bonus+BlockedPasser[y];
-            end;
-       if (way and Board.CPieses[black])=0 then bonus:=bonus+FreeWay[y];
-      end;
-     if  ((MatTable[indexmat].flag and RookEndgame)<>0) and ((PawnOpenFileMaskBB[black,sq] and Board.Pieses[BlackRook])<>0) then bonus:=bonus-BadRook[y];
-     if  ((MatTable[indexmat].flag and QueenEndgame)<>0) and ((PawnOpenFileMaskBB[black,sq] and Board.Pieses[BlackQueen])<>0) then bonus:=bonus-BadQueen[y];
-     if bonus<0 then bonus:=0;
-     if (posx[sq] in [1,8]) then
+      sq:=BitScanForward(temp);
+      x:=posx[sq];
+      y:=9-posy[sq];
+      temp:=temp and NotOnlyR00[sq];
+      if y>3 then
        begin
-         if (Board.Pieses[WhiteQueen] or Board.Pieses[WhiteRook])<>0 then bonus:=bonus-(bonus div 4) else
-           if Board.Pieses[WhiteBishop]=0 then bonus:=bonus+(bonus div 4);
+        if (MatTable[indexmat].flag and QueenEndgame)<>0 then
+         begin
+          scoremid:=scoremid-QueenEnd[y];
+          scoreend:=scoreend-QueenEnd[y];
+          if ((PawnOpenFileMaskBB[black,sq] and Board.Pieses[BlackQueen])<>0) then scoreend:=scoreend+BadQueen[y];
+         end;
+        if (MatTable[indexmat].flag and RookEndgame)<>0 then
+         begin
+          if ((PawnOpenFileMaskBB[black,sq] and Board.Pieses[BlackRook])<>0) then  scoreend:=scoreend+BadRook[y];
+          if ((x=1) and ((FilesBB[2] and Board.Pieses[WhiteRook])<>0)) or ((x=8) and ((FilesBB[7] and Board.Pieses[WhiteRook])<>0)) then scoreend:=scoreend+CutKing[y];
+         end;
+        scoreend:=scoreend-BPawnKingDist(wking,sq-8)*OpKingDist[y];
+        scoreend:=scoreend+BPawnKingDist(bking,sq-8)*MyKingDist[y];
+        if ((KingAttacksBB[sq-8] and OnlyR00[bking])<>0) then
+          begin
+            if (posy[bking]<9-y)
+              then scoreend:=scoreend-KingSupported[y]
+              else scoreend:=scoreend-(KingSupported[y] div 2);
+          end;
+        if (Board.Pos[sq-8]=Empty) then scoreend:=scoreend-NotBlocked[y];
+        if ((PawnOpenFileMaskBB[black,sq] and Board.CPieses[black])=0) then scoreend:=scoreend-MeFreeWay[y];
+        if ((PawnOpenFileMaskBB[black,sq] and Board.CPieses[white])=0) then scoreend:=scoreend-OpFreeWay[y];
+        way:=PawnOpenFileMaskBB[black,sq];
+        behind:=PawnOpenFileMaskBB[white,sq];
+        MY:=way and Batt;
+        OPP:=way and (Watt or Board.CPieses[white]);
+        t1:=(Board.Pieses[WhiteRook] or Board.Pieses[WhiteQueen]);
+        if ( t1 and behind)<>0 then
+         begin
+           major:=BitScanForWard(t1);
+           if (Intersect[major,sq] and Board.AllPieses)=0 then opp:=way;
+         end;
+        if ((opp and My)=opp) then scoreend:=scoreend-FreePasser[y];
        end;
-     scoreend:=scoreend-bonus;
     end;
 end;
 
@@ -487,6 +769,27 @@ var
 begin
   res:=Abs(posy[kingsq]-posy[pawnsq]);
   if Abs(posx[kingsq]-posx[pawnsq])>res then res:=Abs(posx[kingsq]-posx[pawnsq]);
+  Result:=res;
+end;
+
+Function WPawnKingDist(kingsq:Tsquare;WPawnSQ:Tsquare):integer; inline;
+var
+  res:integer;
+begin
+  if posy[kingsq]>posy[WPawnSq]
+    then res:=3*(Abs(posy[kingsq]-posy[Wpawnsq]))
+    else res:=6*(Abs(posy[kingsq]-posy[Wpawnsq]));
+  if 6*Abs(posx[kingsq]-posx[Wpawnsq])>res then res:=6*Abs(posx[kingsq]-posx[Wpawnsq]);
+  Result:=res;
+end;
+Function BPawnKingDist(kingsq:Tsquare;BPawnSQ:Tsquare):integer; inline;
+var
+  res:integer;
+begin
+  if posy[kingsq]<posy[BPawnSq]
+    then res:=3*(Abs(posy[kingsq]-posy[Bpawnsq]))
+    else res:=6*(Abs(posy[kingsq]-posy[Bpawnsq]));
+  if 6*abs(posx[kingsq]-posx[Bpawnsq])>res then res:=6*Abs(posx[kingsq]-posx[Bpawnsq]);
   Result:=res;
 end;
 

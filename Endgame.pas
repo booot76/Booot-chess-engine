@@ -40,8 +40,6 @@ implementation
  uses evaluation;
 
 Function EvalSpecialEndgames(var Board:Tboard;indexmat:integer;var scoremid:integer;var scoreend:integer):boolean; 
-var
-  pawn,prom,wr,br:TSquare;
 begin
   if (Mattable[indexmat].flag and PawnEndgame)<>0 then
     begin
@@ -106,55 +104,7 @@ if (Mattable[indexmat].flag and NoPawnEndgame)<>0 then
          exit;  
        end; 
     end;
-// KRPKR
-if (Mattable[indexmat].flag and KRPKR)<>0 then
-  begin
-   if scoremid>0 then
-    begin
-     Mattable[indexmat].Wmul:=16;
-     pawn:=BitScanForward(Board.Pieses[WhitePawn]);
-     prom:=h7+posx[pawn];
-     wr:=BitScanForward(Board.Pieses[WhiteRook]);
-     br:=BitScanForward(Board.Pieses[BlackRook]);
-     if Board.KingSq[black]=prom then
-        begin
-          if (posx[pawn]<5) and (posx[br]-2>posx[pawn]) then Mattable[indexmat].Wmul:=4 else
-            if (posx[pawn]>4) and (posx[br]+2<posx[pawn]) then Mattable[indexmat].Wmul:=4;
-        end else
-      if (posx[Board.KingSq[black]]=posx[pawn]) and (Board.KingSq[white]>pawn) then Mattable[indexmat].Wmul:=4 else
-      if (posx[pawn]=7) and (pawn+8=wr) and (posx[pawn]=posx[br]) then
-         begin
-           if ((posx[pawn]<5) and (Board.KingSq[black] in [g7,h7])) or ((posx[pawn]>4) and (Board.KingSq[black] in [a7,b7])) then
-              begin
-                if (Posy[br]<4) and (KingDist(Board.KingSq[white],pawn)>1) then Mattable[indexmat].Wmul:=4 else
-                if (Posy[br]>3) and (KingDist(Board.KingSq[white],pawn)>2) then Mattable[indexmat].Wmul:=4;
-              end;
-         end;
-    end else
-    begin
-     Mattable[indexmat].Bmul:=16;
-     pawn:=BitScanForward(Board.Pieses[BlackPawn]);
-     prom:=posx[pawn]-1;
-     wr:=BitScanForward(Board.Pieses[WhiteRook]);
-     br:=BitScanForward(Board.Pieses[BlackRook]);
-     if Board.KingSq[white]=prom then
-        begin
-          if (posx[pawn]<5) and (posx[wr]-2>posx[pawn]) then Mattable[indexmat].Bmul:=4 else
-            if (posx[pawn]>4) and (posx[wr]+2<posx[pawn]) then Mattable[indexmat].Bmul:=4;
-        end else
-      if (posx[Board.KingSq[white]]=posx[pawn]) and (Board.KingSq[white]<pawn) then Mattable[indexmat].Bmul:=4 else
-      if (posx[pawn]=2) and (pawn-8=br) and (posx[pawn]=posx[wr]) then
-         begin
-           if ((posx[pawn]<5) and (Board.KingSq[white] in [g2,h2])) or ((posx[pawn]>4) and (Board.KingSq[white] in [a2,b2])) then
-              begin
-                if (Posy[wr]>5) and (KingDist(Board.KingSq[white],pawn)>1) then Mattable[indexmat].Bmul:=4 else
-                if (Posy[br]<6) and (KingDist(Board.KingSq[white],pawn)>2) then Mattable[indexmat].Bmul:=4;
-              end;
-         end;
-    end;
-    Result:=false;
-    exit;
-  end;
+
 if (Mattable[indexmat].flag and KBPK)<>0 then
   begin
     if ((Board.Pieses[WhitePawn] and FilesBB[1])<>0) and (Board.Pieses[WhitePawn]  and (not FilesBB[1])=0)

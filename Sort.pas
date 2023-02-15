@@ -364,7 +364,7 @@ Procedure Note_moves(var Board:Tboard;var Movelist:Tmovelist;var SortUnit:TsortU
 Function Movevalue(var Board:Tboard;var SortUnit:TSortUnit;move:Tmove;hashmove:Tmove;ply:integer):integer;
 Function SimpleMoveValue(var Board:TBoard;var SortUnit:TSortUnit;move:Tmove):integer;
 Function MVV_LVA(var Board:TBoard;move:tmove) :integer;
-Function isHanging(var Board:Tboard;move:Tmove):boolean;
+Function SEE(var Board:Tboard;move:Tmove):integer;
 Procedure AddRentgen(const from:integer;const dir:integer;var AllAttacks:Tbitboard;var Board:Tboard;var QR :TbitBoard;var QB:TbitBoard); inline;
 Function MoveSimpleQSValue (var Board:TBoard;move:Tmove):integer;
 Procedure SortList(var MoveList:TmoveList);
@@ -421,8 +421,6 @@ begin
   dest:=(move shr 6) and 63;
   piese:=Board.Pos[from];
   res:=SortUnit.History[piese,dest];
-  if res>0 then res:=res+10000;
-  res:=res+SortCenter[dest]-SortCenter[from];
   Result:=res;
 end;
 
@@ -452,12 +450,12 @@ begin
     end;
 end;
 
-Function isHanging(var Board:Tboard;move:Tmove):boolean;
+Function See(var Board:Tboard;move:Tmove):integer;
 var
    piese,target : TPiese;
-   cp,prevvalue,counter,col : integer;
-   from,dest,square : TSquare;
-   AllAttacks,QR,QB : TBitBoard;
+   prevvalue,counter,col,cp,square : integer;
+   from,dest : TSquare;
+   AllAttacks,QR,QB,temp : TBitBoard;
    TakesList : array[1..32] of integer;
 begin
   from:=move and 63;
@@ -465,34 +463,28 @@ begin
   piese:=Board.Pos[from];
   target:=Board.Pos[dest];
   PrevValue:=SEEValues[piese];
-  // Ранний выход
-  if PrevValue<=SeeValues[target] then
-    begin
-      Result:=false;
-      exit;
-    end;
   if Board.Color=white then cp:=-1 else cp:=1;
-  if (PrevValue>1) and ((PawnAttacksBB[Board.color,dest] and Board.Pieses[cp*pawn])<>0) then
+  if (PrevValue<SeeValues[target]) then
     begin
-      result:=true;
+      result:=SeeValues[target]-PrevValue;
       exit;
     end;
-  if (PrevValue>5) and ((KnightAttacksBB[dest] and Board.Pieses[cp*knight])<>0)  then
+  if (PrevValue>(SeeValues[target]+1)) and ((PawnAttacksBB[Board.color,dest] and Board.Pieses[cp*pawn])<>0) then
     begin
-      result:=true;
+      result:=-(PrevValue-SeeValues[target]);
       exit;
     end;
   if (PrevValue=1) and (target=Empty) and ((move and CaptureFlag)<>0) then
     begin
-      result:=false;
+      result:=1;
       exit;
     end;
   if (PrevValue=100) and ((from-dest=2) or (from-dest=-2)) then
     begin
-      result:=false;
+      result:=0;
       exit;
     end;
-  square:=0; 
+  square:=0;
   // Основной алгоритм
   QR:=Board.Pieses[WhiteQueen] or Board.Pieses[WhiteRook] or Board.Pieses[BlackQueen] or Board.Pieses[BlackRook];
   QB:=Board.Pieses[WhiteQueen] or Board.Pieses[WhiteBishop] or Board.Pieses[BlackQueen] or Board.Pieses[BlackBishop];
@@ -513,43 +505,82 @@ begin
          // разместить цепочку фигур перед минимаксом. Короли тоже участвуют (у них настолько высокая оценка
          // что бить они будут в самую последнюю очередь)
          if (Board.Pieses[WhitePawn] and AllAttacks)<>0
-                          then square:=BitScanForward2(Board.Pieses[WhitePawn] and AllAttacks)
+                          then
+                           begin
+                            temp:=Board.Pieses[WhitePawn] and AllAttacks;
+                            square:=BitScanForward(temp)
+                           end
          else
           if (Board.Pieses[WhiteKnight] and AllAttacks)<>0
-                          then square:=BitScanForward2(Board.Pieses[WhiteKnight]  and AllAttacks)
+                          then  begin
+                            temp:=Board.Pieses[WhiteKnight] and AllAttacks;
+                            square:=BitScanForward(temp)
+                           end
          else
           if (Board.Pieses[WhiteBishop]  and AllAttacks)<>0
-                          then square:=BitScanForward2(Board.Pieses[WhiteBishop]  and AllAttacks)
+                          then  begin
+                            temp:=Board.Pieses[WhiteBishop] and AllAttacks;
+                            square:=BitScanForward(temp)
+                           end
          else
           if (Board.Pieses[WhiteRook]  and AllAttacks)<>0
-                          then square:=BitScanForward2(Board.Pieses[WhiteRook] and AllAttacks)
+                          then begin
+                            temp:=Board.Pieses[WhiteRook] and AllAttacks;
+                            square:=BitScanForward(temp)
+                           end
          else
           if (Board.Pieses[Whitequeen] and AllAttacks)<>0
-                          then square:=BitScanForward2(Board.Pieses[Whitequeen]  and AllAttacks)
+                          then  begin
+                            temp:=Board.Pieses[WhiteQueen] and AllAttacks;
+                            square:=BitScanForward(temp)
+                           end
          else
           if (OnlyR00[Board.KingSq[white]] and AllAttacks)<>0
-                          then square:=BitScanForward2(OnlyR00[Board.KingSq[white]] and AllAttacks)
+                          then
+                           begin
+                            temp:=OnlyR00[Board.KingSq[white]] and AllAttacks;
+                            square:=BitScanForward(temp);
+                           end
          else break;
        end
           else
         begin
          if (Board.Pieses[BlackPawn] and AllAttacks)<>0
-                          then square:=BitScanForward2(Board.Pieses[BlackPawn] and AllAttacks)
+                          then  begin
+                            temp:=Board.Pieses[BlackPawn] and AllAttacks;
+                            square:=BitScanForward(temp)
+                           end
          else
           if (Board.Pieses[BlackKnight] and AllAttacks)<>0
-                          then square:=BitScanForward2(Board.Pieses[BlackKnight] and AllAttacks)
+                          then  begin
+                            temp:=Board.Pieses[BlackKnight] and AllAttacks;
+                            square:=BitScanForward(temp)
+                           end
          else
           if (Board.Pieses[BlackBishop]  and AllAttacks)<>0
-                          then square:=BitScanForward2(Board.Pieses[BlackBishop] and AllAttacks)
+                          then  begin
+                            temp:=Board.Pieses[BlackBishop] and AllAttacks;
+                            square:=BitScanForward(temp)
+                           end
          else
           if (Board.Pieses[BlackRook]  and AllAttacks)<>0
-                          then square:=BitScanForward2(Board.Pieses[BlackRook]  and AllAttacks)
+                          then  begin
+                            temp:=Board.Pieses[BlackRook] and AllAttacks;
+                            square:=BitScanForward(temp)
+                           end
          else
           if (Board.Pieses[BlackQueen]  and AllAttacks)<>0
-                          then square:=BitScanForward2(Board.Pieses[BlackQueen] and AllAttacks)
+                          then  begin
+                            temp:=Board.Pieses[BlackQueen] and AllAttacks;
+                            square:=BitScanForward(temp)
+                           end
          else
           if (OnlyR00[Board.KingSq[black]] and AllAttacks)<>0
-                          then square:=BitScanForward2(OnlyR00[Board.KingSq[black]] and AllAttacks)
+                          then
+                           begin
+                            temp:=OnlyR00[Board.KingSq[black]] and AllAttacks ;
+                            square:=BitScanForward(temp);
+                           end
          else break;
         end;
      inc(counter);
@@ -568,9 +599,9 @@ begin
     dec(counter);
     end;
 // Возвращаем прогнозируемый выигрыш
-if TakesList[1]>=0 then result:=false else result:=true;
-
+Result:=TakesList[1];
 end;
+
 Procedure AddRentgen(const from:integer;const dir:integer;var AllAttacks:Tbitboard;var Board:Tboard;var QR :TbitBoard;var QB:TbitBoard);
 // Процедура ищет рентгены, находящиеся за скользящими фигурами на поле from
 // и если находит,то добавляет их в общий список взятий (идея слизана у Crafty).
@@ -727,7 +758,7 @@ if MoveList.status=SortNextGood then
              goto l1;
            end else
            begin
-             hang:=isHanging(Board,move);
+             hang:=(See(Board,move)<0);
              if (not hang) then
                begin
                  result:=move;

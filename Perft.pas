@@ -32,10 +32,10 @@ Procedure Perf(var Board:Tboard;depth:integer);
 // проедура генерит все возможные ходы, производит их на доске и подсчитывает их количество
 label l1;
 var
- i:integer;
+ //i:integer;
  color : Tcolor;
  pseudocheck:integer;
- legal,ischeck,f : boolean;
+ legal,ischeck : boolean;
  Undo : TUndo;
  CheckInfo : TcheckInfo;
  MoveList,BadList : TMoveList;
@@ -49,7 +49,7 @@ var
  fmzobr:TmatKey;
 }
 //temp : TbitBoard;
-tt,zz:cardinal;
+//tt,zz:cardinal;
 begin
 
    color:=Board.Color;

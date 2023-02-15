@@ -5,11 +5,11 @@ uses Windows,SysUtils,params,Board,Search,Move,hash,attacks,movegen,history,eval
 Const
      MaxBufer=8192;
 VAR
-   stin,stout : Cardinal;
+   stin,stout : int64;
    isConsole:boolean;
 
 Procedure SetupChanels;
-procedure LWrite(s:string);
+procedure LWrite(s:ansistring);
 Procedure Parser(s:string;var Board:Tboard;var SortUnit:TsortUnit;var PV:TPVLine);
 function GetParam(from:string;what:string): integer;
 Procedure Main;
@@ -30,6 +30,7 @@ begin
      SetConsoleMode(stin,mode);
      FlushConsoleInputBuffer(stin);
     end;
+
 end;
 
 procedure WriteData(pbuff:pointer; n:integer);
@@ -38,17 +39,17 @@ begin
   WriteFile(stout,pbuff^,n,nw,nil);
 end;
 
-procedure LWrite(s:string);
+procedure LWrite(s:ansistring);
 begin
   s := s + #10;
-  WriteData(pchar(s),length(s));
+  WriteData(pansichar(s),length(s));
 end;
 
 function CheckInput: integer;
 var
  n,bytesread,bytesleft: cardinal;
  i: integer;
- Inp: array[0..MaxBufer-1] of char;
+ Inp: array[0..MaxBufer-1] of ansichar;
 begin
   result := 0;
   if IsConsole then
@@ -68,12 +69,12 @@ begin
   if bytesread >= MaxBufer then result := MaxBufer;
 end;
 
-function ReadInput(total:integer): string;
+function ReadInput(total:integer): ansistring;
 var
  n: cardinal;
- Inp: array[0..MaxBufer-1] of char;
+ Inp: array[0..MaxBufer-1] of ansichar;
 begin
-  ReadFile(stin,Inp,total,n,nil);
+  Readfile(stin,Inp,total,n,nil);
   Inp[n] := #0;
   result := Inp;
   result := trim(result);
@@ -81,17 +82,17 @@ end;
 
 Procedure Main;
 var
-   Board : Tboard; // Основная структура 
+   n:integer;
+   Board : Tboard; // Основная структура
    SortUnit : TsortUnit;// Основная структура
    PV:TPVLIne;
-   n:integer;
-   s:string;
+   s:ansistring;
 begin
   repeat
     n := CheckInput;
     if n = 0 then
       begin
-        sleep(25);
+        sleep(50);
         continue;
       end;
     s := ReadInput(n);
@@ -118,15 +119,13 @@ begin
     begin
       if myinc>0 then
         begin
-          if mytime>3000
-            then game.time:=(mytime div 20)+(myinc div 2)
-            else game.time:=(mytime div 30);
-          game.rezerv:=(mytime div 4);
+          game.time:=(mytime div 20)+myinc;
+          game.rezerv:=(mytime div 2);
         end else
         begin
           // SuddenDeath
           game.time:=(mytime div 30);
-          game.rezerv:=(mytime div 8);
+          game.rezerv:=(mytime div 4);
         end;
     end else
     begin
@@ -142,7 +141,6 @@ begin
          game.rezerv:=(mytime div 4);
         end;
     end;
-  if mytime<3000 then game.rezerv:=game.time;
   if game.time>game.rezerv then game.time:=game.rezerv;
 end;
 Procedure Parser(s:string;var Board:Tboard;var SortUnit:TsortUnit;var PV:TPVLine);
@@ -154,7 +152,7 @@ begin
   if s='' then exit;
   if s='eval' then
     begin
-      Lwrite('Score = '+IntToStr(Eval(Board)));
+      Lwrite('Score = '+IntToStr(Eval(Board,val)));
     end;
   if s='uci' then                                                                //uci
     begin
@@ -215,6 +213,11 @@ begin
       ForceMoves(Board,mlist);
       exit;
      end;
+  if pos('fv',s) = 1 then
+    begin
+      game.remain:=50000;
+      writeln(FV(Board,0,1,0,1,pv));
+    end;
   if pos('go ',s) = 1 then
    begin                                                                         //go
      if pos('infinite',s) > 0 then
@@ -313,7 +316,7 @@ end;
 Procedure WaitPonderhit;
 var
   n : integer;
-  s : string;
+  s : ansistring;
 begin
   n:=0;
   while n=0  do

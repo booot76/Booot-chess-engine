@@ -15,6 +15,7 @@ TYPE
                                // 5..7 - Type
                                // 8..15  - Depth
                                // 16..31 - StaticEval
+              dangereval : byte;
             end;
    TTT = array of TEntry;
 CONST
@@ -175,6 +176,11 @@ $D65DF276F72CF64B,$49EE36DAB7EA8ADD,$C4A95D7B5444BD05,$601180A27947B4C9);
   HashLower=1;
   HashUpper=2;
   HashExact=3;
+
+  HashDepthNone=-64;
+  HashDepthZero=0;
+  HashDepthMinus=-FullPly;
+  HashDepthMask=-HashDepthNone;
 VAR
    TT : TTT;
 
@@ -183,11 +189,14 @@ Function CalcPawnKeyFull(var Board:Tboard):TpawnKey;
 Function CalcMatKeyFull(var Board:Tboard):TMatKey;
 Procedure ClearHash(var H:TTT;HashSize:integer);
 Procedure NewAge;
-Procedure HashStore(var Board:TBoard;value:integer;depth:integer;typ:integer;move:Tmove;Age:integer;emove:tmove;var StaticEval:integer);
+Procedure HashStore(var Board:TBoard;value:integer;depth:integer;typ:integer;move:Tmove;Age:integer;emove:tmove;var StaticEval:integer;dangereval:integer);
 Function HashProbe(var Board:Tboard;emove:Tmove):integer;
 Function ValueToTT(value:integer;ply:integer):integer;
 Function ValueFromTT(value:integer;ply:integer):integer;
 Procedure SetHash(var TT:TTT;Size:integer);
+Procedure HashSave(i:integer;var Key:TKey;value:integer;depth:integer;typ:integer;move:Tmove;Age:integer;StaticEval:integer;dangereval:integer);inline;
+Procedure GetTTParms(i:integer;ply:integer;var value:integer;var depth:integer;var typ:integer; var move:Tmove);inline;
+Procedure UPDHashAge(i:integer;typ:integer;depth:integer;StaticEval:integer;age:integer;dangereval:integer);
 
 implementation
 uses BitBoards,Evaluation;
@@ -260,74 +269,54 @@ begin
       H[i].Key:=0;
       H[i].data1:=0;
       H[i].data2:=0;
+      H[i].dangereval:=0;
     end;
-   game.HashAge:=0;  
+   game.HashAge:=0;
 end;
 Procedure NewAge;
 begin
   inc(game.hashAge);
   if game.hashAge>=31 then game.hashAge:=0;
 end;
-Procedure HashStore(var Board:TBoard;value:integer;depth:integer;typ:integer;move:Tmove;Age:integer;emove:tmove;var StaticEval:integer);
+Procedure HashStore(var Board:TBoard;value:integer;depth:integer;typ:integer;move:Tmove;Age:integer;emove:tmove;var StaticEval:integer;dangereval:integer);
 var
-   index,i,d1,d2,t,hashscore,max,idx,d:integer;
+   index,i,rep,score:integer;
    Key:Tkey;
-   //htyp,hvalue,hdepth,hmove,hashindex:integer;
 begin
-  max:=-65535;
-  idx:=-1;
   Key:=Board.Key;
   if (emove<>movenone) then key:=key xor ZexMove;
   index:=(Key and HashMask)*EntrySize;
+  rep:=index;
   for i:=0 to  EntrySize-1 do
     begin
-      if TT[index+i].Key=Key then
+      if (TT[index+i].Key=0) or (TT[index+i].Key=Key) then
         begin
-          t:=TT[index+i].data2 and 65535;
-          d:=(StaticEval+HashValueMax) shl 16;
-          TT[index+i].data2:=d or t;
           if move=MoveNone then move:=(TT[index+i].data1 and 65535);
-          if (depth>=(TT[index+i].data2 shr 8) and 255) then
-            begin
-              t:=value+HashValueMax;
-              d1:=(t shl 16) or move;
-              d2:=Age or (depth shl 8) or (typ shl 5) or ((StaticEval+HashValueMax) shl 16);
-              TT[index+i].data1:=d1;
-              TT[index+i].data2:=d2;
-            end;
+          HashSave((index+i),key,value,depth,typ,move,age,staticeval,dangereval);
           exit;
         end;
-     // Вычисляем "оценку" имеющихся ячеек для схемы замещения. Более предпочитетльными для замещения являются "старые" записи
-      // и записи с минимальной глубиной вхождения
-      if age<>(TT[index+i].data2 and 31)
-        then hashscore:=1024
-        else hashscore:=0;
-      hashscore:=hashscore-((TT[index+i].data2 shr 8) and 255);
-      if hashscore>max then
-        begin
-          max:=hashscore;
-          idx:=i;
-        end;
+      if i=0 then continue;
+      // Вычисляем "оценку" имеющихся ячеек для схемы замещения.
+      score:=0;
+      if (TT[rep].data2 and 31)=age then score:=score+2;
+      if (TT[index+i].data2 and 31)=age then score:=score-2;
+      if ((TT[index+i].data2 shr 8) and 255)<((TT[rep].data2 shr 8) and 255) then inc(score);
+      if score>0 then rep:=index+i;
     end;
   // Найдена предпочтительная ячейка для замещения - записываем в нее информацию по текущей позиции
-  t:=value+HashValueMax;
-  d1:=(t shl 16) or move;
-  d2:=Age or (depth shl 8) or (typ shl 5) or ((StaticEval+HashValueMax) shl 16);
-  TT[index+idx].Key:=Key;
-  TT[index+idx].data1:=d1;
-  TT[index+idx].data2:=d2;
- { // Проверка
-  hashindex:=index+idx;
-  hmove:=TT[hashindex].data1 and 65535;
-  hdepth:=(TT[hashindex].data2 shr 8) and 255;
-  htyp:=(TT[hashindex].data2 shr 16) and 15;
-  hvalue:=(TT[hashindex].data1 shr 16) and 65535;
-  hvalue:=HValue-HashValueMax;
-  if (depth<>hdepth) then writeln('wrong depth');
-  if (typ<>htyp) then writeln('wrong depth');
-  if (hvalue<>value) then writeln('wrong depth');
-  if (hmove<>move) then writeln('wrong depth');
- } 
+  HashSave(rep,key,value,depth,typ,move,age,staticeval,dangereval);
+end;
+
+Procedure HashSave(i:integer;var Key:TKey;value:integer;depth:integer;typ:integer;move:Tmove;Age:integer;StaticEval:integer;dangereval:integer);inline;
+var
+   d1,d2:integer;
+begin
+  d1:=((value+HashValueMax) shl 16) or move;
+  d2:=Age or ((depth+HashDepthMask) shl 8) or (typ shl 5) or ((StaticEval+HashValueMax) shl 16);
+  TT[i].Key:=Key;
+  TT[i].data1:=d1;
+  TT[i].data2:=d2;
+  TT[i].dangereval:=dangereval;
 end;
 
 Function HashProbe(var Board:Tboard;emove:tmove):integer;
@@ -345,7 +334,25 @@ begin
       res:=index+i;
       break;
     end;
-  Result:=res;  
+  Result:=res;
+end;
+
+Procedure GetTTParms(i:integer;ply:integer;var value:integer;var depth:integer;var typ:integer; var move:Tmove);inline;
+begin
+  move:=TT[i].data1 and 65535;
+  depth:=(TT[i].data2 shr 8) and 255;
+  depth:=depth-HashDepthMask;
+  value:=(TT[i].data1 shr 16) and 65535;
+  value:=ValueFromTT(Value-HashValueMax,ply);
+  typ:=(TT[i].data2 shr 5) and 7;
+end;
+Procedure UPDHashAge(i:integer;typ:integer;depth:integer;StaticEval:integer;age:integer;dangereval:integer);
+var
+   data : integer;
+begin
+  data:=Age or ((depth+HashDepthMask) shl 8) or (typ shl 5) or ((StaticEval+HashValueMax) shl 16);
+  TT[i].data2:=data;
+  TT[i].dangereval:=dangereval;
 end;
 
 Function ValueToTT(value:integer;ply:integer):integer;

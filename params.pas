@@ -3,7 +3,7 @@ unit params;
 interface
   uses SysUtils;
 CONST
-    EngineName='Booot 5.1.0';
+    EngineName='Booot 5.2.0(32)';
     MaxPly=64;
     Mate=32000;
     white = 0;
@@ -21,6 +21,7 @@ CONST
     e6=44;f6=45;g6=46;h6=47;
     a7=48;b7=49;c7=50;d7=51;e7=52;f7=53;g7=54;h7=55;
     a8=56;b8=57;c8=58;d8=59;e8=60;f8=61;g8=62;h8=63;
+
     HashMatSize=65536;//* 16 = 1  MB
     HashMatMask=HashMatSize-1;
     HashPawnSize=131072;// *40 = 5 Mb
@@ -46,6 +47,10 @@ TYPE
    Tpositionvalue=array[a1..h8,a1..h8] of integer;
    TBytesArray=array[a1..h8] of TSquare;
    TBBFile = array[1..8] of TBitBoard;
+   t8 = array[0..8] of integer;
+   t16 = array[0..16] of integer;
+   t32 = array[0..32] of integer;
+   T256 = array[0..255] of integer;
    TMoveList = record
                   count : integer;
                   pos   : integer;
@@ -77,16 +82,59 @@ Procedure Init;
 
 
 implementation
-Uses BitBoards,Board,Material,Pawn,history,hash,uci;
+Uses BitBoards,Board,Material,Pawn,history,hash,uci,movegen,safety;
 
 Procedure Init;
  var
    i:integer;
+   j,x,y:integer;
+   bb :int64;
   begin
     for i:=0 to 65535 do
-      BitCounttable[i]:=BitCountAsm(i);
+       BitCounttable[i]:=BitCountInit(i);
+     
     for i:=0 to MaxPly*FullPly do
       DepthInc[i]:=i*i;
+
+    for I := a1 to h8 do
+   begin
+     ConnectedMaskBB[i]:=0;
+     x:=posx[i];
+     y:=posy[i];
+     bb:=RanksBB[y];
+     if y<8 then bb:=bb or RanksBB[y+1];
+     if y<7 then bb:=bb or RanksBB[y+2];
+     if y>1 then bb:=bb or RanksBB[y-1];
+     if y>2 then bb:=bb or RanksBB[y-2];
+     ConnectedMaskBB[i]:=bb and (not filesbb[x]) and PawnIsoMaskBB[i];
+   end;
+
+    for I :=a1 to h8 do
+      begin
+         bb:=0;
+         x:=posx[i];
+         for j:=x+1 to 8 do
+           bb:=bb or FilesBB[j];
+         RightFlangBB[i]:=bb;
+         bb:=0;
+         for j:=x-1 downto 1 do
+           bb:=bb or FilesBB[j];
+         LeftFlangBB[i]:=bb;
+      end;
+    for I :=a1 to h8 do
+      begin
+        x:=posx[i];
+        if x>4
+          then bb:=BishopFullAttacksBB[i] and LeftFlangBB[i]
+          else bb:=BishopFullAttacksBB[i] and RightFlangBB[i];
+        KingShelterDiagBB[i]:=bb;
+      end;
+    for I :=a1 to h8 do
+      begin
+        HoleBB[i]:=0;
+        x:=posx[i];
+        if x>2 then HoleBB[i]:=OnlyR00[i-2];
+      end;
     // по умолчанию пондеринг включен
     game.uciPonder:=true;
     // Инициализируем хеши

@@ -9,6 +9,7 @@ TYPE
     TSortUnit = record
                   Killer : Tkillers;
                   History: Thistory;
+                  Gain   : THistory;
                 end;
 
 VAR
@@ -16,6 +17,7 @@ VAR
 
 Procedure ClearHistory(var SortUnit:TsortUnit);
 Procedure AddHistory(var Board:Tboard;var SortUnit:TsortUnit;move:Tmove;ply:integer;depth:integer;Piese:Tpiese;Dest:Tsquare;var BadMovesList:TmoveList);
+
 implementation
    uses move,sort;
 
@@ -30,21 +32,19 @@ begin
    end;
  For p:=BlackKing to WhiteKing do
    for i:=a1 to h8 do
+    begin
      SortUnit.History[p,i]:=0;
+     SortUnit.Gain[p,i]:=0;
+    end;
 end;
 
 Procedure AddHistory(var Board:Tboard;var SortUnit:TsortUnit;move:Tmove;ply:integer;depth:integer;Piese:Tpiese;Dest:Tsquare;var BadMovesList:TmoveList);
 var
-  p,i,j,ps,ds : integer;
+  j,ps,ds : integer;
 begin
-if (move and CapPromoFlag)<>0 then exit;
+if ((move and CapPromoFlag)<>0) or (Board.oncheck) then exit;
   SortUnit.History[piese,dest]:=SortUnit.History[piese,dest]+DepthInc[depth];
-  if SortUnit.History[piese,dest]>=HistoryMax then
-    begin
-     for p:=BlackKing to WhiteKing do
-       for i:=a1 to h8 do
-         SortUnit.History[p,i]:=SortUnit.History[p,i] div 2;
-    end;
+  if SortUnit.History[piese,dest]>=HistoryMax then SortUnit.History[piese,dest]:=HistoryMax-1;
   if SortUnit.Killer[ply,1]<>move then
     begin
       SortUnit.Killer[ply,2]:=SortUnit.Killer[ply,1];
@@ -56,12 +56,7 @@ for j:=1 to BadMovesList.count do
       ps:=Board.Pos[BadMovesList.Moves[j] and 63];
       ds:=(BadMovesList.Moves[j] shr 6) and 63;
       SortUnit.History[ps,ds]:=SortUnit.History[ps,ds]-DepthInc[depth];
-      if SortUnit.History[ps,ds]<=-HistoryMax then
-        begin
-         for p:=BlackKing to WhiteKing do
-           for i:=a1 to h8 do
-             SortUnit.History[p,i]:=SortUnit.History[p,i] div 2;
-        end;
+      if SortUnit.History[ps,ds]<=-HistoryMax then SortUnit.History[piese,dest]:=-HistoryMax+1;
     end;
 
 end;
