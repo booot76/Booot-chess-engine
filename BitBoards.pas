@@ -3,13 +3,32 @@ unit BitBoards;
 interface
 uses params;
 
+Const
+ Bcount :T256 =
+ (0,1,1,2,1,2,2,3,1,2,2,3,2,3,3,4,
+ 1,2,2,3,2,3,3,4,2,3,3,4,3,4,4,5,
+ 1,2,2,3,2,3,3,4,2,3,3,4,3,4,4,5,
+ 2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,
+ 1,2,2,3,2,3,3,4,2,3,3,4,3,4,4,5,
+ 2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,
+ 2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,
+ 3,4,4,5,4,5,5,6,4,5,5,6,5,6,6,7,
+ 1,2,2,3,2,3,3,4,2,3,3,4,3,4,4,5,
+ 2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,
+ 2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,
+ 3,4,4,5,4,5,5,6,4,5,5,6,5,6,6,7,
+ 2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,
+ 3,4,4,5,4,5,5,6,4,5,5,6,5,6,6,7,
+ 3,4,4,5,4,5,5,6,4,5,5,6,5,6,6,7,
+ 4,5,5,6,5,6,6,7,5,6,6,7,6,7,7,8);
+
+
 
 procedure PrintBitboard(const BB : TBitboard);
 function BitScanForward(var BB: TBitBoard): Integer;
 function BitScanBackward(var BB: TBitBoard): Integer;
-function BitCount(var BB: int64): Integer;inline;
-function BitCountAsm(const BB: TBitBoard): Integer;
-function BitScanForward2(BB: TBitBoard): Integer;
+function BitCountInit(const BB: TBitBoard): Integer;
+function BitCount(var BB: int64): Integer;
 implementation
 
 procedure PrintBitboard(const BB : TBitboard);
@@ -41,70 +60,61 @@ begin
   writeln('   abcdefgh');
 end;
 
-function BitScanForward(var BB: TBitBoard): Integer;
+
+function BitCount(var BB: int64): Integer;
+// Процедура подсчета "1"- битов в битборде.
+// На входе - битбоард, на выходе - число битов, установленных в "1"
+ // asm
+// popcnt rax, qword ptr [bb]
+ begin
+   Result:=Bitcounttable[BB and 65535]+BitCounttable[(BB shr 16) and 65535]+BitCounttable[(BB shr 32) and 65535]+Bitcounttable[(BB shr 48) and 65535];
+  end;
+
+
+function BitCountInit(const BB: TBitBoard): Integer;
+// процедура подсчета "1"- битов в битборде.
+// На входе - битбоард, на выходе - число битов, установленных в "1"
+begin
+  result:=Bcount[bb and 255]+Bcount[(bb shr 8) and 255]+Bcount[(bb shr 16) and 255]+Bcount[(bb shr 24) and 255]
+         +Bcount[(bb shr 32) and 255]+Bcount[(bb shr 40) and 255]+Bcount[(bb shr 48) and 255]+Bcount[(bb shr 56) and 255];
+end;
+
+
+
+
+function BitScanForward(var BB: TBitBoard): Integer;     // for 32
 // Ассемблерная процедура поиска единичного бита в битборде
 // поиск осуществляется "вперед",т.е от 0 до 63 бита
 //На входе- битбоард (ненулевой!), на выходе - номер первого найденого "1"-бита.
 // Если подать нулевой битбоард - на выходе 0 (возможна ошибка!!!)
  asm
+ //  bsf rax,qword ptr [bb]  {64}
        bsf eax, dword ptr [BB]
        jnz @@2
   @@0: bsf eax, dword ptr [BB+04h]
        add eax, 20h
   @@2:
+
   end;
 
-function BitScanBackward(var BB: TBitBoard): Integer;
+
+
+function BitScanBackward(var BB: TBitBoard): Integer;   // for 32
 // Ассемблерная процедура поиска единичного бита в битборде
 // поиск осуществляется "назад",т.е от 63 до 1 бита
 //На входе - битбоард(ненулевой!), на выходе - номер первого найденого "1"-бита.
 // Если подать нулевой битбоард - на выходе 0 (возможна ошибка!!!)
   asm
-       bsr eax, dword ptr [BB+04h]
+//   bsr rax,qword ptr[bb] {64}
+     bsr eax, dword ptr [BB+04h]
        jz @@0
        add eax, 20h
        jnz @@2
   @@0: bsr eax, dword ptr [BB]
   @@2:
-  end;
-function BitCount(var BB: int64): Integer;inline;
-// Процедура подсчета "1"- битов в битборде.
-// На входе - битбоард, на выходе - число битов, установленных в "1"
-  begin
-   Result:=Bitcounttable[BB and 65535]+BitCounttable[(BB shr 16) and 65535]+BitCounttable[(BB shr 32) and 65535]+Bitcounttable[(BB shr 48) and 65535];
+
   end;
 
-function BitCountAsm(const BB: TBitBoard): Integer;
-// Ассемблерная процедура подсчета "1"- битов в битборде.
-// На входе - битбоард, на выходе - число битов, установленных в "1"
-  asm
-       mov ecx, dword ptr BB
-       xor eax, eax
-       test ecx, ecx
-       jz @@1           // Если первый 32-разрядный операнд=0
-  @@0: lea edx, [ecx-1]
-       inc eax
-       and ecx, edx
-       jnz @@0
-  @@1: mov ecx, dword ptr BB+04h // Загружаем вторую половину битборда
-       test ecx, ecx
-       jz @@3
-  @@2: lea edx, [ecx-1]
-       inc eax
-       and ecx, edx
-       jnz @@2
-  @@3:
-  end;
-function BitScanForward2(BB: TBitBoard): Integer;
-// Ассемблерная процедура поиска единичного бита в битборде
-// поиск осуществляется "вперед",т.е от 0 до 63 бита
-//На входе- битбоард (ненулевой!), на выходе - номер первого найденого "1"-бита.
-// Если подать нулевой битбоард - на выходе 0 (возможна ошибка!!!)
- asm
-       bsf eax, dword ptr BB
-       jnz @@2
-  @@0: bsf eax, dword ptr BB+04h
-       add eax, 20h
-  @@2:
-  end;
+
+
 end.

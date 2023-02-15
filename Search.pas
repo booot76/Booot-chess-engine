@@ -6,44 +6,112 @@ TYPE
     TExtension=array[false..true] of integer;
     T14 = array[0..13] of integer;
     T8=array[0..7] of integer;
-
+    Tmatrix = array[1..32,1..63] of integer;
 CONST
-     QSExtraCheckMargin=10;
-     Aspiration=20;
-     DeltaMargin=120;
-     NullMoveMargin=200;
+     Aspiration=40;
+     DeltaMargin=80;
      NullExtraMargin=100;
-     NullExtraDepth=5*FullPly;
-     NullBetaDepth=4*FullPly;
-     RazorDepth=4*FullPly;
      StatixDepth=4*FullPly;
+     RazorDepth=4*FullPly;
+     FutilityDepth=7*FullPly;
+     SeePrunningDepth=4*FullPly;
      LMRDepth=7*FullPly;
-     StatixMargin  : t8=(90,90,135,135,180,180,225,225);
-     RazorMargin   : t8=(200,200,220,240,260,280,300,320);
-     SingularMargin=20;
-     LMRMovesCount : T14 = (3,3,3,4,4,4,6,6,10,10,10,10,20,20);
+     ThreatDepth=5*FullPly;
+
+     RazorMargin      : t14=(200,220, 240,260, 280,300, 320,340, 360,380, 400,420, 440,460);
+     FutilityMargin   : t14=(125,125, 150,175, 200,225, 250,275, 300,325, 350,375, 400,425);
+     LMRMovesCount : T14 = (3,3,4,5,7,9,12,15,19,23,28,33,39,45);
      CheckExtension      : TExtension=(1,2);
-     OneRepExtension     : TExtension=(2,2);
-     Pawnon7Extension    : Textension=(1,1);
-     PasserPushExtension : Textension=(0,1);
-     EndgameExtension    : TExtension=(2,2);
-     ExchangeExtension   : Textension=(0,1);
-     LMRMoves            : Textension=(4,10);
-     RootLMRMoves        = 12;
+     Pawnon7Extension    : Textension=(0,2);
+     PasserPushExtension : Textension=(0,2);
+     EndgameExtension    : TExtension=(0,2);
      SEDepth             : Textension=(8*FullPly,6*FullPly);
      IIDDepth            : Textension=(8*FullPly,5*FullPly);
      IIDMargin=100;
+     FutMove=2;
+
+     PVMatrix : Tmatrix =
+((0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0),
+(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0),
+(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,3,3,3),
+(0,0,0,0,0,0,0,0,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3),
+(0,0,0,0,0,0,2,2,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4),
+(0,0,0,0,0,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4),
+(0,0,0,0,2,2,2,2,2,2,3,3,3,3,3,3,3,3,3,3,3,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5),
+(0,0,0,0,2,2,2,2,3,3,3,3,3,3,3,3,3,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5),
+(0,0,0,2,2,2,2,3,3,3,3,3,3,3,3,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,6,6,6),
+(0,0,0,2,2,2,2,3,3,3,3,3,3,4,4,4,4,4,4,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,6,6,6,6,6,6,6,6,6,6,6,6,6,6),
+(0,0,0,2,2,2,3,3,3,3,3,3,4,4,4,4,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6),
+(0,0,0,2,2,2,3,3,3,3,3,4,4,4,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6),
+(0,0,0,2,2,3,3,3,3,3,4,4,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,7,7,7,7),
+(0,0,0,2,2,3,3,3,3,4,4,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,5,5,5,5,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,7,7,7,7,7,7,7,7,7,7),
+(0,0,0,2,2,3,3,3,3,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,5,5,5,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7),
+(0,0,2,2,2,3,3,3,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,5,5,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7),
+(0,0,2,2,3,3,3,3,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7),
+(0,0,2,2,3,3,3,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7),
+(0,0,2,2,3,3,3,4,4,4,4,4,5,5,5,5,5,5,5,5,5,6,6,6,6,6,6,6,6,6,6,6,6,6,6,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,8,8,8,8,8),
+(0,0,2,2,3,3,3,4,4,4,4,4,5,5,5,5,5,5,5,5,6,6,6,6,6,6,6,6,6,6,6,6,6,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,8,8,8,8,8,8,8,8,8),
+(0,0,2,2,3,3,3,4,4,4,4,5,5,5,5,5,5,5,5,6,6,6,6,6,6,6,6,6,6,6,6,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,8,8,8,8,8,8,8,8,8,8,8,8),
+(0,0,2,2,3,3,4,4,4,4,4,5,5,5,5,5,5,5,6,6,6,6,6,6,6,6,6,6,6,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8),
+(0,0,2,2,3,3,4,4,4,4,5,5,5,5,5,5,5,6,6,6,6,6,6,6,6,6,6,6,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8),
+(0,0,2,2,3,3,4,4,4,4,5,5,5,5,5,5,6,6,6,6,6,6,6,6,6,6,6,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8),
+(0,0,2,2,3,3,4,4,4,4,5,5,5,5,5,5,6,6,6,6,6,6,6,6,6,6,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8),
+(0,0,2,3,3,3,4,4,4,5,5,5,5,5,5,6,6,6,6,6,6,6,6,6,6,7,7,7,7,7,7,7,7,7,7,7,7,7,7,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8),
+(0,0,2,3,3,3,4,4,4,5,5,5,5,5,5,6,6,6,6,6,6,6,6,6,7,7,7,7,7,7,7,7,7,7,7,7,7,7,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,9,9,9),
+(0,0,2,3,3,3,4,4,4,5,5,5,5,5,6,6,6,6,6,6,6,6,6,7,7,7,7,7,7,7,7,7,7,7,7,7,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,9,9,9,9,9,9),
+(0,0,2,3,3,4,4,4,4,5,5,5,5,5,6,6,6,6,6,6,6,6,7,7,7,7,7,7,7,7,7,7,7,7,7,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,9,9,9,9,9,9,9,9),
+(0,0,2,3,3,4,4,4,4,5,5,5,5,5,6,6,6,6,6,6,6,7,7,7,7,7,7,7,7,7,7,7,7,7,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,9,9,9,9,9,9,9,9,9,9,9),
+(0,0,2,3,3,4,4,4,5,5,5,5,5,6,6,6,6,6,6,6,6,7,7,7,7,7,7,7,7,7,7,7,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,9,9,9,9,9,9,9,9,9,9,9,9,9),
+(0,0,2,3,3,4,4,4,5,5,5,5,5,6,6,6,6,6,6,6,7,7,7,7,7,7,7,7,7,7,7,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,9,9,9,9,9,9,9,9,9,9,9,9,9,9));
+
+     NonPVMatrix :Tmatrix =
+((0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0),
+(0,0,0,0,0,0,0,0,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3),
+(0,0,0,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4),
+(0,0,2,2,2,2,3,3,3,3,3,3,3,3,3,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5),
+(0,0,2,2,2,3,3,3,3,3,4,4,4,4,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6),
+(0,0,2,2,3,3,3,3,4,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,5,5,5,5,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,7,7,7,7,7,7,7,7,7,7),
+(0,0,2,3,3,3,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7),
+(0,0,2,3,3,3,4,4,4,4,5,5,5,5,5,5,5,6,6,6,6,6,6,6,6,6,6,6,6,6,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,8,8,8,8,8,8,8,8,8,8),
+(0,2,2,3,3,4,4,4,4,5,5,5,5,5,5,6,6,6,6,6,6,6,6,6,6,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8),
+(0,2,2,3,3,4,4,4,5,5,5,5,5,6,6,6,6,6,6,6,6,6,7,7,7,7,7,7,7,7,7,7,7,7,7,7,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,9,9,9,9,9),
+(0,2,3,3,4,4,4,5,5,5,5,5,6,6,6,6,6,6,6,7,7,7,7,7,7,7,7,7,7,7,7,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,9,9,9,9,9,9,9,9,9,9,9,9,9),
+(0,2,3,3,4,4,4,5,5,5,5,6,6,6,6,6,6,7,7,7,7,7,7,7,7,7,7,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9),
+(0,2,3,3,4,4,5,5,5,5,6,6,6,6,6,6,7,7,7,7,7,7,7,7,7,8,8,8,8,8,8,8,8,8,8,8,8,8,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,10,10,10),
+(0,2,3,3,4,4,5,5,5,6,6,6,6,6,7,7,7,7,7,7,7,7,8,8,8,8,8,8,8,8,8,8,8,8,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,10,10,10,10,10,10,10,10,10,10),
+(0,2,3,3,4,4,5,5,5,6,6,6,6,7,7,7,7,7,7,7,7,8,8,8,8,8,8,8,8,8,8,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10),
+(0,2,3,4,4,5,5,5,6,6,6,6,6,7,7,7,7,7,7,8,8,8,8,8,8,8,8,8,8,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10),
+(0,2,3,4,4,5,5,5,6,6,6,6,7,7,7,7,7,7,8,8,8,8,8,8,8,8,8,9,9,9,9,9,9,9,9,9,9,9,9,9,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,11,11,11),
+(0,2,3,4,4,5,5,6,6,6,6,7,7,7,7,7,7,8,8,8,8,8,8,8,8,9,9,9,9,9,9,9,9,9,9,9,9,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,11,11,11,11,11,11,11,11),
+(0,2,3,4,4,5,5,6,6,6,6,7,7,7,7,7,8,8,8,8,8,8,8,8,9,9,9,9,9,9,9,9,9,9,9,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,11,11,11,11,11,11,11,11,11,11,11,11),
+(0,2,3,4,4,5,5,6,6,6,7,7,7,7,7,8,8,8,8,8,8,8,9,9,9,9,9,9,9,9,9,9,9,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11),
+(0,2,3,4,5,5,5,6,6,6,7,7,7,7,7,8,8,8,8,8,8,9,9,9,9,9,9,9,9,9,9,10,10,10,10,10,10,10,10,10,10,10,10,10,10,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11),
+(0,2,3,4,5,5,6,6,6,6,7,7,7,7,8,8,8,8,8,8,9,9,9,9,9,9,9,9,9,10,10,10,10,10,10,10,10,10,10,10,10,10,10,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,12),
+(0,2,3,4,5,5,6,6,6,7,7,7,7,8,8,8,8,8,8,9,9,9,9,9,9,9,9,9,10,10,10,10,10,10,10,10,10,10,10,10,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,12,12,12,12,12),
+(0,2,3,4,5,5,6,6,6,7,7,7,7,8,8,8,8,8,8,9,9,9,9,9,9,9,9,10,10,10,10,10,10,10,10,10,10,10,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,12,12,12,12,12,12,12,12),
+(0,2,3,4,5,5,6,6,6,7,7,7,7,8,8,8,8,8,9,9,9,9,9,9,9,9,10,10,10,10,10,10,10,10,10,10,10,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,12,12,12,12,12,12,12,12,12,12,12),
+(0,2,3,4,5,5,6,6,7,7,7,7,8,8,8,8,8,9,9,9,9,9,9,9,9,10,10,10,10,10,10,10,10,10,10,11,11,11,11,11,11,11,11,11,11,11,11,11,11,11,12,12,12,12,12,12,12,12,12,12,12,12,12),
+(0,2,3,4,5,5,6,6,7,7,7,7,8,8,8,8,8,9,9,9,9,9,9,9,10,10,10,10,10,10,10,10,10,10,11,11,11,11,11,11,11,11,11,11,11,11,11,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12),
+(0,2,3,4,5,5,6,6,7,7,7,8,8,8,8,8,9,9,9,9,9,9,9,10,10,10,10,10,10,10,10,10,11,11,11,11,11,11,11,11,11,11,11,11,11,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12),
+(0,2,3,4,5,6,6,6,7,7,7,8,8,8,8,8,9,9,9,9,9,9,10,10,10,10,10,10,10,10,10,11,11,11,11,11,11,11,11,11,11,11,11,11,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,13,13),
+(0,2,3,4,5,6,6,6,7,7,7,8,8,8,8,9,9,9,9,9,9,10,10,10,10,10,10,10,10,10,11,11,11,11,11,11,11,11,11,11,11,11,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,13,13,13,13),
+(0,2,4,4,5,6,6,7,7,7,7,8,8,8,8,9,9,9,9,9,9,10,10,10,10,10,10,10,10,11,11,11,11,11,11,11,11,11,11,11,11,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,13,13,13,13,13,13,13),
+(0,2,4,4,5,6,6,7,7,7,8,8,8,8,9,9,9,9,9,9,10,10,10,10,10,10,10,10,11,11,11,11,11,11,11,11,11,11,11,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,13,13,13,13,13,13,13,13,13));
+
 Function isPasser(var Board:Tboard;move:Tmove):boolean;
 Function isDraw(var Board:Tboard):boolean;
 Procedure NodeInitNextQS(color:Tcolor;depth:integer;var Board:Tboard;var CheckInfo:TCheckInfo;var Undo:Tundo; var MoveList:TmoveList);
 Procedure NodeInitNext(color:Tcolor;depth:integer;var Board:Tboard;var CheckInfo:TCheckInfo;var Undo:Tundo; var MoveList:TmoveList;var BadCapturesList:TmoveList;var SortUnit:TSortUnit;hashmove:Tmove;ply:integer);
 Function FV(var Board:TBoard;alpha:integer;beta:integer;depth:integer;ply:integer;var PVLine:TPVLine):integer;
-Function SearchFull(var Board:TBoard;var SortUnit:TSortUnit;alpha:integer;beta:integer;depth:integer;ply:integer;var PVLine:TPVLine;doNull:boolean;emove:Tmove):integer;
+Function SearchFull(var Board:TBoard;var SortUnit:TSortUnit;alpha:integer;beta:integer;depth:integer;ply:integer;var PVLine:TPVLine;doNull:boolean;emove:Tmove;lmr:boolean;pmove:integer;pnum:integer):integer;
 Procedure Think(var Board:Tboard;var SortUnit:TSortUnit;var PV:TPVLine);
 Procedure PrepareRootList(var Board:Tboard;var RootList:TmoveList);
 Procedure UpdRootList(var RootList:TmoveList;pvmove:Tmove);
 Function ExtendMove(var Board:TBoard;var MoveList:TmoveList;move:Tmove;var dangermove:boolean;isCheck:boolean;pv:boolean;mypieses:integer):integer;
 Function isPrune(var Board:Tboard;move:Tmove;threatmove:tmove):boolean;
+Function isConnected(var Board:Tboard;move:Tmove;threatmove:tmove):boolean;
+Procedure CalcFutilityParm(depth : integer;MovesSearched:integer;var d:integer;var mc:integer);
+
 implementation
    uses uci;
 Procedure NodeInitNext(color:Tcolor;depth:integer;var Board:Tboard;var CheckInfo:TCheckInfo;var Undo:Tundo; var MoveList:TmoveList;var BadCapturesList:TmoveList;var SortUnit:TSortUnit;hashmove:Tmove;ply:integer);
@@ -71,6 +139,7 @@ var
    Line,oldpv:TPVLINE;
    s:string;
    temp:TBitBoard;
+   D,mc,R : integer;
 begin
    // Сортируем
   oldpv:=pv;
@@ -101,26 +170,32 @@ begin
       newdepth:=depth+ext-FullPly;
       if (i=1) then
         begin
-          value:=-SearchFull(Board,SortUnit,-beta,-alpha,newdepth,2,Line,true,movenone);
+          value:=-SearchFull(Board,SortUnit,-beta,-alpha,newdepth,2,Line,true,movenone,false,move,0);
         end else
         begin
           doresearch:=true;
-          if (depth>=3*FullPly) and (not isDanger) and (i>RootLMRMoves)  then
+          if (depth>10*FullPly) and (not isDanger) and (not Board.oncheck)  then
             begin
-              value:=-SearchFull(Board,SortUnit,-alpha-1,-alpha,newdepth-FullPly,2,Line,true,movenone);
-              doresearch:=(value>alpha);
+              CalcFutilityParm(depth,I,D,mc);
+              R:=PVMatrix[D,mc];
+              if R>0 then
+               begin
+                R:=FullPly;
+                value:=-SearchFull(Board,SortUnit,-alpha-1,-alpha,newdepth-R,2,Line,true,movenone,true,move,0);
+                doresearch:=(value>alpha);
+               end;
             end;
-          if (doresearch)  then
-           begin
-            value:=-SearchFull(Board,SortUnit,-alpha-1,-alpha,newdepth,2,Line,true,movenone);
-            if (value>alpha) and (not game.AbortSearch) then
+          if doresearch then
+          begin
+          value:=-SearchFull(Board,SortUnit,-alpha-1,-alpha,newdepth,2,Line,true,movenone,false,move,0);
+          if (value>alpha) and (not game.AbortSearch) then
               begin
                 game.time:=game.rezerv;
                 Pv.Moves[1]:=move;
                 pv.count:=1;
-                value:=-SearchFull(Board,SortUnit,-beta,-alpha,newdepth,2,Line,true,movenone);
+                value:=-SearchFull(Board,SortUnit,-beta,-alpha,newdepth-FullPly,2,Line,true,movenone,false,move,0);
               end;
-           end;
+          end;
         end;
 l1:
        RootList.Values[i]:=game.NodesTotal-OldNodes;
@@ -142,19 +217,19 @@ l1:
                 begin
                   Result:=value;
                   exit;
-                end; 
+                end;
             end;
     end;
  PV:=oldpv;
  Result:=BestValue;
 end;
 
-Function SearchFull(var Board:TBoard;var SortUnit:TSortUnit;alpha:integer;beta:integer;depth:integer;ply:integer;var PVLine:TPVLine;doNull:boolean;emove:Tmove):integer;
+Function SearchFull(var Board:TBoard;var SortUnit:TSortUnit;alpha:integer;beta:integer;depth:integer;ply:integer;var PVLine:TPVLine;doNull:boolean;emove:Tmove;lmr:boolean;pmove:integer;pnum:integer):integer;
 label l1;
 var
-   pv,isCheck,isLegal,isdanger,doresearch,Matethreat:boolean;
+   pv,isCheck,isLegal,isdanger,doresearch:boolean;
    color:Tcolor;
-   hashtyp,hashvalue,hashdepth,mypieses,StaticEval,RefEval,pseudocheck,BestValue,value,f,MovesSearched,OldMovesCount,hashindex,oldalpha,R,ext,newdepth,preddepth,newalpha,newbeta:integer;
+   hashtyp,hashvalue,hashdepth,mypieses,StaticEval,RefEval,pseudocheck,BestValue,value,f,MovesSearched,OldMovesCount,hashindex,oldalpha,R,ext,newdepth,preddepth,newbeta:integer;
    temp:TBitBoard;
    CheckInfo:Tcheckinfo;
    Undo:TUndo;
@@ -164,12 +239,12 @@ var
    Piese:Tpiese;
    dest:Tsquare;
    threatmove:Tmove;
-
+   D,mc,dangereval:integer;
 begin
  // Если достигли предельной глубины - включаем модель форсированной игры
   if (depth<FullPly) then
     begin
-      result:=FV(Board,alpha,beta,0,ply,PVLine);
+      result:=FV(Board,alpha,beta,HashDepthZero,ply,PVLine);
       exit;
     end;
   pvline.count:=0;
@@ -195,34 +270,26 @@ begin
   MovesSearched:=0;
   OldMovesCount:=0;
   BestValue:=-Mate;
-  Matethreat:=false;
   if color=white
      then temp:=Board.CPieses[white] and (not Board.Pieses[WhitePawn])
      else temp:=Board.CPieses[black] and (not Board.Pieses[BlackPawn]);
   mypieses:=BitCount(temp);
   // Mate distance prunning
-  if -mate+ply>=beta then
-    begin
-      Result:=beta;
-      exit;
-    end;
-  if mate-ply<=alpha then
+  if -mate+ply>alpha then alpha:=-mate+ply;
+  if  mate-ply<beta  then  beta:=mate-ply;
+  if alpha>=beta then
    begin
     Result:=alpha;
     exit;
    end;
-  
+
 // пробуем воспользоваться хешем
   hashindex:=HashProbe(Board,emove);
   if (hashindex>=0)  then
     begin
       // Как минимум можно взять ход из хеша
-      hashmove:=TT[hashindex].data1 and 65535;
-      hashdepth:=(TT[hashindex].data2 shr 8) and 255;
-      hashvalue:=(TT[hashindex].data1 shr 16) and 65535;
-      hashvalue:=ValueFromTT(HashValue-HashValueMax,ply);
-      hashtyp:=(TT[hashindex].data2 shr 5) and 7;
-      if (not pv) and (depth<=hashdepth) then
+      GetTTParms(hashindex,ply,hashvalue,hashdepth,hashtyp,hashmove);
+      if ((not pv) or (hashtyp=HashExact)) and (depth<=hashdepth) then
         begin
           if (hashtyp=HashExact) or ((hashtyp=HashLower) and (hashvalue>=beta)) or ((hashtyp=HashUpper) and (hashvalue<=alpha)) then
             begin
@@ -230,8 +297,17 @@ begin
               PVLine.Moves[1]:=hashmove;
               StaticEval:=(TT[hashindex].data2 shr 16) and 65535;
               StaticEval:=StaticEval-HashValueMax;
-              if (StaticEval=-mate) and (not Board.oncheck) then StaticEval:=Eval(Board);
-              HashStore(Board,ValueToTT(hashvalue,ply),hashdepth,HashTyp,hashmove,game.Hashage,emove,StaticEval);
+              DangerEval:=TT[hashindex].dangereval;
+              if (StaticEval=-mate) and (not Board.oncheck) then StaticEval:=Eval(Board,dangereval);
+              UPDHashAge(hashindex,hashtyp,hashdepth,StaticEval,game.hashage,dangereval);
+              if (hashvalue>=beta) and (hashmove<>movenone) and ((hashmove and CapPromoFlag)=0) then
+                begin
+                 if SortUnit.Killer[ply,1]<>hashmove then
+                  begin
+                   SortUnit.Killer[ply,2]:=SortUnit.Killer[ply,1];
+                   SortUnit.Killer[ply,1]:=hashmove;
+                  end;
+                end;
               Result:=hashvalue;
               exit;
             end;
@@ -239,6 +315,7 @@ begin
     end;
   InitNodeUndo(Board,Undo);
   StaticEval:=-Mate;
+  DangerEval:=0;
   RefEval:=-mate;
   // Вычисляем статическую оценку
   if  (not Board.oncheck) then
@@ -247,83 +324,96 @@ begin
         then begin
           StaticEval:=(TT[hashindex].data2 shr 16) and 65535;
           StaticEval:=StaticEval-HashValueMax;
+          DangerEval:=TT[hashindex].dangereval;
+          if (StaticEval=-mate) then StaticEval:=Eval(Board,DangerEval);
+          Refeval:=StaticEval;
+          if abs(Hashvalue)<Mate-MaxPly*FullPly then
+            begin
+             if (hashtyp = hashlower) and (hashvalue>Refeval) then Refeval:=hashvalue;
+             if (hashtyp = hashupper) and (hashvalue<Refeval) then Refeval:=hashvalue;
+            end;
         end else
         begin
-         StaticEval:=Eval(Board);
-         HashStore(Board,0,0,0,0,game.Hashage,emove,StaticEval);
-        end;
-      RefEval:=StaticEval;
-      if (hashindex>=0) and (depth>=hashdepth) then
-        begin
-          if (hashtyp in [hashlower,hashexact]) and (hashvalue>RefEval) then RefEval:=hashvalue;
-          if (hashtyp in [hashupper,hashexact]) and (hashvalue<RefEval) then RefEval:=hashvalue;
+         StaticEval:=Eval(Board,dangereval);
+         RefEval:=StaticEval;
+         HashStore(Board,0,HashDepthNone,0,0,game.Hashage,emove,StaticEval,dangereval);
         end;
     end;
-
   // Razoring
-  if (not pv) and (depth<RazorDepth) and (not Board.oncheck) and (beta<(Mate-FullPly*MaxPly)) and (hashmove=MoveNone) and (donull) and (emove=movenone)
-    and (RefEval+RazorMargin[depth]<=alpha) and ((Board.Pieses[WhitePawn] and RanksBB[7])=0) and ((Board.Pieses[BlackPawn] and RanksBB[2])=0) then
+  if (not pv) and (depth<RazorDepth)  and (not Board.oncheck) and (abs(beta)<(Mate-FullPly*MaxPly)) and (hashmove=MoveNone)
+   and (RefEval+RazorMargin[depth]<beta)  and ((Board.Pieses[WhitePawn] and RanksBB[7])=0) and ((Board.Pieses[BlackPawn] and RanksBB[2])=0) then
       begin
-        newalpha:=alpha-RazorMargin[depth];
-        value:=FV(Board,newalpha,newalpha+1,0,ply,Line);
-        if value<=newalpha then
+        newbeta:=beta-RazorMargin[depth];
+        value:=FV(Board,newbeta-1,newbeta,HashDepthZero,ply,Line);
+        if value<newbeta then
           begin
             Result:=value;
             exit;
           end;
       end;
 
-
- if (not pv) and (donull)  and (not Board.oncheck) and (beta<(Mate-FullPly*MaxPly)) and (mypieses>1) and (emove=movenone)  then
+ if (not pv) and (donull)  and (not Board.oncheck)and (abs(beta)<(Mate-FullPly*MaxPly)) and (mypieses>1)  then
     BEGIN
      // Static
-      if (depth<StatixDepth)  and (RefEval>=beta+StatixMargin[depth]) and ((Board.Pieses[WhitePawn] and RanksBB[7])=0) and ((Board.Pieses[BlackPawn] and RanksBB[2])=0) then
+      if (depth<StatixDepth)   and (RefEval-FutilityMargin[depth]+FutMove*pnum>=beta) and ((Board.Pieses[WhitePawn] and RanksBB[7])=0) and ((Board.Pieses[BlackPawn] and RanksBB[2])=0) then
         begin
-          result:=RefEval-StatixMargin[depth];
+          result:=RefEval-FutilityMargin[Depth]+FutMove*pnum;
           exit;
         end;
 
      // Null Move
-      if (depth>FullPly) and (RefEval+NullMoveMargin>=beta) and ((depth>=NullBetaDepth) or (RefEval>=beta)) then
+      if (depth>FullPly) and (RefEval>=beta) then
         begin
-         R:=3;
-         if depth>=NullExtraDepth then R:=R+(depth div 8);
-         if RefEval-NullExtraMargin>=beta then R:=R+1;
+         R:=3*FullPly+(depth div 4);
+         if (RefEval-NullExtraMargin>=beta)  then R:=R+FullPly;
+
          MakeNullMove(Board,Undo);
-         value:=-SearchFull(Board,SortUnit,-beta,-alpha,depth-R*FullPly,ply+1,Line,false,movenone);
+         if Depth-R>=FullPly
+          then value:=-SearchFull(Board,SortUnit,-beta,-alpha,depth-R,ply+1,Line,false,movenone,false,movenone,0)
+          else value:=-FV(Board,-beta,-alpha,HashDepthZero,ply+1,Line);
          UnMakeNullMove(Color,Board,Undo);
+
          if value>=beta then
            begin
-            if value>=(mate-ply) then value:=beta;
-            if  (((depth<6*FullPly) or  (SearchFull(Board,SortUnit,alpha,beta,depth-5*FullPly,ply,Line,false,movenone)>=beta)))  then
+            if  (depth<12*FullPly)   then
               begin
-               HashStore(Board,ValueToTT(value,ply),depth,HashLower,movenone,game.Hashage,emove,StaticEval);
+               Result:=value;
+               exit;
+              end;
+            newbeta:=SearchFull(Board,SortUnit,alpha,beta,depth-R,ply,Line,false,movenone,false,pmove,0);
+            if newbeta>=beta then
+              begin
                Result:=value;
                exit;
               end;
            end else
            begin
-             if value<(-Mate+FullPly*MaxPly) then Matethreat:=true;
              if Line.count<>0 then threatmove:=Line.Moves[1];
+             if (depth<ThreatDepth) and (lmr) and (threatmove<>movenone) and (isConnected(Board,pmove,threatmove))  then
+               begin
+                 result:=beta-1;
+                 exit;
+               end;
            end;
         end;
     END;
-    
+
  // IID
- if (hashmove=movenone)  and (depth>=IIDDepth[pv]) and (emove=movenone) and (not Board.oncheck) and ( (pv) or (StaticEval>=beta-IIDMargin)) then
+ if (hashmove=movenone)  and (depth>=IIDDepth[pv])  and  ( (pv) or ((not Board.oncheck) and (StaticEval>=beta-IIDMargin)) ) then
    begin
      if pv then newdepth:=depth-2*FullPly
            else newdepth:=depth div 2;
-     value:=SearchFull(Board,SortUnit,alpha,beta,newdepth,ply,Line,false,movenone);
-     if value>alpha then
-       begin
-         hashmove:=Line.Moves[1];
-         hashdepth:=newdepth;
-         if pv
-           then hashvalue:=value
-           else hashvalue:=beta;
-         hashtyp:=hashlower;
-       end;
+     value:=SearchFull(Board,SortUnit,alpha,beta,newdepth,ply,Line,false,movenone,false,pmove,0);
+     if (value>alpha) and (line.count<>0) then
+      begin
+       hashmove:=Line.Moves[1];
+       hashvalue:=value;
+       hashdepth:=newdepth;
+       hashindex:=0;
+       if value>=beta
+         then hashtyp:=Hashlower
+         else hashtyp:=HashExact;
+      end;
    end;
 
    value:=-mate;
@@ -336,17 +426,18 @@ begin
       if Board.oncheck then pseudocheck:=moveislegal
                        else pseudocheck:=isPseudoLegal(color,move,CheckInfo,Board);
       if pseudocheck=moveisunlegal then goto l1;
+      inc(MovesSearched);
       Piese:=Board.Pos[move and 63];
       Dest:=(move shr 6) and 63;
       isCheck:=isMoveCheck(color,move,CheckInfo,Board);
       ext:=ExtendMove(Board,MoveList,move,isDanger,isCheck,pv,mypieses);
       //Singular
-      if (depth>=SEDepth[pv])  and (emove=movenone) and (move=hashmove) and (ext<FullPly)
+      if (depth>=SEDepth[pv])  and (emove=movenone) and (move=hashmove) and (ext=0) and (hashindex>=0)
           and (hashtyp in [hashlower,hashexact]) and (hashdepth>=(depth-3*FullPly)) and (abs(hashvalue)<(Mate-FullPly*MaxPly)) then
         begin
-          newbeta:=hashvalue-SingularMargin;
+          newbeta:=hashvalue-depth;
           newdepth:=depth div 2;
-          value:=SearchFull(Board,SortUnit,newbeta-1,newbeta,newdepth,ply,Line,false,hashmove);
+          value:=SearchFull(Board,SortUnit,newbeta-1,newbeta,newdepth,ply,Line,false,hashmove,false,pmove,0);
           if value<newbeta then
            begin
             ext:=FullPly;
@@ -354,13 +445,11 @@ begin
            end;
         end;
      newdepth:=depth+ext-FullPly;
-     inc(MovesSearched);
-
       // Futility & LMR Prunning
-     if  (not pv)   and (not Board.oncheck) and (move<>hashmove)  and (not Matethreat) and (not isDanger) and (move<>SortUnit.Killer[ply,1]) and (move<>SortUnit.Killer[ply,2])   then
+     if  (not pv)  and (ext=0) and (not Board.oncheck) and ((move and cappromoflag)=0) and  (move<>hashmove)  and (not isDanger) and (move<>SortUnit.Killer[ply,1]) and (move<>SortUnit.Killer[ply,2])  then
        begin
          // LMR Prunning
-        if (depth<LMRDepth) and (MovesSearched>LMRMovesCount[depth]) and (bestvalue>-mate+MaxPly*FullPly)  and (isPrune(Board,move,threatmove)) then
+        if  (depth<LMRDepth)  and (MovesSearched>LMRMovesCount[depth]) and (bestvalue>-mate+MaxPly*FullPly)  and ( (threatmove=movenone) or (isPrune(Board,move,threatmove))) then
           begin
             if pseudocheck=hardmove then
               begin
@@ -371,15 +460,16 @@ begin
               end;
             goto l1;
           end;
+
        // Futility
         preddepth:=newdepth;
-        if (MovesSearched>LMRMoves[pv]) then preddepth:=preddepth-FullPly;
+        CalcFutilityParm(depth,MovesSearched,D,mc);
+        preddepth:=preddepth-NonPVMatrix[D,mc];
         if preddepth<0 then preddepth:=0;
-        
-       if (preddepth<StatixDepth)  then
+       if (preddepth<FutilityDepth)  then
          begin
-           value:=StaticEval+RazorMargin[preddepth];
-           if value<=alpha then
+           value:=RefEval+DangerEval+FutilityMargin[preddepth]-Futmove*MovesSearched;
+           if value<beta then
              begin
                if value>=BestValue then BestValue:=value;
                if pseudocheck=hardmove then
@@ -392,7 +482,23 @@ begin
                goto l1;
              end;
          end;
+
+       // See Prunning
+        if (preddepth<SeePrunningDepth) and (BestValue>-Mate+MaxPly*FullPly) and (see(Board,move)<0) then
+           begin
+            if pseudocheck=hardmove then
+              begin
+                Makemove(color,move,Board,Undo);
+                islegal:= (not isAttackedBy(color xor 1,Board.KingSq[color],Board));
+                UnmakeMove(color,Board,Undo);
+                if not isLegal then dec(MovesSearched);
+              end;
+            goto l1;
+          end;
+
        end;
+
+
       inc(OldMovesCount);
       BadmovesList.Moves[OldMovesCount]:=move;
       Makemove(color,move,Board,Undo);
@@ -402,23 +508,31 @@ begin
        else islegal:=true;
       if isLegal then
         begin
-          if (MovesSearched=1) then
+          if (pv) and (MovesSearched=1) then
             begin
-              value:=-SearchFull(Board,SortUnit,-beta,-alpha,newdepth,ply+1,Line,true,movenone);
+              value:=-SearchFull(Board,SortUnit,-beta,-alpha,newdepth,ply+1,Line,true,movenone,false,move,0);
             end else
             begin
               doresearch:=true;
               // LMR Reduction
-              if (depth>=3*FullPly) and (not Board.oncheck) and (not isDanger) and (not Matethreat) and (MovesSearched>LMRMoves[pv]) and (move<>SortUnit.Killer[ply,1]) and (move<>SortUnit.Killer[ply,2]) then
+              if (depth>3*FullPly)  and (ext=0)  and (not Board.oncheck) and (not isDanger) and ((move and cappromoflag)=0)  and (move<>hashmove) and (move<>SortUnit.Killer[ply,1]) and (move<>SortUnit.Killer[ply,2])  then
                 begin
-                  value:=-SearchFull(Board,SortUnit,-alpha-1,-alpha,newdepth-FullPly,ply+1,Line,true,movenone);
-                  doresearch:=(value>alpha);
+                  CalcFutilityParm(depth,MovesSearched,D,mc);
+                  if pv
+                   then R:=PVMatrix[D,mc]
+                   else R:=NonPVMatrix[D,mc];
+                  if R>0 then
+                    begin
+                     if newdepth-R<FullPly then R:=newdepth-FullPly;
+                     value:=-SearchFull(Board,SortUnit,-alpha-1,-alpha,newdepth-R,ply+1,Line,true,movenone,true,move,MovesSearched);
+                     doresearch:=(value>alpha);
+                    end;
                 end;
 
-              if doresearch then
+             if doresearch then
                 begin
-                 value:=-SearchFull(Board,SortUnit,-alpha-1,-alpha,newdepth,ply+1,Line,true,movenone);
-                 if (pv) and (value>alpha) and (value<beta) then value:=-SearchFull(Board,SortUnit,-beta,-alpha,newdepth,ply+1,Line,true,movenone);
+                 value:=-SearchFull(Board,SortUnit,-alpha-1,-alpha,newdepth,ply+1,Line,true,movenone,false,move,MovesSearched);
+                 if (pv) and (value>alpha) and (value<beta) then value:=-SearchFull(Board,SortUnit,-beta,-alpha,newdepth,ply+1,Line,true,movenone,false,move,0);
                 end;
             end;
           UnmakeMove(color,Board,Undo);
@@ -436,7 +550,7 @@ begin
                    begin
                      BadMovesList.count:=OldMovesCount-1;
                      AddHistory(Board,SortUnit,move,ply,depth,piese,dest,BadMovesList);
-                     HashStore(Board,ValueToTT(value,ply),depth,HashLower,move,game.Hashage,emove,StaticEval);
+                     if (not game.AbortSearch)  then HashStore(Board,ValueToTT(value,ply),depth,HashLower,move,game.Hashage,emove,StaticEval,dangereval);
                      Result:=value;
                      exit;
                    end;
@@ -460,6 +574,7 @@ l1:   move:=Next(MoveList,BadCapturesList,Board,hashmove);
       else result:=0;
    exit;
   end;
+  if BestValue=-mate then bestvalue:=oldalpha;
  if oldalpha=alpha then
     begin
      hashtyp:=HashUpper;
@@ -469,7 +584,7 @@ l1:   move:=Next(MoveList,BadCapturesList,Board,hashmove);
      hashtyp:=HashExact;
      hashmove:=PVLine.Moves[1];
     end;
- if (not game.AbortSearch)  then HashStore(Board,ValueToTT(Bestvalue,ply),depth,hashtyp,hashmove,game.HashAge,emove,StaticEval);
+ if (not game.AbortSearch)  then HashStore(Board,ValueToTT(Bestvalue,ply),depth,hashtyp,hashmove,game.HashAge,emove,StaticEval,dangereval);
  Result:=BestValue;
 end;
 
@@ -479,12 +594,12 @@ Var
   MoveList:Tmovelist;
   CheckInfo : TCheckInfo;
   Undo : TUndo;
-  pv,ischeck,islegal:boolean;
+  pv,ischeck,islegal,isPrune:boolean;
   color:Tcolor;
   Line:TPVLINE;
-  pseudocheck,standpat,value,bestvalue,f,ext,hashindex,hashvalue,hashdepth,hashtyp,oldalpha : integer;
+  pseudocheck,standpat,value,bestvalue,f,hashindex,hashvalue,hashdepth,hashtyp,oldalpha,qDepth,StaticEval : integer;
   move,hashmove:Tmove;
-  mypieses,deltascore,newdepth:integer;
+  mypieses,deltascore,dangereval:integer;
   temp:TBitBoard;
   target:Tpiese;
 begin
@@ -494,30 +609,31 @@ begin
  pvline.count:=0;
  pvline.Moves[1]:=0;
  oldalpha:=alpha;
+ hashmove:=MoveNone;
+ hashvalue:=-mate;
+ hashtyp:=-1;
+ hashdepth:=-MaxPly;
  if (isDraw(Board)) or (ply>=MaxPly-1) or (game.AbortSearch) then
     begin
       Result:=0;
       exit;
     end;
+  if (Board.oncheck) or (depth>=HashDepthZero)
+   then qDepth:=HashDepthZero
+   else qDepth:=HashDepthMinus;
   // Инициализация узла
   pv:=(beta-alpha)>1;
   color:=Board.Color;
-  ext:=0;
   if color=white
      then temp:=Board.CPieses[white] and (not Board.Pieses[WhitePawn])
      else temp:=Board.CPieses[black] and (not Board.Pieses[BlackPawn]);
     mypieses:=BitCount(temp);
   // пробуем воспользоваться хешем
   hashindex:=HashProbe(Board,movenone);
-  if (hashindex>=0)  then
+ if (hashindex>=0)  then
     begin
-      // Как минимум можно взять ход из хеша
-      hashmove:=TT[hashindex].data1 and 65535;
-      hashdepth:=(TT[hashindex].data2 shr 8) and 255;
-      hashvalue:=(TT[hashindex].data1 shr 16) and 65535;
-      hashvalue:=ValueFromTT(HashValue-HashValueMax,ply);
-      hashtyp:=(TT[hashindex].data2 shr 5) and 7;
-      if (not pv) and (depth<=hashdepth) then
+      GetTTParms(hashindex,ply,hashvalue,hashdepth,hashtyp,hashmove);
+      if ((not pv) or (hashtyp=HashExact)) and (qdepth<=hashdepth)  then
         begin
           if (hashtyp=HashExact) or ((hashtyp=HashLower) and (hashvalue>=beta)) or ((hashtyp=HashUpper) and (hashvalue<=alpha)) then
             begin
@@ -528,33 +644,43 @@ begin
             end;
         end;
     end;
-
+  StaticEval:=-mate;
+  DangerEval:=0;
   // Статическая оценка позиции
   if Board.oncheck then standpat:=-Mate else
   if hashindex>=0 then
     begin
-      standpat:=(TT[hashindex].data2 shr 16) and 65535;
-      standpat:=standpat-HashValueMax;
-    end else standpat:=Eval(Board);
+      StaticEval:=(TT[hashindex].data2 shr 16) and 65535;
+      StaticEval:=StaticEval-HashValueMax;
+      DangerEval:=TT[hashindex].dangereval;
+      if (StaticEval=-mate) then StaticEval:=Eval(Board,dangereval);
+      standpat:=StaticEval;
+    end else
+    begin
+     StaticEval:=Eval(Board,dangereval);
+     standpat:=StaticEval;
+    end;
   bestvalue:=standpat;
   if bestvalue>=beta then
     begin
-      if hashindex<0 then HashStore(Board,ValueToTT(bestvalue,ply),0,HashLower,movenone,game.Hashage,movenone,standpat);
+      if hashindex<0 then HashStore(Board,ValueToTT(bestvalue,ply),HashDepthNone,HashLower,movenone,game.Hashage,movenone,StaticEval,Dangereval);
+      if hashmove<>movenone then
+       begin
+        PVLine.count:=1;
+        PVLine.Moves[1]:=hashmove;
+       end;
       Result:=bestvalue;
       exit;
     end;
-  if BestValue>alpha then alpha:=BestValue;
-  newdepth:=depth;
-  if (not Board.oncheck) and (depth=-FullPly) and (standpat>=beta-QSExtraCheckMargin) then newdepth:=0;
+  if (BestValue>alpha) and (beta-alpha>1) then alpha:=BestValue;
   // готовимся к перебору
-  NodeInitNextQS(color,newdepth,Board,Checkinfo,Undo,MoveList);
+  NodeInitNextQS(color,qdepth,Board,Checkinfo,Undo,MoveList);
   if (Board.oncheck) and (MoveList.count=0) then
     begin
       Result:=-Mate+ply;
       exit;
     end;
-  if (Board.oncheck) and (MoveList.count=1) then ext:=FullPly;
-  deltascore:=standpat+DeltaMargin;
+  deltascore:=standpat+DeltaMargin+DangerEval;
   move:=NextQS(MoveList);
   while (move<>MoveNone) and (beta>alpha) do
     begin
@@ -562,18 +688,22 @@ begin
                        else pseudocheck:=isPseudoLegal(color,move,CheckInfo,Board);
       if pseudocheck=moveisunlegal then goto l1;
       isCheck:=isMoveCheck(color,move,CheckInfo,Board);
-      if (mypieses>2) and (not pv) and (not Board.oncheck) and (not isCheck) and ((move and PromoteFlag)=0) and (not isPasser(Board,move)) then
+      if (mypieses>2) and (not pv) and (not Board.oncheck) and (not isCheck) and ((move and PromoteFlag)=0)  and (move<>hashmove) and (not isPasser(Board,move)) then
         begin
           target:=Board.Pos[(move shr 6) and 63];
           value:=deltascore+PiesePrice[target];
           if (target=empty) and ((move and CaptureFlag)<>0) then value:=value+PawnValueEnd;
-          if value<=alpha then
+          if value<beta then
             begin
               if value>BestValue then BestValue:=value;
               goto l1;
             end;
+          if (deltascore+50<beta) and (depth<HashDepthZero) and (see(board,move)<=0) then goto l1;
         end;
-      if (not pv) and (not Board.oncheck) and ((move and PromoteFlag)=0) and (isHanging(Board,move)) then goto l1;
+      isPrune:=false;
+      if (not pv) and  (Board.oncheck)  and (move<>hashmove) and  (bestvalue>-Mate+MaxPly*FullPLy) and ((move and CaptureFLag)=0) and ((Board.Castle and CastleBits[Board.Color])=0) then isPrune:=true;
+
+      if (not pv)  and  ((not Board.oncheck) or isPrune) and ((move and PromoteFlag)=0) and (move<>hashmove) and  (See(Board,move)<0) then goto l1;
       Makemove(color,move,Board,Undo);
       Board.oncheck:=ischeck;
       if pseudocheck=hardmove
@@ -581,7 +711,7 @@ begin
        else islegal:=true;
       if isLegal then
         begin
-          value:=-FV(Board,-beta,-alpha,depth+ext-FullPly,ply+1,Line);
+          value:=-FV(Board,-beta,-alpha,Depth-FullPly,ply+1,Line);
           UnmakeMove(color,Board,Undo);
           if value>BestValue then
             begin
@@ -590,19 +720,23 @@ begin
                 begin
                  alpha:=Value;
                  //PV
-                 Pvline.Moves[1]:=move;
-                 for f:=1 to line.count do
-                   PVline.Moves[f+1]:=line.Moves[f];
-                 PVLine.count:=Line.count+1;
+                 if value<beta then
+                  begin
+                   Pvline.Moves[1]:=move;
+                   for f:=1 to line.count do
+                     PVline.Moves[f+1]:=line.Moves[f];
+                   PVLine.count:=Line.count+1;
+                  end;
                 end;
             end;
         end else UnmakeMove(color,Board,Undo);
 l1:    move:=NextQS(MoveList);
     end;
-  hashdepth:=0;
+  if BestValue=-mate then bestvalue:=oldalpha;
   if BestValue<=oldalpha then hashtyp:=HashUpper else
   if BestValue>=beta then hashtyp:=HashLower else Hashtyp:=HashExact;
-  if (not game.AbortSearch)  then HashStore(Board,ValueToTT(Bestvalue,ply),hashdepth,hashtyp,PvLine.Moves[1],game.HashAge,movenone,Standpat);
+  if (not game.AbortSearch)  then HashStore(Board,ValueToTT(Bestvalue,ply),qdepth,hashtyp,PvLine.Moves[1],game.HashAge,movenone,StaticEval,DangerEval);
+
   Result:=BestValue;
 end;
 
@@ -659,7 +793,7 @@ var
 begin
  game.NodesTotal:=0;
  game.AbortSearch:=false;
- game.remain:=50000;
+ game.remain:=100000;
  ClearHistory(SortUnit);
  NewAge;
  PrepareRootList(Board,RootList);
@@ -697,7 +831,7 @@ end;
 Procedure PrepareRootList(var Board:Tboard;var RootList:TmoveList);
 var
    CheckInfo:TcheckInfo;
-   i,pseudocheck: integer;
+   i,pseudocheck,dangereval: integer;
    islegal,isCheck:boolean;
    color:Tcolor;
    move :Tmove;
@@ -729,7 +863,7 @@ begin
         begin
           RootList.count:=RootList.count+1;
           RootList.Moves[RootList.count]:=T.Moves[i];
-          RootList.Values[RootList.count]:=Eval(Board);
+          RootList.Values[RootList.count]:=Eval(Board,dangereval);
         end;
       UnMakeMove(color,Board,Undo);
     end;
@@ -752,15 +886,13 @@ var
    piese,target:Tpiese;
    dest:Tsquare;
 begin
-  dangermove:=false;
   res:=0;
   piese:=Board.Pos[move and 63];
   dest:=(move shr 6) and 63;
   target:=Board.Pos[dest];
 
-  if ((move and CapPromoFlag)<>0) or (Board.oncheck) or (isCheck) then dangermove:=true;
-  if (isCheck) and (not isHanging(Board,move) ) then res:=res+CheckExtension[pv];
-  if (Board.oncheck) and (Movelist.count=1) then res:=res+OneRepExtension[pv];
+  dangermove:=isCheck;
+  if (isCheck) and ((pv) or (See(Board,move)>=0)) then res:=res+CheckExtension[pv];
   if (Piese=WhitePawn) then
     begin
       if Posy[dest]=7 then
@@ -787,11 +919,11 @@ begin
         dangermove:=true;
        end;
     end;
-  if ((move and CapPromoFlag)<>0)  then
-    begin
-      if ((move and PromoteFlag)=0) and (target<>WhitePawn) and (Target<>BlackPawn) and (Target<>Empty) and  (mypieses=1) then res:=res+EndgameExtension[pv];
-      if (pv)  and ((Target<>Empty) or ((move and PromoteFlag)<>0))  and (target<>WhitePawn) and (Target<>BlackPawn) and (not isHanging(Board,move)) then res:=res+ExchangeExtension[pv];
-    end;
+  if ((move and CaptureFlag)<>0) and (target<>WhitePawn) and (Target<>BlackPawn) and (Target<>Empty) and  (mypieses=1) then
+   begin
+    res:=res+EndgameExtension[pv];
+    dangermove:=true;
+   end;
   if res>FullPly then res:=FullPly;
   Result:=res; 
 end;
@@ -820,12 +952,39 @@ begin
       Result:=false;
       exit;
     end;
-  if ((InterSect[tfrom,tto] and OnlyR00[mto])<>0) and (not isHanging(Board,move)) then
+  if ((InterSect[tfrom,tto] and OnlyR00[mto])<>0) and (See(Board,move)>=0) then
     begin
       Result:=false;
       exit;
     end;
  Result:=true;
+end;
+
+Function isConnected(var Board:Tboard;move:Tmove;threatmove:tmove):boolean;
+var
+   mfrom,mto,tfrom,tto:Tsquare;
+begin
+  result:=false;
+  if (threatmove=movenone) then   exit;
+  mfrom:=move and 63;
+  mto:=(move shr 6) and 63;
+  tfrom:=threatmove and 63;
+  tto:=(threatmove shr 6) and 63;
+  // 1 Ход той же фигурой
+  if mto=tfrom then result:=true else
+  // Ход на освободившееся поле
+  if mfrom=tto then result:=true else
+  // Освободил траекторию
+  if (intersect[tfrom,tto] and OnlyR00[mfrom])<>0 then result:=true;
+end;
+
+Procedure CalcFutilityParm(depth : integer;MovesSearched:integer;var d:integer;var mc:integer);
+begin
+  D:=depth div FullPly;
+  if D<1 then D:=1;
+  if D>32 then D:=32;
+  mc:=MovesSearched;
+  if mc>63 then mc:=63;
 end;
 
 end.

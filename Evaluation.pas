@@ -7,30 +7,30 @@ TYPE
 CONST
     WNSQ : TBytesArray =
      (
-      -30,-25,-20,-15,-15,-20,-25,-30,
-      -20,-15,-10, -5, -5,-10,-15,-20,
-      -15, -5,  0,  5,  5,  0, -5,-15,
-      -10,  0,  5, 10, 10,  5,  0,-10,
-       -5,  5, 10, 15, 15, 10,  5, -5,
-       -5,  5, 10, 15, 15, 10,  5, -5,
-      -20,-10,  0,  5,  5,  0,-10,-20,
-     -100,-25,-15,-10,-10,-15,-25,-100
+      -52,-41,-31,-26,-26,-31,-41,-52,
+      -36,-26,-15, -9, -9,-15,-26,-36,
+      -20, -9,  0,  5,  5,  0, -9,-20,
+       -9,  0, 10, 16, 16, 10,  0, -9,
+       -4,  5, 16, 21, 21, 16,  5, -4,
+       -4,  5, 16, 21, 21, 16,  5, -4,
+      -20, -9,  0,  5,  5,  0, -9,-20,
+      -75,-26,-15, -9, -9,-15,-26,-75
      );
      WNESQ : TBytesArray  =
      (
-      -40,-30,-20,-15,-15,-20,-30,-40,
-      -30,-20,-10, -5, -5,-10,-20,-30,
-      -20,-10,  0,  5,  5,  0,-10,-20,
-      -15, -5,  5, 10, 10,  5, -5,-15,
-      -15, -5,  5, 10, 10,  5, -5,-15,
-      -20,-10,  0,  5,  5,  0,-10,-20,
-      -30,-20,-10, -5, -5,-10,-20,-30,
-      -40,-30,-20,-15,-15,-20,-30,-40
+      -40,-30,-21,-16,-16,-21,-30,-40,
+      -30,-21,-11, -6, -6,-11,-21,-30,
+      -21,-11, -2,  1,  1, -2,-11,-21,
+      -16, -6,  1,  7,  7,  1, -6,-16,
+      -16, -6,  1,  7,  7,  1, -6,-16,
+      -21,-11, -2,  1,  1, -2,-11,-21,
+      -30,-21,-11, -6, -6,-11,-21,-30,
+      -40,-30,-21,-16,-16,-21,-30,-40
      );
 
      WBSQ : TBytesArray  =
      (
-        -15,-15,-12,-10,-10,-12,-15,-15,
+        -15,-15,-15,-10,-10,-15,-15,-15,
         -15,  2, -2,  0,  0, -2,  2,-15,
          -8,  0,  4,  2,  2,  4,  0, -8,
          -2,  2,  2,  8,  8,  2,  2, -2,
@@ -41,7 +41,7 @@ CONST
      );
     WBESQ : TBytesArray  =
      (
-        -18,-12, -9, -6, -6, -9,-12,-18,
+        -18,-15,-15, -6, -6,-15,-15,-18,
         -12, -6, -3,  0,  0, -3, -6,-12,
          -9, -3,  0,  3,  3,  0, -3, -9,
          -6,  0,  3,  6,  6,  3,  0, -6,
@@ -84,94 +84,153 @@ CONST
         -16, -8, -4,  0,  0, -4, -8,-16,
         -24,-16,-12, -8, -8,-12,-16,-24
      );
-  
-WOutPost=$00007e7e7e000000;
-BoutPost=$0000007e7e7e0000;
+
+
+    WForward : TBBLine =
+    ($FFFFFFFFFFFFFF00,$FFFFFFFFFFFFFF00,$FFFFFFFFFFFFFF00,$FFFFFFFFFFFFFF00,$FFFFFFFFFFFFFF00,$FFFFFFFFFFFFFF00,$FFFFFFFFFFFFFF00,$FFFFFFFFFFFFFF00,
+     $FFFFFFFFFFFF0000,$FFFFFFFFFFFF0000,$FFFFFFFFFFFF0000,$FFFFFFFFFFFF0000,$FFFFFFFFFFFF0000,$FFFFFFFFFFFF0000,$FFFFFFFFFFFF0000,$FFFFFFFFFFFF0000,
+     $FFFFFFFFFF000000,$FFFFFFFFFF000000,$FFFFFFFFFF000000,$FFFFFFFFFF000000,$FFFFFFFFFF000000,$FFFFFFFFFF000000,$FFFFFFFFFF000000,$FFFFFFFFFF000000,
+     $FFFFFFFF00000000,$FFFFFFFF00000000,$FFFFFFFF00000000,$FFFFFFFF00000000,$FFFFFFFF00000000,$FFFFFFFF00000000,$FFFFFFFF00000000,$FFFFFFFF00000000,
+     $FFFFFF0000000000,$FFFFFF0000000000,$FFFFFF0000000000,$FFFFFF0000000000,$FFFFFF0000000000,$FFFFFF0000000000,$FFFFFF0000000000,$FFFFFF0000000000,
+     $FFFF000000000000,$FFFF000000000000,$FFFF000000000000,$FFFF000000000000,$FFFF000000000000,$FFFF000000000000,$FFFF000000000000,$FFFF000000000000,
+     $FF00000000000000,$FF00000000000000,$FF00000000000000,$FF00000000000000,$FF00000000000000,$FF00000000000000,$FF00000000000000,$FF00000000000000,
+     $0000000000000000,$0000000000000000,$0000000000000000,$0000000000000000,$0000000000000000,$0000000000000000,$0000000000000000,$0000000000000000);
+
+    BForWard : TBBLine =
+   ($0000000000000000,$0000000000000000,$0000000000000000,$0000000000000000,$0000000000000000,$0000000000000000,$0000000000000000,$0000000000000000,
+    $00000000000000FF,$00000000000000FF,$00000000000000FF,$00000000000000FF,$00000000000000FF,$00000000000000FF,$00000000000000FF,$00000000000000FF,
+    $000000000000FFFF,$000000000000FFFF,$000000000000FFFF,$000000000000FFFF,$000000000000FFFF,$000000000000FFFF,$000000000000FFFF,$000000000000FFFF,
+    $0000000000FFFFFF,$0000000000FFFFFF,$0000000000FFFFFF,$0000000000FFFFFF,$0000000000FFFFFF,$0000000000FFFFFF,$0000000000FFFFFF,$0000000000FFFFFF,
+    $00000000FFFFFFFF,$00000000FFFFFFFF,$00000000FFFFFFFF,$00000000FFFFFFFF,$00000000FFFFFFFF,$00000000FFFFFFFF,$00000000FFFFFFFF,$00000000FFFFFFFF,
+    $000000FFFFFFFFFF,$000000FFFFFFFFFF,$000000FFFFFFFFFF,$000000FFFFFFFFFF,$000000FFFFFFFFFF,$000000FFFFFFFFFF,$000000FFFFFFFFFF,$000000FFFFFFFFFF,
+    $0000FFFFFFFFFFFF,$0000FFFFFFFFFFFF,$0000FFFFFFFFFFFF,$0000FFFFFFFFFFFF,$0000FFFFFFFFFFFF,$0000FFFFFFFFFFFF,$0000FFFFFFFFFFFF,$0000FFFFFFFFFFFF,
+    $00FFFFFFFFFFFFFF,$00FFFFFFFFFFFFFF,$00FFFFFFFFFFFFFF,$00FFFFFFFFFFFFFF,$00FFFFFFFFFFFFFF,$00FFFFFFFFFFFFFF,$00FFFFFFFFFFFFFF,$00FFFFFFFFFFFFFF);
+
 Light=$55AA55AA55AA55AA;
 Dark=$AA55AA55AA55AA55;
-WhiteBishopStrong=$7EFFFF7E3C000000;
-BlackBishopStrong=$0000003C7EFFFF7E;
+BSpaceMask=16954726998343680;
+WspaceMask=1010580480;
+Ranks78=$ffff000000000000;
+Ranks678=$ffffff0000000000;
+Ranks12=$000000000000ffff;
+Ranks123=$00000000000ffffff;
+WhiteOutpost=$00007e7e7e000000;
+BlackOutpost=$0000007e7e7e0000;
 
-KnightMobMid=5;
-KnightMobEnd=2;
-BishopMobMidStrong=7;
-BishopMobEndStrong=4;
-BishopMobMidWeak=3;
-BishopMobEndWeak=2;
-RookMobMid  =3;
-RookMobEnd  =4;
-QueenMobMid=3;
-QueenMobEnd=2;
-PxNmid=22;
-PxNend=30;
-PxBmid=22;
-PxBend=30;
-PxRmid=30;
-PxRend=40;
-PxQmid=35;
-PxQend=45;
+KnightMobMid : t8=(0,6,12,18,24,30,36,42,48);
+KnightMobEnd : t8=(0,8,16,24,32,40,48,56,64);
+BishopMobMid :t16=(0,5,10,15,20,25,30,35,40,45,50,55,60,65,70,75,80);
+BishopMobEnd :t16=(0,5,10,15,20,25,30,35,40,45,50,55,60,65,70,75,80);
+RookMobMid   :t16=(0,2,4,6,8,10,12,14,16,18,20,22,24,26,28,30,32);
+RookMobEnd   :t16=(0,3,6,9,12,15,18,21,24,27,30,33,36,39,42,45,48);
 
-NxPMid=3;
-NxPEnd=15;
-NxBMid=9;
-NxBEnd=18;
-NxRQMid=18;
-NxRQEnd=40;
+KnightOutPostMid=2;
+KnightOutPostEnd=3;
+KnightOutPostStrongMid=5;
+KnightOutPostStrongEnd=5;
+KnightOutPostCenterMid=3;
+KnightOutPostCenterEnd=3;
 
-BxPMid=3;
-BxPEnd=15;
-BxNMid=9;
-BxNEnd=18;
-BxRQMid=18;
-BxRQEnd=40;
+BishopOutPostMid=1;
+BishopOutPostEnd=2;
+BishopOutPostStrongMid=3;
+BishopOutPostStrongEnd=4;
 
-RxPMid=0;
-RxPEnd=10;
-RxBNMid=6;
-RxBNEnd=18;
-RxQMid=10;
-RxQEnd=20;
+RookOutPostMid=1;
+RookOutPostEnd=2;
+RookOutPostStrongMid=3;
+RookOutPostStrongEnd=4;
 
-QxMid=6;
-QxEnd=15;
+PAttQMid=8;
+PAttQEnd=12;
+PAttRMid=7;
+PAttREnd=10;
+PAttMMid=5;
+PAttMEnd=7;
 
-ForkMid=25;
-ForkEnd=30;
+MAttRQMid=7;
+MAttRQEnd=10;
+NAttBMid=5;
+NAttBEnd=5;
+NAttPMid=3;
+NAttPEnd=4;
 
-BishopTrapped=125;
+BAttPMid=3;
+BAttPEnd=4;
+BAttNMid=5;
+BAttNEnd=5;
+
+RAttQMid=5;
+RAttQEnd=5;
+RAttMMid=4;
+RAttMEnd=5;
+RAttPMid=2;
+RAttPEnd=3;
+
+MinorsUndefendedMid=10;
+MinorsUndefendedEnd=5;
+
+QdynMid=5;
+QdynEnd=5;
+
+QGuardMid=5;
+QGuardEnd=2;
+NGuardMid=4;
+NGuardEnd=2;
+BGuardMid=2;
+BGuardEnd=1;
+RGuardMid=3;
+RGuardEnd=1;
+
+BishopTrapped=75;
+
 RookOpenFileMid = 20;
-RookOpenFileEnd = 20;
-RookHalfFileMid = 10;
-RookHalfFileEnd = 10;
-RookOn78Mid=20;
-RookOn78End=40;
-RookTrapped=70;
-BadRook  : t8=(0,0,0,0,0,0,25,50,0);
-BadQueen : t8=(0,0,0,0,0,0,0,25,0);
-RookKing : t8=(30,5,0,0,0,0,0,0,0);
-RookLook=15;
-QueenOn78Mid=8;
-QueenOn78End=16;
-Outpost=5;
-NOutpostProtected=5;
-NGoodOutpost=5;
-NCenterOutpost=5;
-BGoodOutPost=7;
-GoodBishop=2;
-SideToMoveBonusMid=3;
-SideToMoveBonusEnd=3;
-Function Eval(var Board:Tboard):integer;
+RookOpenFileEnd = 10;
+RookHalfFileMid = 3;
+RookHalfFileEnd = 6;
+RookOpenFixedMid=10;
+RookOpenFixedEnd=0;
+RookOpenMinorMid=15;
+RookOpenMinorEnd=5;
+RookHalfOpenPawnMid=5;
+RookHalfOpenPawnEnd=5;
+
+RookOn8Mid=5;
+RookOn8End=10;
+RookOn7Mid=15;
+RookOn7End=40;
+RookOn6Mid= 5;
+RookOn6End=15;
+DoubleRook7Mid=10;
+DoubleRook7End=20;
+
+RookTrapped=50;
+RookLook=10;
+ActiveKing=5;
+
+QueenOn7Mid=5;
+Queenon7End=25;
+QueenRook7Mid=10;
+QueenRook7End=15;
+
+ForkScaleMid=15;
+ForkScaleEnd=25;
+TempoMid=10;
+TempoEnd=5;
+
+Function Eval(var Board:Tboard;var dangereval:integer):integer;
 implementation
  uses Pawn,movegen;
-Function Eval(var Board:Tboard):integer;
+Function Eval(var Board:Tboard;var dangereval:integer):integer;
 label ex;
 var
-   score,scoremid,scoreend,indexmat,indexpawn,idx,x,y,Wtropism,Btropism,WPsaf,BpSaf,saf,kx,dif,trap,wshelter,bshelter,WGoodAtt,BGoodAtt: integer;
-   temp,temp1,WPAttacks,BPAttacks,WNAttacks,BNAttacks,WBAttacks,BBAttacks,WRAttacks,BRAttacks,WQAttacks,BQAttacks,WKAttacks,BKAttacks,WAllAttacks,BAllAttacks,AttBB,MobBB : TbitBoard;
-   WkingZone,BkingZone,WmobSpace,BmobSpace : TbitBoard;
-   sq,wking,bking,s1,minor : Tsquare;
+   score,scoremid,scoreend,indexmat,indexpawn,idx,x,y,Wtropism,Btropism,Wfork,Bfork,WPsaf,BpSaf,saf,kx,trap,wshelter,bshelter,wlight,wdark,blight,bdark: integer;
+   temp,temp1,WPAttacks,BPAttacks,WNAttacks,BNAttacks,WBAttacks,BBAttacks,WRAttacks,BRAttacks,WQAttacks,BQAttacks,WKAttacks,BKAttacks,WAllAttacks,BAllAttacks,AttBB,MobBB,Wdyn,Bdyn : TbitBoard;
+   WkingZone,BkingZone,WkingRing,BkingRing,WmobSpace,BmobSpace,WgoodMinor,BgoodMinor : TbitBoard;
+   sq,sq1,wking,bking : Tsquare;
    sp:boolean;
 begin
+  dangereval:=0;
   indexmat:=EvalMaterial(Board);
   scoremid:=MatTable[indexmat].scoreMid;
   scoreend:=MatTable[indexmat].scoreEnd;
@@ -183,19 +242,28 @@ begin
   indexPawn:=EvalPawn(Board);
   scoremid:=scoremid+PawnTable[indexpawn].scoremid;
   scoreend:=scoreend+PawnTable[indexpawn].scoreend;
-
-  EvalSafety(Board,MatTable[indexmat].flag,scoremid,scoreend,indexPawn,wshelter,bshelter);
-  // Оценка фигур
+  wlight:=PawnTable[indexpawn].blocked and 255;
+  wdark:=(PawnTable[indexpawn].blocked shr 8) and 255;
+  blight:=(PawnTable[indexpawn].blocked shr 16) and 255;
+  bdark:=(PawnTable[indexpawn].blocked shr 24) and 255;
   wking:=Board.KingSq[white];
   bking:=Board.KingSq[black];
+ if (Mattable[indexmat].flag and DoBkingSafety)=0
+    then  bshelter:=0
+    else  bshelter:=BKShelter(Board,bking,indexpawn);
+ if (Mattable[indexmat].flag and DoWkingSafety)=0
+    then wshelter:=0
+    else wshelter:=WKShelter(Board,wking,indexpawn);
+
+  // Оценка фигур
   WPAttacks:=((Board.Pieses[WhitePawn] and (not FilesBB[1])) shl 7) or ((Board.Pieses[WhitePawn] and (not FilesBB[8])) shl 9);
   BPAttacks:=((Board.Pieses[BlackPawn] and (not FilesBB[1])) shr 9) or ((Board.Pieses[BlackPawn] and (not FilesBB[8])) shr 7);
   WKAttacks:=KingAttacksBB[wking];
   BKAttacks:=KingAttacksBB[bking];
   WkingZone:=WKAttacks or OnlyR00[wking];
   BkingZone:=BKAttacks or OnlyR00[bking];
-  WmobSpace:=not(Board.CPieses[white] or BPAttacks);
-  BmobSpace:=not(Board.CPieses[black] or WPAttacks);
+  WkingRing:=WkingZone or (WkingZone shl 8);
+  BkingRing:=BkingZone or (BkingZone shr 8);
   WNAttacks:=0;
   BNAttacks:=0;
   WBAttacks:=0;
@@ -206,343 +274,531 @@ begin
   BQAttacks:=0;
   WPSaf:=0;
   BPSaf:=0;
+  Wfork:=0;
+  Bfork:=0;
   Wtropism:=0;
   Btropism:=0;
-  WgoodAtt:=0;
-  BgoodAtt:=0;
+  Wdyn:=Board.CPieses[Black] and (not BPAttacks);
+  Bdyn:=Board.CPieses[white] and (not WPAttacks);
+  WmobSpace:=not(Board.CPieses[white] or BPAttacks);
+  BmobSpace:=not(Board.CPieses[black] or WPAttacks);
+  WgoodMinor:=(Board.Pieses[WhiteKnight] or Board.Pieses[WhiteBishop]) and WPAttacks;
+  BgoodMinor:=(Board.Pieses[BlackKnight] or Board.Pieses[BlackBishop]) and BPAttacks;
   if (WPAttacks and BkingZone)<>0 then inc(WPSaf);
   if (BPAttacks and WkingZone)<>0 then inc(BPSaf);
+
   // кони
   temp:=Board.Pieses[whiteknight];
   while temp<>0 do
     begin
       sq:=BitScanForward(temp);
+      temp:=temp and NotOnlyR00[sq];
       scoremid:=scoremid+WNSQ[sq];
       scoreend:=scoreend+WNESQ[sq];
+      if (posy[sq]<5) and (Board.Pos[sq+24]=BlackPawn) then
+        begin
+          scoremid:=scoremid-(5-posy[sq]);
+          scoreend:=scoreend-(5-posy[sq]);
+        end;
       AttBB:=KnightAttacksBB[sq];
-      if (AttBB and BkingZone)<>0 then
-        begin
-          inc(WPSaf);
-          Wtropism:=Wtropism+KnightTropism;
-        end;
-      // динамика
-      if ((OnlyR00[sq] and BPAttacks)<>0) then
-        begin
-          inc(BgoodAtt);
-          scoremid:=scoremid-PxNMid;
-          scoreend:=scoreend-PxNEnd;
-        end;
-      if (AttBB and Board.Pieses[BlackPawn] and (not BPAttacks))<>0 then
-        begin
-          scoremid:=scoremid+NxPMid;
-          scoreend:=scoreend+NxPEnd;
-        end;
-       if (AttBB and Board.Pieses[BlackBishop] and (not BPAttacks))<>0 then
-        begin
-          scoremid:=scoremid+NxBMid;
-          scoreend:=scoreend+NxBEnd;
-        end;
-        if (AttBB and (Board.Pieses[BlackRook] or Board.Pieses[BlackQueen]))<>0 then
-        begin
-          scoremid:=scoremid+NxRQMid;
-          scoreend:=scoreend+NxRQEnd;
-          inc(WGoodAtt);
-        end;
-
-      if ((OnlyR00[sq] and WoutPost)<>0) and ((PawnBackWardMaskBB[black,sq-8] and Board.Pieses[BlackPawn])=0) then
-        begin
-          scoremid:=scoremid+OutPost;
-          scoreend:=scoreend+Outpost;
-          if (PawnAttacksBB[black,sq] and Board.Pieses[WhitePawn])<>0 then
-            begin
-              scoremid:=scoremid+NoutPostProtected;
-              scoreend:=scoreend+NoutPostProtected;
-              if ((AttBB and BkingZone)<>0) or ((AttBB and Board.CPieses[black] and (not BPAttacks))<>0)  then
-                begin
-                  scoremid:=scoremid+NGoodOutpost;
-                  scoreend:=scoreend+NGoodOutpost;
-                  if (posx[sq] in [4,5]) or (posy[sq]=5) then
-                    begin
-                      scoremid:=scoremid+NCenterOutpost;
-                      scoreend:=scoreend+NCenterOutpost;
-                    end;
-                end;
-            end;
-        end;
       WNAttacks:=WNAttacks or AttBB;
-      MobBB:=AttBB and WmobSpace;
+      if ((AttBB and BKingRing)<>0) then
+        begin
+          Wtropism:=Wtropism+KnightTropism;
+          if ((AttBB and BKingZone)<>0) then inc(WPSaf);
+        end;
+      if ((AttBB and WkingZone)<>0) then
+       begin
+        scoremid:=scoremid+NGuardMid;
+        scoreend:=scoreend+NGuardEnd;
+       end;
+
+      if (OnlyR00[sq] and BPAttacks)<>0 then
+       begin
+         inc(Bfork);
+         scoremid:=scoremid-PAttMMid;
+         scoreend:=scoreend-PAttMEnd;
+       end;
+      // динамика
+       if (AttBB and (not BPAttacks) and Board.Pieses[BlackPawn])<>0 then
+        begin
+          scoremid:=scoremid+NAttPMid;
+          scoreend:=scoreend+NAttPEnd;
+        end;
+       if (AttBB and (not BPAttacks) and Board.Pieses[BlackBishop])<>0 then
+        begin
+          scoremid:=scoremid+NAttBMid;
+          scoreend:=scoreend+NAttBEnd;
+        end;
+       if (AttBB  and (Board.Pieses[BlackRook] or Board.Pieses[BlackQueen]))<>0 then
+        begin
+          inc(Wfork);
+          scoremid:=scoremid+MAttRQMid;
+          scoreend:=scoreend+MAttRQEnd;
+        end;
+     // форпосты
+       if ((OnlyR00[sq] and WhiteOutPost)<>0) and ((PawnIsoMaskBB[sq] and Wforward[sq] and Board.Pieses[BlackPawn])=0) then
+         begin
+           scoremid:=scoremid+KnightOutPostMid;
+           scoreend:=scoreend+KnightOutPostEnd;
+           if (OnlyR00[sq] and WPAttacks)<>0 then
+             begin
+               scoremid:=scoremid+KnightOutPostMid;
+               scoreend:=scoreend+KnightOutPostEnd;
+               if (AttBB and (BkingZone or Wdyn))<>0 then
+                 begin
+                   scoremid:=scoremid+KnightOutPostStrongMid;
+                   scoreend:=scoreend+KnightOutPostStrongEnd;
+                   if (posy[sq]=5) then
+                     begin
+                       scoremid:=scoremid+KnightOutPostCenterMid;
+                       scoreend:=scoreend+KnightOutPostCenterEnd;
+                     end;
+                    if (Posx[sq]=4) or (posx[sq]=5) then
+                     begin
+                       scoremid:=scoremid+KnightOutPostCenterMid;
+                       scoreend:=scoreend+KnightOutPostCenterEnd;
+                     end;
+                 end;
+             end;
+         end;
+
+    // подвижность
+      MobBB:=AttBB and Wforward[sq] and WmobSpace;
       idx:=BitCount(MobBB);
-      scoremid:=scoremid+KnightMobMid*idx;
-      scoreend:=scoreend+KnightMobEnd*idx;
-      temp:=temp and NotOnlyR00[sq];
+      scoremid:=scoremid+KnightMobMid[idx];
+      scoreend:=scoreend+KnightMobEnd[idx];
     end;
   temp:=Board.Pieses[blackknight];
   while temp<>0 do
     begin
       sq:=BitScanForward(temp);
+      temp:=temp and NotOnlyR00[sq];
       scoremid:=scoremid-WNSQ[63-sq];
       scoreend:=scoreend-WNESQ[63-sq];
+      if (posy[sq]>4) and (Board.Pos[sq-24]=WhitePawn) then
+        begin
+          scoremid:=scoremid+(posy[sq]-4);
+          scoreend:=scoreend+(posy[sq]-4);
+        end;
       AttBB:=KnightAttacksBB[sq];
-      if (AttBB and WkingZone)<>0 then
-        begin
-          inc(BPSaf);
-          Btropism:=Btropism+KnightTropism;
-        end;
-      // динамика
-      if ((OnlyR00[sq] and WPAttacks)<>0) then
-        begin
-          inc(WgoodAtt);
-          scoremid:=scoremid+PxNMid;
-          scoreend:=scoreend+PxNEnd;
-        end;
-      if (AttBB and Board.Pieses[WhitePawn] and (not WPAttacks))<>0 then
-        begin
-          scoremid:=scoremid-NxPMid;
-          scoreend:=scoreend-NxPEnd;
-        end;
-       if (AttBB and Board.Pieses[WhiteBishop] and (not WPAttacks))<>0 then
-        begin
-          scoremid:=scoremid-NxBMid;
-          scoreend:=scoreend-NxBEnd;
-        end;
-        if (AttBB and (Board.Pieses[WhiteRook] or Board.Pieses[WhiteQueen]))<>0 then
-        begin
-          scoremid:=scoremid-NxRQMid;
-          scoreend:=scoreend-NxRQEnd;
-          inc(BGoodAtt);
-        end;
-
-      if ((OnlyR00[sq] and BoutPost)<>0) and ((PawnBackWardMaskBB[white,sq+8] and Board.Pieses[WhitePawn])=0) then
-        begin
-          scoremid:=scoremid-OutPost;
-          scoreend:=scoreend-Outpost;
-          if (PawnAttacksBB[white,sq] and Board.Pieses[BlackPawn])<>0 then
-            begin
-              scoremid:=scoremid-NoutPostProtected;
-              scoreend:=scoreend-NoutPostProtected;
-              if ((AttBB and WkingZone)<>0) or ((AttBB and Board.CPieses[white] and (not WPAttacks))<>0)  then
-                begin
-                  scoremid:=scoremid-NGoodOutpost;
-                  scoreend:=scoreend-NGoodOutpost;
-                  if (posx[sq] in [4,5]) or (posy[sq]=4) then
-                    begin
-                      scoremid:=scoremid-NCenterOutpost;
-                      scoreend:=scoreend-NCenterOutpost;
-                    end;
-                end;
-            end;
-        end;
       BNAttacks:=BNAttacks or AttBB;
-      MobBB:=AttBB and BmobSpace;
+      if ((AttBB and WKingRing)<>0) then
+        begin
+          Btropism:=Btropism+KnightTropism;
+          if ((AttBB and WKingZone)<>0) then  inc(BPSaf);
+        end;
+      if ((AttBB and BkingZone)<>0) then
+       begin
+        scoremid:=scoremid-NGuardMid;
+        scoreend:=scoreend-NGuardEnd;
+       end;
+
+      if (OnlyR00[sq] and WPAttacks)<>0 then
+       begin
+         inc(Wfork);
+         scoremid:=scoremid+PAttMMid;
+         scoreend:=scoreend+PAttMEnd;
+       end;
+      // динамика
+       if (AttBB and (not WPAttacks) and Board.Pieses[WhitePawn])<>0 then
+        begin
+          scoremid:=scoremid-NAttPMid;
+          scoreend:=scoreend-NAttPEnd;
+        end;
+       if (AttBB and (not WPAttacks) and Board.Pieses[WhiteBishop])<>0 then
+        begin
+          scoremid:=scoremid-NAttBMid;
+          scoreend:=scoreend-NAttBEnd;
+        end;
+       if (AttBB  and (Board.Pieses[WhiteRook] or Board.Pieses[WhiteQueen]))<>0 then
+        begin
+          inc(Bfork);
+          scoremid:=scoremid-MAttRQMid;
+          scoreend:=scoreend-MAttRQEnd;
+        end;
+     // форпосты
+       if ((OnlyR00[sq] and BlackOutPost)<>0) and ((PawnIsoMaskBB[sq] and Bforward[sq] and Board.Pieses[WhitePawn])=0) then
+         begin
+           scoremid:=scoremid-KnightOutPostMid;
+           scoreend:=scoreend-KnightOutPostEnd;
+           if (OnlyR00[sq] and BPAttacks)<>0 then
+             begin
+               scoremid:=scoremid-KnightOutPostMid;
+               scoreend:=scoreend-KnightOutPostEnd;
+               if (AttBB and (WkingZone or Bdyn))<>0 then
+                 begin
+                   scoremid:=scoremid-KnightOutPostStrongMid;
+                   scoreend:=scoreend-KnightOutPostStrongEnd;
+                   if (posy[sq]=4) then
+                     begin
+                       scoremid:=scoremid-KnightOutPostCenterMid;
+                       scoreend:=scoreend-KnightOutPostCenterEnd;
+                     end;
+                    if (Posx[sq]=4) or (posx[sq]=5) then
+                     begin
+                       scoremid:=scoremid-KnightOutPostCenterMid;
+                       scoreend:=scoreend-KnightOutPostCenterEnd;
+                     end;
+                 end;
+             end;
+         end;
+
+    // подвижность
+      MobBB:=AttBB and Bforward[sq] and BmobSpace;
       idx:=BitCount(MobBB);
-      scoremid:=scoremid-KnightMobMid*idx;
-      scoreend:=scoreend-KnightMobEnd*idx;
-      temp:=temp and NotOnlyR00[sq];
+      scoremid:=scoremid-KnightMobMid[idx];
+      scoreend:=scoreend-KnightMobEnd[idx];
     end;
   // слоны
   temp:=Board.Pieses[whitebishop];
   while temp<>0 do
     begin
       sq:=BitScanForward(temp);
+      temp:=temp and NotOnlyR00[sq];
       scoremid:=scoremid+WBSQ[sq];
       scoreend:=scoreend+WBESQ[sq];
+      if (OnlyR00[sq] and Light)<>0 then
+        begin
+          scoremid:=scoremid-(wlight + (blight div 2));
+          scoreend:=scoreend-(wlight + (blight div 2));
+          temp1:=Board.Pieses[BlackPawn] and Light and (not BPAttacks) and WForward[sq];
+          scoreend:=scoreend+BitCount(temp1)*2;
+        end else
+        begin
+          scoremid:=scoremid-(wdark + (bdark div 2));
+          scoreend:=scoreend-(wdark + (bdark div 2));
+          temp1:=Board.Pieses[BlackPawn] and Dark and (not BPAttacks) and WForward[sq];
+          scoreend:=scoreend+BitCount(temp1)*2;
+        end;
+       AttBB:=BishopMovesBB(sq,Board);
+      // форпосты
+       if ((OnlyR00[sq] and WhiteOutPost)<>0) and ((PawnIsoMaskBB[sq] and Wforward[sq] and Board.Pieses[BlackPawn])=0) then
+         begin
+           if (OnlyR00[sq] and WPAttacks)<>0 then
+             begin
+               scoremid:=scoremid+BishopOutPostMid;
+               scoreend:=scoreend+BishopOutPostEnd;
+               if (AttBB and (BkingZone or Wdyn))<>0 then
+                 begin
+                   scoremid:=scoremid+BishopOutPostStrongMid;
+                   scoreend:=scoreend+BishopOutPostStrongEnd;
+                 end;
+             end;
+         end;
+     // Паттерны
       if (sq=a7) and (Board.Pos[b6]=BlackPawn) then
         begin
           scoremid:=scoremid-BishopTrapped;
           scoreend:=scoreend-BishopTrapped;
-        end else
+        end;
       if (sq=h7) and (Board.Pos[g6]=BlackPawn) then
         begin
           scoremid:=scoremid-BishopTrapped;
           scoreend:=scoreend-BishopTrapped;
         end;
-      AttBB:=BishopMovesBB(sq,Board);
-      if ((AttBB and BKingZone)<>0) then
+      if (sq=a6) and (Board.Pos[b5]=WhitePawn) then
         begin
-          inc(WPSaf);
-          Wtropism:=Wtropism+BishopTropism;
+          scoremid:=scoremid-(BishopTrapped div 2);
+          scoreend:=scoreend-(BishopTrapped div 2);
         end;
-      // динамика
-      if ((OnlyR00[sq] and BPAttacks)<>0) then
+      if (sq=h6) and (Board.Pos[g5]=WhitePawn) then
         begin
-          inc(BgoodAtt);
-          scoremid:=scoremid-PxBMid;
-          scoreend:=scoreend-PxBEnd;
+          scoremid:=scoremid-(BishopTrapped div 2);
+          scoreend:=scoreend-(BishopTrapped div 2);
         end;
-      if (AttBB and Board.Pieses[BlackPawn] and (not BPAttacks))<>0 then
+      if (sq=h2) and (Board.Pos[g3]=WhitePawn) then
         begin
-          scoremid:=scoremid+BxPMid;
-          scoreend:=scoreend+BxPEnd;
+          scoremid:=scoremid-(BishopTrapped div 2);
+          scoreend:=scoreend-(BishopTrapped div 2);
         end;
-       if (AttBB and Board.Pieses[BlackKnight] and (not BPAttacks))<>0 then
+      if (sq=a2) and (Board.Pos[b3]=WhitePawn) then
         begin
-          scoremid:=scoremid+BxNMid;
-          scoreend:=scoreend+BxNEnd;
+          scoremid:=scoremid-(BishopTrapped div 2);
+          scoreend:=scoreend-(BishopTrapped div 2);
         end;
-        if (AttBB and (Board.Pieses[BlackRook] or Board.Pieses[BlackQueen]))<>0 then
+      if (sq=h1) and (Board.Pos[f3]=BlackPawn) then
         begin
-          scoremid:=scoremid+BxRQMid;
-          scoreend:=scoreend+BxRQEnd;
-          inc(WGoodAtt);
+          scoremid:=scoremid-BishopTrapped;
+          scoreend:=scoreend-BishopTrapped;
         end;
-
-      if ((OnlyR00[sq] and WoutPost)<>0) and ((PawnBackWardMaskBB[black,sq-8] and Board.Pieses[BlackPawn])=0) then
+      if (sq=a1) and (Board.Pos[c3]=BlackPawn) then
         begin
-          if (PawnAttacksBB[black,sq] and Board.Pieses[WhitePawn])<>0 then
-            begin
-              scoremid:=scoremid+OutPost;
-              scoreend:=scoreend+OutPost;
-              if ((AttBB and BkingZone)<>0) or ((AttBB and Board.CPieses[black] and (not BPAttacks))<>0)  then
-                begin
-                  scoremid:=scoremid+BGoodOutpost;
-                  scoreend:=scoreend+BGoodOutpost;
-                end;
-            end;
+          scoremid:=scoremid-BishopTrapped;
+          scoreend:=scoreend-BishopTrapped;
         end;
 
       WBAttacks:=WBAttacks or AttBB;
-      MobBB:=AttBB and WmobSpace and WhiteBishopStrong;
+      if ((AttBB and BKingRing)<>0)  then
+        begin
+          Wtropism:=Wtropism+BishopTropism;
+          if ((AttBB and BKingZone)<>0) then  inc(WPSaf);
+        end;
+
+      if ((AttBB and WkingZone)<>0) then
+       begin
+        scoremid:=scoremid+BGuardMid;
+        scoreend:=scoreend+BGuardEnd;
+       end;
+
+      // динамика
+      if (OnlyR00[sq] and BPAttacks)<>0 then
+        begin
+          scoremid:=scoremid-PAttMMid;
+          scoreend:=scoreend-PAttMEnd;
+          inc(bfork);
+        end;
+
+       if (AttBB and (not BPAttacks) and Board.Pieses[BlackPawn])<>0 then
+        begin
+          scoremid:=scoremid+BAttPMid;
+          scoreend:=scoreend+BAttPEnd;
+        end;
+        if (AttBB and (not BPAttacks) and Board.Pieses[BlackKnight])<>0 then
+        begin
+          scoremid:=scoremid+BAttNMid;
+          scoreend:=scoreend+BAttNEnd;
+        end;
+        if (AttBB  and (Board.Pieses[BlackRook] or Board.Pieses[BlackQueen])<>0) then
+        begin
+          scoremid:=scoremid+MAttRQMid;
+          scoreend:=scoreend+MAttRQEnd;
+          inc(wfork);
+        end;
+     // подвижность
+      MobBB:=AttBB and Wforward[sq] and WmobSpace;
       idx:=BitCount(MobBB);
-      scoremid:=scoremid+BishopMobMidStrong*idx;
-      scoreend:=scoreend+BishopMobEndStrong*idx;
-      MobBB:=AttBB and WmobSpace and (not WhiteBishopStrong);
-      idx:=BitCount(MobBB);
-      scoremid:=scoremid+BishopMobMidWeak*idx;
-      scoreend:=scoreend+BishopMobEndWeak*idx;
-      temp:=temp and NotOnlyR00[sq];
+      scoremid:=scoremid+BishopMobMid[idx];
+      scoreend:=scoreend+BishopMobEnd[idx];
     end;
-  temp:=Board.Pieses[blackbishop];
+ temp:=Board.Pieses[blackbishop];
   while temp<>0 do
     begin
       sq:=BitScanForward(temp);
+      temp:=temp and NotOnlyR00[sq];
       scoremid:=scoremid-WBSQ[63-sq];
       scoreend:=scoreend-WBESQ[63-sq];
+      if (OnlyR00[sq] and Light)<>0 then
+        begin
+          scoremid:=scoremid+(blight + (wlight div 2));
+          scoreend:=scoreend+(blight + (wlight div 2));
+          temp1:=Board.Pieses[WhitePawn] and Light and (not WPAttacks) and BForward[sq];
+          scoreend:=scoreend-BitCount(temp1)*2;
+        end else
+        begin
+          scoremid:=scoremid+(bdark + (wdark div 2));
+          scoreend:=scoreend+(bdark + (wdark div 2));
+          temp1:=Board.Pieses[WhitePawn] and Dark and (not WPAttacks) and BForward[sq];
+          scoreend:=scoreend-BitCount(temp1)*2;
+        end;
+       AttBB:=BishopMovesBB(sq,Board);
+      // форпосты
+       if ((OnlyR00[sq] and BlackOutPost)<>0) and ((PawnIsoMaskBB[sq] and Bforward[sq] and Board.Pieses[WhitePawn])=0) then
+         begin
+           if (OnlyR00[sq] and BPAttacks)<>0 then
+             begin
+               scoremid:=scoremid-BishopOutPostMid;
+               scoreend:=scoreend-BishopOutPostEnd;
+               if (AttBB and (WkingZone or Bdyn))<>0 then
+                 begin
+                   scoremid:=scoremid-BishopOutPostStrongMid;
+                   scoreend:=scoreend-BishopOutPostStrongEnd;
+                 end;
+             end;
+         end;
+     // Паттерны
       if (sq=a2) and (Board.Pos[b3]=WhitePawn) then
         begin
           scoremid:=scoremid+BishopTrapped;
           scoreend:=scoreend+BishopTrapped;
-        end else
+        end;
       if (sq=h2) and (Board.Pos[g3]=WhitePawn) then
         begin
           scoremid:=scoremid+BishopTrapped;
           scoreend:=scoreend+BishopTrapped;
         end;
-      AttBB:=BishopMovesBB(sq,Board);
-      if ((AttBB and WKingZone)<>0) then
+      if (sq=a3) and (Board.Pos[b4]=BlackPawn) then
         begin
-          inc(BPSaf);
-          Btropism:=Btropism+BishopTropism;
+          scoremid:=scoremid+(BishopTrapped div 2);
+          scoreend:=scoreend+(BishopTrapped div 2);
         end;
-       // динамика
-      if ((OnlyR00[sq] and WPAttacks)<>0) then
+      if (sq=h3) and (Board.Pos[g4]=BlackPawn) then
         begin
-          inc(WgoodAtt);
-          scoremid:=scoremid+PxBMid;
-          scoreend:=scoreend+PxBEnd;
+          scoremid:=scoremid+(BishopTrapped div 2);
+          scoreend:=scoreend+(BishopTrapped div 2);
         end;
-      if (AttBB and Board.Pieses[WhitePawn] and (not WPAttacks))<>0 then
+      if (sq=h7) and (Board.Pos[g6]=BlackPawn) then
         begin
-          scoremid:=scoremid-BxPMid;
-          scoreend:=scoreend-BxPEnd;
+          scoremid:=scoremid+(BishopTrapped div 2);
+          scoreend:=scoreend+(BishopTrapped div 2);
         end;
-       if (AttBB and Board.Pieses[WhiteKnight] and (not WPAttacks))<>0 then
+      if (sq=a7) and (Board.Pos[b6]=BlackPawn) then
         begin
-          scoremid:=scoremid-BxNMid;
-          scoreend:=scoreend-BxNEnd;
+          scoremid:=scoremid+(BishopTrapped div 2);
+          scoreend:=scoreend+(BishopTrapped div 2);
         end;
-        if (AttBB and (Board.Pieses[WhiteRook] or Board.Pieses[WhiteQueen]))<>0 then
+      if (sq=h8) and (Board.Pos[f6]=WhitePawn) then
         begin
-          scoremid:=scoremid-BxRQMid;
-          scoreend:=scoreend-BxRQEnd;
-          inc(BGoodAtt);
+          scoremid:=scoremid+BishopTrapped;
+          scoreend:=scoreend+BishopTrapped;
         end;
-
-      if ((OnlyR00[sq] and BoutPost)<>0) and ((PawnBackWardMaskBB[white,sq+8] and Board.Pieses[WhitePawn])=0) then
+      if (sq=a8) and (Board.Pos[c6]=WhitePawn) then
         begin
-          if (PawnAttacksBB[white,sq] and Board.Pieses[BlackPawn])<>0 then
-            begin
-              scoremid:=scoremid-OutPost;
-              scoreend:=scoreend-OutPost;
-              if ((AttBB and WkingZone)<>0) or ((AttBB and Board.CPieses[white] and (not WPAttacks))<>0)  then
-                begin
-                  scoremid:=scoremid-BGoodOutpost;
-                  scoreend:=scoreend-BGoodOutpost;
-                end;
-            end;
+          scoremid:=scoremid+BishopTrapped;
+          scoreend:=scoreend+BishopTrapped;
         end;
 
       BBAttacks:=BBAttacks or AttBB;
-      MobBB:=AttBB and BmobSpace and BlackBishopStrong;
-      idx:=BitCount(MobBB);
-      scoremid:=scoremid-BishopMobMidStrong*idx;
-      scoreend:=scoreend-BishopMobEndStrong*idx;
-      MobBB:=AttBB and BmobSpace and (not BlackBishopStrong);
-      idx:=BitCount(MobBB);
-      scoremid:=scoremid-BishopMobMidWeak*idx;
-      scoreend:=scoreend-BishopMobEndWeak*idx;
-      temp:=temp and NotOnlyR00[sq];
-    end;
+      if ((AttBB and WKingRing)<>0)  then
+        begin
+          Btropism:=Btropism+BishopTropism;
+          if ((AttBB and WKingZone)<>0) then  inc(BPSaf);
+        end;
 
+      if ((AttBB and BkingZone)<>0) then
+       begin
+        scoremid:=scoremid-BGuardMid;
+        scoreend:=scoreend-BGuardEnd;
+       end;
+
+      // динамика
+      if (OnlyR00[sq] and WPAttacks)<>0 then
+        begin
+          scoremid:=scoremid+PAttMMid;
+          scoreend:=scoreend+PAttMEnd;
+          inc(wfork);
+        end;
+
+       if (AttBB and (not WPAttacks) and Board.Pieses[WhitePawn])<>0 then
+        begin
+          scoremid:=scoremid-BAttPMid;
+          scoreend:=scoreend-BAttPEnd;
+        end;
+        if (AttBB and (not WPAttacks) and Board.Pieses[WhiteKnight])<>0 then
+        begin
+          scoremid:=scoremid-BAttNMid;
+          scoreend:=scoreend-BAttNEnd;
+        end;
+        if (AttBB  and (Board.Pieses[WhiteRook] or Board.Pieses[WhiteQueen])<>0) then
+        begin
+          scoremid:=scoremid-MAttRQMid;
+          scoreend:=scoreend-MAttRQEnd;
+          inc(bfork);
+        end;
+     // подвижность
+      MobBB:=AttBB and Bforward[sq] and BmobSpace;
+      idx:=BitCount(MobBB);
+      scoremid:=scoremid-BishopMobMid[idx];
+      scoreend:=scoreend-BishopMobEnd[idx];
+    end;
+  WmobSpace:=not(Board.CPieses[white] or BPAttacks or BNAttacks or BBAttacks);
+  BmobSpace:=not(Board.CPieses[black] or WPAttacks or WNAttacks or WBAttacks);
   // ладьи
   temp:=Board.Pieses[whiterook];
   while temp<>0 do
     begin
       sq:=BitScanForward(temp);
+      temp:=temp and NotOnlyR00[sq];
       x:=Posx[sq];
       y:=Posy[sq];
       scoremid:=scoremid+WRSQ[sq];
       AttBB:=RookMovesBB(sq,Board);
-      if ((AttBB and BKingZone)<>0) then
-        begin
-          inc(WPSaf);
-          Wtropism:=Wtropism+RookTropism;
-          if ((MatTable[indexmat].flag and DoBkingSafety)<>0) then scoremid:=scoremid+RookLook;
-        end;
-      // динамика
-      if ((OnlyR00[sq] and BPAttacks)<>0) then
-        begin
-          inc(BgoodAtt);
-          scoremid:=scoremid-PxRMid;
-          scoreend:=scoreend-PxREnd;
-        end;
-      if (AttBB and Board.Pieses[BlackPawn] and (not BPAttacks))<>0 then
-        begin
-          scoremid:=scoremid+RxPMid;
-          scoreend:=scoreend+RxPEnd;
-        end;
-       if (AttBB and (Board.Pieses[BlackKnight] or Board.Pieses[BlackBishop]) and (not BPAttacks))<>0 then
-        begin
-          scoremid:=scoremid+RxBNMid;
-          scoreend:=scoreend+RxBNEnd;
-        end;
-        if (AttBB and Board.Pieses[BlackQueen])<>0 then
-        begin
-          scoremid:=scoremid+RxQMid;
-          scoreend:=scoreend+RxQEnd;
-          inc(WGoodAtt);
-        end;
-
+      // форпосты
+       if ((OnlyR00[sq] and WhiteOutPost)<>0) and ((PawnIsoMaskBB[sq] and Wforward[sq] and Board.Pieses[BlackPawn])=0) then
+         begin
+           if (OnlyR00[sq] and WPAttacks)<>0 then
+             begin
+               scoremid:=scoremid+RookOutPostMid;
+               scoreend:=scoreend+RookOutPostEnd;
+               if (AttBB and (BkingZone or Wdyn) and RanksBB[y])<>0 then
+                 begin
+                   scoremid:=scoremid+RookOutPostStrongMid;
+                   scoreend:=scoreend+RookOutPostStrongEnd;
+                 end;
+             end;
+         end;
       WRAttacks:=WRAttacks or AttBB;
-      MobBB:=AttBB and WmobSpace;
-      idx:=BitCount(MobBB);
-      scoremid:=scoremid+RookMobMid*idx;
-      scoreend:=scoreend+RookMobEnd*idx;
-      if (FilesBB[x] and Board.Pieses[whitepawn])=0 then
+       if ((AttBB and BKingRing)<>0) then
         begin
-          if (FilesBB[x] and Board.Pieses[blackpawn])=0 then
-            begin
-             scoremid:=scoremid+RookOpenFileMid;
-             scoreend:=scoreend+RookOpenFileEnd;
-             dif:=Abs(x-Posx[bking]);
-             if (bking>sq) and ((MatTable[indexmat].flag and DoBkingSafety)<>0) then
+          Wtropism:=Wtropism+RookTropism;
+          if ((AttBB and BKingZone)<>0) then  inc(WPSaf);
+        end;
+      if ((AttBB and WkingZone)<>0) then
+       begin
+        scoremid:=scoremid+RGuardMid;
+        scoremid:=scoremid+RGuardEnd;
+       end;
+      // динамика
+      if (OnlyR00[sq] and BPAttacks)<>0 then
+       begin
+         scoremid:=scoremid-PAttRMid;
+         scoreend:=scoreend-PAttREnd;
+         inc(Bfork);
+       end;
+
+       if (AttBB and (not BPAttacks) and Board.Pieses[BlackPawn])<>0 then
+        begin
+          scoremid:=scoremid+RAttPMid;
+          scoreend:=scoreend+RAttPEnd;
+        end;
+        if (AttBB and (not BPAttacks) and (Board.Pieses[BlackKnight] or Board.Pieses[BlackBishop]))<>0 then
+        begin
+          scoremid:=scoremid+RAttMMid;
+          scoreend:=scoreend+RAttMEnd;
+        end;
+        if ((AttBB  and Board.Pieses[BlackQueen])<>0) then
+        begin
+          scoremid:=scoremid+RAttQMid;
+          scoreend:=scoreend+RAttQEnd;
+          inc(wfork);
+        end;
+     // подвижность
+      MobBB:=AttBB and WMobSpace;
+      idx:=BitCount(MobBB);
+      scoremid:=scoremid+RookMobMid[idx];
+      scoreend:=scoreend+RookMobEnd[idx];
+
+      if (PawnOpenFileMaskBB[white,sq] and Board.Pieses[whitepawn])=0 then
+        begin
+          scoremid:=scoremid+RookHalfFileMid;
+          scoreend:=scoreend+RookHalfFileEnd;
+          if (Bkingzone and PawnOpenFileMaskBB[white,sq])<>0 then
                begin
-                scoremid:=scoremid+RookKing[dif];
+                 scoremid:=scoremid+RookLook;
+               end;
+          if (PawnOpenFileMaskBB[white,sq] and Board.Pieses[blackpawn])=0 then
+            begin
+             temp1:=BgoodMinor and PawnOpenFileMaskBB[white,sq];
+             if temp1=0 then
+               begin
+                scoremid:=scoremid+RookOpenFileMid;
+                scoreend:=scoreend+RookOpenFileEnd;
+               end else
+               begin
+                 sq1:=BitScanForward(temp1);
+                 if ((PawnIsoMaskBB[sq1] and Bforward[sq1] and Board.Pieses[WhitePawn])=0)
+                   then begin
+                     scoremid:=scoremid+RookOpenFixedMid;
+                     scoreend:=scoreend+RookOpenFixedEnd;
+                   end else
+                   begin
+                     scoremid:=scoremid+RookOpenMinorMid;
+                     scoreend:=scoreend+RookOpenMinorEnd;
+                   end;
                end;
             end else
             begin
-              scoremid:=scoremid+RookHalfFileMid;
-              scoreend:=scoreend+RookHalfFileEnd;
-            end;
+              temp1:=Board.Pieses[BlackPawn] and PawnOpenFileMaskBB[white,sq];
+              if temp1<>0 then
+               begin
+                 sq1:=BitScanForward(temp1);
+                 if ((PawnIsoMaskBB[sq1] and Wforward[sq1] and Board.Pieses[BlackPawn])=0)
+                   then begin
+                     scoremid:=scoremid+RookHalfOpenPawnMid;
+                     scoreend:=scoreend+RookHalfOpenPawnEnd;
+                   end
+               end;
+            end
         end else if  (idx<6) and ((posy[wking]=1) or (posy[wking]=y))  then
             begin
               trap:=0;
@@ -553,72 +809,132 @@ begin
               scoremid:=scoremid-trap;
               scoreend:=scoreend-trap;
             end;
-      if (y>=7) and ((Posy[bking]>=y) or ((AttBB and RanksBB[y] and Board.Pieses[blackpawn])<>0)) then
+      if (y=8) and ((Posy[bking]=8))  then
         begin
-          scoremid:=scoremid+RookOn78Mid;
-          scoreend:=scoreend+RookOn78end;
+          scoremid:=scoremid+Rookon8Mid;
+          scoreend:=scoreend+RookOn8End;
         end;
-      temp:=temp and NotOnlyR00[sq];
+      if (y=7) and ((Posy[bking]>=7) or ((RanksBB[7] and Board.Pieses[blackpawn])<>0)) then
+        begin
+          scoremid:=scoremid+RookOn7Mid;
+          scoreend:=scoreend+RookOn7end;
+          if ((AttBB and RanksBB[7] and (Board.Pieses[WhiteRook] or Board.Pieses[WhiteQueen]))<>0) and (posy[bking]=8) then
+              begin
+                scoremid:=scoremid+DoubleRook7Mid;
+                scoreend:=scoreend+DoubleRook7End;
+              end;
+        end;
+      if (y=6) and ((Posy[bking]>=6) or (((RanksBB[7] or RanksBB[6])and Board.Pieses[blackpawn])<>0)) then
+        begin
+          scoremid:=scoremid+RookOn6Mid;
+          scoreend:=scoreend+RookOn6end;
+        end;
     end;
   temp:=Board.Pieses[blackrook];
   while temp<>0 do
     begin
       sq:=BitScanForward(temp);
+      temp:=temp and NotOnlyR00[sq];
       x:=Posx[sq];
       y:=Posy[sq];
       scoremid:=scoremid-WRSQ[63-sq];
       AttBB:=RookMovesBB(sq,Board);
-      if ((AttBB and WKingZone)<>0) then
-        begin
-          inc(BPSaf);
-          Btropism:=Btropism+RookTropism;
-          if ((MatTable[indexmat].flag and DoWkingSafety)<>0) then scoremid:=scoremid-RookLook;
-        end;
-      // динамика
-      if ((OnlyR00[sq] and WPAttacks)<>0) then
-        begin
-          inc(WgoodAtt);
-          scoremid:=scoremid+PxRMid;
-          scoreend:=scoreend+PxREnd;
-        end;
-      if (AttBB and Board.Pieses[WhitePawn] and (not WPAttacks))<>0 then
-        begin
-          scoremid:=scoremid-RxPMid;
-          scoreend:=scoreend-RxPEnd;
-        end;
-       if (AttBB and (Board.Pieses[WhiteKnight] or Board.Pieses[WhiteBishop]) and (not WPAttacks))<>0 then
-        begin
-          scoremid:=scoremid-RxBNMid;
-          scoreend:=scoreend-RxBNEnd;
-        end;
-        if (AttBB and Board.Pieses[WhiteQueen])<>0 then
-        begin
-          scoremid:=scoremid-RxQMid;
-          scoreend:=scoreend-RxQEnd;
-          inc(BGoodAtt);
-        end;
-
+      // форпосты
+       if ((OnlyR00[sq] and BlackOutPost)<>0) and ((PawnIsoMaskBB[sq] and Bforward[sq] and Board.Pieses[WhitePawn])=0) then
+         begin
+           if (OnlyR00[sq] and BPAttacks)<>0 then
+             begin
+               scoremid:=scoremid-RookOutPostMid;
+               scoreend:=scoreend-RookOutPostEnd;
+               if (AttBB and (WkingZone or Bdyn) and RanksBB[y])<>0 then
+                 begin
+                   scoremid:=scoremid-RookOutPostStrongMid;
+                   scoreend:=scoreend-RookOutPostStrongEnd;
+                 end;
+             end;
+         end;
       BRAttacks:=BRAttacks or AttBB;
-      MobBB:=AttBB and BmobSpace;
-      idx:=BitCount(MobBB);
-      scoremid:=scoremid-RookMobMid*idx;
-      scoreend:=scoreend-RookMobEnd*idx;
-      if (FilesBB[x] and Board.Pieses[blackpawn])=0 then
+       if ((AttBB and WKingRing)<>0) then
         begin
-          if (FilesBB[x] and Board.Pieses[whitepawn])=0 then
-            begin
-              scoremid:=scoremid-RookOpenFileMid;
-              scoreend:=scoreend-RookOpenFileEnd;
-              dif:=Abs(x-Posx[wking]);
-              if (wking<sq) and  ((MatTable[indexmat].flag and DoWkingSafety)<>0) then
+          Btropism:=Btropism+RookTropism;
+          if ((AttBB and WKingZone)<>0) then  inc(BPSaf);
+        end;
+      if ((AttBB and BkingZone)<>0) then
+       begin
+        scoremid:=scoremid-RGuardMid;
+        scoremid:=scoremid-RGuardEnd;
+       end;
+      // динамика
+      if (OnlyR00[sq] and WPAttacks)<>0 then
+       begin
+         scoremid:=scoremid+PAttRMid;
+         scoreend:=scoreend+PAttREnd;
+         inc(Wfork);
+       end;
+
+       if (AttBB and (not WPAttacks) and Board.Pieses[WhitePawn])<>0 then
+        begin
+          scoremid:=scoremid-RAttPMid;
+          scoreend:=scoreend-RAttPEnd;
+        end;
+        if (AttBB and (not WPAttacks) and (Board.Pieses[WhiteKnight] or Board.Pieses[WhiteBishop]))<>0 then
+        begin
+          scoremid:=scoremid-RAttMMid;
+          scoreend:=scoreend-RAttMEnd;
+        end;
+        if ((AttBB  and Board.Pieses[WhiteQueen])<>0) then
+        begin
+          scoremid:=scoremid-RAttQMid;
+          scoreend:=scoreend-RAttQEnd;
+          inc(bfork);
+        end;
+     // подвижность
+      MobBB:=AttBB and BMobSpace;
+      idx:=BitCount(MobBB);
+      scoremid:=scoremid-RookMobMid[idx];
+      scoreend:=scoreend-RookMobEnd[idx];
+
+      if (PawnOpenFileMaskBB[black,sq] and Board.Pieses[blackpawn])=0 then
+        begin
+          scoremid:=scoremid-RookHalfFileMid;
+          scoreend:=scoreend-RookHalfFileEnd;
+          if (Wkingzone and PawnOpenFileMaskBB[black,sq])<>0 then
                begin
-                scoremid:=scoremid-RookKing[dif];
+                 scoremid:=scoremid-RookLook;
+               end;
+          if (PawnOpenFileMaskBB[black,sq] and Board.Pieses[whitepawn])=0 then
+            begin
+             temp1:=WgoodMinor and PawnOpenFileMaskBB[black,sq];
+             if temp1=0 then
+               begin
+                scoremid:=scoremid-RookOpenFileMid;
+                scoreend:=scoreend-RookOpenFileEnd;
+               end else
+               begin
+                 sq1:=BitScanBackward(temp1);
+                 if ((PawnIsoMaskBB[sq1] and Wforward[sq1] and Board.Pieses[BlackPawn])=0)
+                   then begin
+                     scoremid:=scoremid-RookOpenFixedMid;
+                     scoreend:=scoreend-RookOpenFixedEnd;
+                   end else
+                   begin
+                     scoremid:=scoremid-RookOpenMinorMid;
+                     scoreend:=scoreend-RookOpenMinorEnd;
+                   end;
                end;
             end else
             begin
-              scoremid:=scoremid-RookHalfFileMid;
-              scoreend:=scoreend-RookHalfFileEnd;
-            end;
+              temp1:=Board.Pieses[WhitePawn] and PawnOpenFileMaskBB[black,sq];
+              if temp1<>0 then
+               begin
+                 sq1:=BitScanBackward(temp1);
+                 if ((PawnIsoMaskBB[sq1] and Bforward[sq1] and Board.Pieses[WhitePawn])=0)
+                   then begin
+                     scoremid:=scoremid-RookHalfOpenPawnMid;
+                     scoreend:=scoreend-RookHalfOpenPawnEnd;
+                   end
+               end;
+            end
         end else if  (idx<6) and ((posy[bking]=8) or (posy[bking]=y))  then
             begin
               trap:=0;
@@ -630,140 +946,223 @@ begin
               scoreend:=scoreend+trap;
             end;
 
-      if (y<=2) and ((Posy[wking]<=y) or ((AttBB and RanksBB[y] and Board.Pieses[whitepawn])<>0)) then
+      if (y=1) and ((Posy[wking]=1))  then
         begin
-          scoremid:=scoremid-RookOn78Mid;
-          scoreend:=scoreend-RookOn78end;
+          scoremid:=scoremid-Rookon8Mid;
+          scoreend:=scoreend-RookOn8End;
         end;
-      temp:=temp and NotOnlyR00[sq];
+      if (y=2) and ((Posy[wking]<=2) or ((RanksBB[2] and Board.Pieses[whitepawn])<>0)) then
+        begin
+          scoremid:=scoremid-RookOn7Mid;
+          scoreend:=scoreend-RookOn7end;
+          if ((AttBB and RanksBB[2] and (Board.Pieses[BlackRook] or Board.Pieses[BlackQueen]))<>0) and (posy[wking]=1) then
+              begin
+                scoremid:=scoremid-DoubleRook7Mid;
+                scoreend:=scoreend-DoubleRook7End;
+              end;
+        end;
+      if (y=3) and ((Posy[wking]<=3) or (((RanksBB[2] or RanksBB[3])and Board.Pieses[whitepawn])<>0)) then
+        begin
+          scoremid:=scoremid-RookOn6Mid;
+          scoreend:=scoreend-RookOn6end;
+        end;
     end;
+  WmobSpace:=not(Board.CPieses[white] or BPAttacks or BNAttacks or BBAttacks or BRAttacks);
+  BmobSpace:=not(Board.CPieses[black] or WPAttacks or WNAttacks or WBAttacks or WRAttacks);
    // ферзи
   temp:=Board.Pieses[whitequeen];
   while temp<>0 do
     begin
       sq:=BitScanForward(temp);
       y:=posy[sq];
+      temp:=temp and NotOnlyR00[sq];
       scoremid:=scoremid+WQSQ[sq];
       scoreend:=scoreend+WQESQ[sq];
       AttBB:=QueenMovesBB(sq,Board);
-      if ((AttBB and BkingZone)<>0) then
-        begin
-          inc(WPSaf);
-          Wtropism:=Wtropism+QueenTropism;
-        end;
-      // динамика
-      if ((OnlyR00[sq] and BPAttacks)<>0) then
-        begin
-          inc(BgoodAtt);
-          scoremid:=scoremid-PxQMid;
-          scoreend:=scoreend-PxQEnd;
-        end;
-      if (AttBB and Board.CPieses[Black] and (not BPAttacks))<>0 then
-        begin
-          scoremid:=scoremid+QxMid;
-          scoreend:=scoreend+QxEnd;
-        end;
-
       WQAttacks:=WQAttacks or AttBB;
+      if ((AttBB and BKingRing)<>0) then
+        begin
+          Wtropism:=Wtropism+QueenTropism;
+          if ((AttBB and BKingZone)<>0) then inc(WPSaf);
+        end ;
+
+      if ((AttBB and WkingZone)<>0) then
+        begin
+         scoremid:=scoremid+QGuardMid;
+         scoreend:=scoreend+QGuardEnd;
+        end;
+      if (OnlyR00[sq] and BPAttacks)<>0 then
+       begin
+         inc(Bfork);
+         scoremid:=scoremid-PAttQMid;
+         scoreend:=scoreend-PAttQEnd;
+       end;
+      // динамика
+       if (AttBB and Wdyn)<>0 then
+        begin
+          scoremid:=scoremid+QDynMid;
+          scoreend:=scoreend+QDynEnd;
+        end;
+     if y=7 then
+       begin
+         if ((Board.Pieses[BlackPawn] or OnlyR00[bking]) and Ranks78)<>0 then
+           begin
+             scoremid:=scoremid+Queenon7Mid;
+             scoreend:=scoreend+Queenon7End;
+             if ((AttBB and RanksBB[7] and Board.Pieses[WhiteRook])<>0) and (posy[bking]=8) then
+              begin
+                scoremid:=scoremid+QueenRook7Mid;
+                scoreend:=scoreend+QueenRook7End;
+              end;
+           end;
+       end;
+     // подвижность
       MobBB:=AttBB and WmobSpace;
       idx:=BitCount(MobBB);
-      scoremid:=scoremid+idx*QueenMobMid;
-      scoreend:=scoreend+idx*QueenMobEnd;
-      if (y>=7) and ((Posy[bking]>=y) or ((AttBB and RanksBB[y] and Board.Pieses[blackpawn])<>0)) then
-        begin
-          scoremid:=scoremid+QueenOn78Mid;
-          scoreend:=scoreend+QueenOn78end;
-        end;
-      temp:=temp and NotOnlyR00[sq];
+      scoremid:=scoremid+2*idx;
+      scoreend:=scoreend+2*idx;
     end;
   temp:=Board.Pieses[blackqueen];
   while temp<>0 do
     begin
       sq:=BitScanForward(temp);
-       y:=posy[sq];
+      y:=posy[sq];
+      temp:=temp and NotOnlyR00[sq];
       scoremid:=scoremid-WQSQ[63-sq];
       scoreend:=scoreend-WQESQ[63-sq];
       AttBB:=QueenMovesBB(sq,Board);
-      if  ((AttBB and WKingZone)<>0) then
-        begin
-          inc(BPSaf);
-          Btropism:=Btropism+QueenTropism;
-        end;
-      // динамика
-      if ((OnlyR00[sq] and WPAttacks)<>0) then
-        begin
-          inc(WgoodAtt);
-          scoremid:=scoremid+PxQMid;
-          scoreend:=scoreend+PxQEnd;
-        end;
-      if (AttBB and Board.CPieses[white] and (not WPAttacks))<>0 then
-        begin
-          scoremid:=scoremid-QxMid;
-          scoreend:=scoreend-QxEnd;
-        end;
-
       BQAttacks:=BQAttacks or AttBB;
+      if ((AttBB and WKingRing)<>0) then
+        begin
+          Btropism:=Btropism+QueenTropism;
+          if ((AttBB and WKingZone)<>0) then inc(BPSaf);
+        end ;
+
+      if ((AttBB and BkingZone)<>0) then
+       begin
+        scoremid:=scoremid-QGuardMid;
+        scoreend:=scoreend-QGuardEnd;
+       end;
+      if (OnlyR00[sq] and WPAttacks)<>0 then
+       begin
+         inc(Wfork);
+         scoremid:=scoremid+PAttQMid;
+         scoreend:=scoreend+PAttQEnd;
+       end;
+      // динамика
+      if (AttBB and Bdyn)<>0 then
+        begin
+          scoremid:=scoremid-QDynMid;
+          scoreend:=scoreend-QDynEnd;
+        end;
+      if y=2 then
+       begin
+         if ((Board.Pieses[WhitePawn] or OnlyR00[wking]) and Ranks12)<>0 then
+           begin
+             scoremid:=scoremid-Queenon7Mid;
+             scoreend:=scoreend-Queenon7End;
+             if ((AttBB and RanksBB[2] and Board.Pieses[BlackRook])<>0) and (posy[wking]=1) then
+              begin
+                scoremid:=scoremid-QueenRook7Mid;
+                scoreend:=scoreend-QueenRook7End;
+              end;
+           end;
+       end;
+     // подвижность
       MobBB:=AttBB and BmobSpace;
       idx:=BitCount(MobBB);
-      scoremid:=scoremid-idx*QueenMobMid;
-      scoreend:=scoreend-idx*QueenMobEnd;
-      if (y<=2) and ((Posy[wking]<=y) or ((AttBB and RanksBB[y] and Board.Pieses[whitepawn])<>0)) then
-        begin
-          scoremid:=scoremid-QueenOn78Mid;
-          scoreend:=scoreend-QueenOn78end;
-        end;
-      temp:=temp and NotOnlyR00[sq];
+      scoremid:=scoremid-2*idx;
+      scoreend:=scoreend-2*idx;
     end;
-  if WgoodAtt>1 then
+  if wfork>1 then
     begin
-      scoremid:=scoremid+ForkMid;
-      scoreend:=scoreend+ForkMid;
+      scoremid:=scoremid+ForkScaleMid;
+      scoreend:=scoreend+ForkScaleEnd;
     end;
-  if BgoodAtt>1 then
+  if bfork>1 then
     begin
-      scoremid:=scoremid-ForkMid;
-      scoreend:=scoreend-ForkMid;
+      scoremid:=scoremid-ForkScaleMid;
+      scoreend:=scoreend-ForkScaleEnd;
     end;
-  
+
   WALLAttacks:=WPAttacks or WNAttacks or WBAttacks or WRAttacks or WQAttacks or WKAttacks;
   BALLAttacks:=BPAttacks or BNAttacks or BBAttacks or BRAttacks or BQAttacks or BKAttacks;
+
+
+
   if (WkingZone and BkingZone)<>0 then
     begin
       inc(WPSaf);
       inc(BPsaf);
     end;
-  if (Wtropism>0)  and (WPSaf>1)  then
+
+  saf:=(((Wtropism)*KPSafety[WPSaf]) div 8);
+  if Board.Pieses[WhiteQueen]=0 then
     begin
-      saf:=Wtropism*KPSafety[WPSaf] div 8;
-      if (Board.Pieses[whitequeen]=0) then saf:=saf div 2;
-      scoremid:=scoremid+saf;
+      temp:=Board.Pieses[WhiteKnight] or Board.Pieses[WhiteBishop] or Board.Pieses[WhiteRook];
+      saf:=(saf*BitCount(temp)) div 8;
     end;
-  if (Btropism>0)  and (BPSaf>1)  then
+  saf:=saf+bshelter;
+  scoremid:=scoremid+saf;
+  if saf>dangereval then dangereval:=saf;
+
+  saf:=(((Btropism)*KPSafety[BPSaf]) div 8);
+  if Board.Pieses[BlackQueen]=0 then
     begin
-      saf:=Btropism*KPSafety[BPSaf] div 8;
-      if (Board.Pieses[blackqueen]=0) then saf:=saf div 2;
-      scoremid:=scoremid-saf;
+      temp:=Board.Pieses[BlackKnight] or Board.Pieses[BlackBishop] or Board.Pieses[BlackRook];
+      saf:=(saf*BitCount(temp)) div 8;
     end;
- 
-  if PawnTable[indexpawn].PasserBB<>0 then EvalPasser(Board,scoremid,scoreend,PawnTable[indexpawn].PasserBB,WAllAttacks,BAllAttacks,indexmat);
-  scoremid:=scoremid+WKBSQ[Board.KingSq[white]]-WKBSQ[63-Board.KingSq[black]];
+  saf:=saf+wshelter;
+  scoremid:=scoremid-saf;
+  if saf>dangereval then dangereval:=saf;
+  if dangereval>255 then dangereval:=255;
+
+  scoremid:=scoremid-WKBSQ[63-Board.KingSq[black]]+WKBSQ[Board.KingSq[white]];
+  // Эндшпильная оценка короля
   scoreend:=scoreend+WKESQ[Board.KingSq[white]]-WKESQ[63-Board.KingSq[black]];
-  if Board.Color=white then
+  temp:=KingAttacksBB[wking] and Board.Pieses[BlackPawn] and (not BPAttacks);
+
+  if temp<>0 then scoreend:=scoreend+BitCount(temp)*ActiveKing;
+  temp:=KingAttacksBB[bking] and Board.Pieses[WhitePawn] and (not WPAttacks);
+  if temp<>0 then scoreend:=scoreend-BitCount(temp)*ActiveKing;
+
+  temp:=(Board.Pieses[blackknight] or Board.Pieses[blackbishop]) and (not BAllAttacks);
+  if temp<>0 then
     begin
-      scoremid:=scoremid+SideToMoveBonusMid;
-      scoreend:=scoreend+SideToMoveBonusEnd;
+      scoremid:=scoremid+MinorsUndefendedMid;
+      scoreend:=scoreend+MinorsUndefendedEnd;
+    end;
+  temp:=(Board.Pieses[whiteknight] or Board.Pieses[whitebishop]) and (not WAllAttacks);
+  if temp<>0 then
+    begin
+      scoremid:=scoremid-MinorsUndefendedMid;
+      scoreend:=scoreend-MinorsUndefendedEnd;
+    end;
+
+  if PawnTable[indexpawn].PasserBB<>0 then EvalPasser(Board,scoremid,scoreend,PawnTable[indexpawn].PasserBB,WAllAttacks,BAllAttacks,indexmat);
+ex:
+   if Board.color=white then
+    begin
+      scoremid:=scoremid+TempoMid;
+      scoreend:=scoreend+TempoEnd;
     end else
     begin
-      scoremid:=scoremid-SideToMoveBonusMid;
-      scoreend:=scoreend-SideToMoveBonusEnd;
+      scoremid:=scoremid-TempoMid;
+      scoreend:=scoreend-TempoEnd;
     end;
-ex:
-  score:=(scoremid*Mattable[indexmat].phase+(24-Mattable[indexmat].phase)*scoreend) div 24;
-  if (score>0) and (MatTable[indexmat].Wmul<>16) then score:=(score*MatTable[indexmat].Wmul) div 16 else
-  if (score<0) and (MatTable[indexmat].Bmul<>16) then score:=(score*MatTable[indexmat].Bmul) div 16;
+  score:=(scoremid*Mattable[indexmat].phase+(32-Mattable[indexmat].phase)*scoreend) div 32;
+
+  if (score>0) and (MatTable[indexmat].Wmul<>10) then score:=(score*MatTable[indexmat].Wmul) div 10 else
+  if (score<0) and (MatTable[indexmat].Bmul<>10) then score:=(score*MatTable[indexmat].Bmul) div 10;
+   // Разнопольные слоны
+ if (MatTable[indexmat].flag and DifColorBishopFlag)<>0 then
+   begin
+     if (((Board.Pieses[WhiteBishop] and light)<>0) and ((Board.Pieses[BlackBishop] and dark)<>0)) or
+        (((Board.Pieses[WhiteBishop] and dark)<>0) and ((Board.Pieses[BlackBishop] and light)<>0)) then score:=score div 2;
+   end;
+
   if Board.Color=black then score:=-score;
   Result:=score;
 end;
-
 
 end.
