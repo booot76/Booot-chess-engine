@@ -1,0 +1,49 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<BorlandProject>
+	<Transactions>
+    <Transaction>1899.12.30 00:00:00.000.488,C:\Users\amorozov\Documents\Embarcadero\Studio\Projects\booot6\Unit1.pas=C:\Users\amorozov\Documents\Embarcadero\Studio\Projects\booot6\uSearch.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.923,C:\Users\amorozov\Documents\Embarcadero\Studio\Projects\booot6\Unit1.pas=C:\Users\amorozov\Documents\Embarcadero\Studio\Projects\booot6\uSort.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.187,=C:\Users\amorozov\Documents\Embarcadero\Studio\Projects\booot6\Unit1.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.790,=C:\Users\amorozov\Documents\Embarcadero\Studio\Projects\booot6\Unit1.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.993,C:\Users\amorozov\Documents\Embarcadero\Studio\Projects\booot6\Unit1.pas=C:\Users\amorozov\Documents\Embarcadero\Studio\Projects\booot6\uMaterial.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.872,=C:\Users\amorozov\Documents\Embarcadero\Studio\Projects\booot6\Unit1.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.016,=C:\Users\amorozov\Documents\Embarcadero\Studio\Projects\booot6\Unit1.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.299,C:\Users\amorozov\Documents\Embarcadero\Studio\Projects\booot6\uPawn.pas=C:\Users\amorozov\Documents\Embarcadero\Studio\Projects\booot6\Unit1.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.725,C:\Users\amorozov\Documents\Embarcadero\Studio\Projects\booot6\uEval.pas=C:\Users\amorozov\Documents\Embarcadero\Studio\Projects\booot6\Unit1.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.045,=C:\Users\amorozov\Documents\Embarcadero\Studio\Projects\booot6\uKPK.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.100,C:\Users\amorozov\Documents\Embarcadero\Studio\Projects\booot6\uMagic.pas=C:\Users\amorozov\Documents\Embarcadero\Studio\Projects\booot6\Unit1.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.748,=C:\Users\amorozov\Documents\Embarcadero\Studio\Projects\booot6\Unit1.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.788,=C:\Users\amorozov\Documents\Embarcadero\Studio\Projects\booot6\Unit1.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.561,C:\Users\amorozov\Documents\Embarcadero\Studio\Projects\booot6\uBitBoards.pas=C:\Users\amorozov\Documents\Embarcadero\Studio\Projects\booot6\Unit1.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.270,C:\Users\amorozov\Documents\Embarcadero\Studio\Projects\booot6\booot6.dproj=C:\Users\amorozov\Documents\Embarcadero\Studio\Projects\Project1.dproj</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.358,=C:\Users\amorozov\Documents\Embarcadero\Studio\Projects\booot6\Unit1.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.352,=C:\Users\amorozov\Documents\Embarcadero\Studio\Projects\booot6\Unit1.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.500,C:\Users\amorozov\Documents\Embarcadero\Studio\Projects\booot6\uBoard.pas=C:\Users\amorozov\Documents\Embarcadero\Studio\Projects\booot6\Unit1.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.989,C:\Users\amorozov\Documents\Embarcadero\Studio\Projects\booot6\Unit2.pas=C:\Users\amorozov\Documents\Embarcadero\Studio\Projects\booot6\uThread.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.521,=C:\Users\amorozov\Documents\Embarcadero\Studio\Projects\booot6\Unit2.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.490,C:\Users\amorozov\Documents\Embarcadero\Studio\Projects\booot6\uAttacks.pas=C:\Users\amorozov\Documents\Embarcadero\Studio\Projects\booot6\Unit1.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.739,C:\Users\amorozov\Documents\Embarcadero\Studio\Projects\booot6\Unit1.pas=C:\Users\amorozov\Documents\Embarcadero\Studio\Projects\booot6\uHash.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.752,=C:\Users\amorozov\Documents\Embarcadero\Studio\Projects\booot6\Unit1.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.795,C:\Users\amorozov\Documents\Embarcadero\Studio\Projects\booot6\Unit1.pas=C:\Users\amorozov\Documents\Embarcadero\Studio\Projects\booot6\uEndgame.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.692,C:\Users\amorozov\Documents\Embarcadero\Studio\Projects\booot6\Unit1.pas=C:\Users\amorozov\Documents\Embarcadero\Studio\Projects\booot6\uUci.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.758,=C:\Users\amorozov\Documents\Embarcadero\Studio\Projects\booot6\Unit1.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.353,=C:\Users\amorozov\Documents\Embarcadero\Studio\Projects\booot6\Unit1.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.285,=C:\Users\amorozov\Documents\Embarcadero\Studio\Projects\booot6\Unit1.pas</Transaction>
+  </Transactions>
+	<ProjectSortOrder AutoSort="0" SortType="0">
+    <File Path="uAttacks.pas"/>
+    <File Path="uBitBoards.pas"/>
+    <File Path="uBoard.pas"/>
+    <File Path="uMagic.pas"/>
+    <File Path="uHash.pas"/>
+    <File Path="uMaterial.pas"/>
+    <File Path="uEndgame.pas"/>
+    <File Path="uPawn.pas"/>
+    <File Path="uEval.pas"/>
+    <File Path="uThread.pas"/>
+    <File Path="uSearch.pas"/>
+    <File Path="uSort.pas"/>
+    <File Path="uUci.pas"/>
+    <File Path="uKPK.pas"/>
+  </ProjectSortOrder>
+</BorlandProject>
