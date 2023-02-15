@@ -79,7 +79,6 @@
         <VerInfo_Locale>1033</VerInfo_Locale>
         <DCC_Namespace>Winapi;System.Win;Data.Win;Datasnap.Win;Web.Win;Soap.Win;Xml.Win;$(DCC_Namespace)</DCC_Namespace>
         <VerInfo_Keys>CompanyName=;FileDescription=;FileVersion=1.0.0.0;InternalName=;LegalCopyright=;LegalTrademarks=;OriginalFilename=;ProductName=;ProductVersion=1.0.0.0;Comments=</VerInfo_Keys>
-        <DCC_ConsoleTarget>true</DCC_ConsoleTarget>
         <DCC_UsePackage>IndyIPClient;FireDACASADriver;FireDACTDataDriver;FireDACSqliteDriver;bindcompfmx;FireDACDSDriver;DBXSqliteDriver;FireDACPgDriver;FireDACODBCDriver;RESTBackendComponents;fmx;emsclientfiredac;rtl;dbrtl;DbxClientDriver;IndySystem;FireDACCommon;bindcomp;inetdb;tethering;DBXInterBaseDriver;DataSnapClient;DataSnapServer;DataSnapCommon;DBXOdbcDriver;vclFireDAC;DataSnapProviderClient;xmlrtl;DataSnapNativeClient;DBXSybaseASEDriver;DbxCommonDriver;vclimg;IndyProtocols;dbxcds;DBXMySQLDriver;DatasnapConnectorsFreePascal;FireDACCommonDriver;appanalytics;bindcompdbx;soaprtl;bindengine;vclactnband;vcldb;vcldsnap;bindcompvcl;vclie;fmxFireDAC;FireDACADSDriver;vcltouch;DBXDb2Driver;DBXOracleDriver;CustomIPTransport;emsclient;vclribbon;VclSmp;FireDAC;dsnap;DBXInformixDriver;FireDACMSSQLDriver;fmxase;vcl;DataSnapConnectors;IndyCore;DataSnapServerMidas;DBXMSSQLDriver;IndyIPCommon;IndyIPServer;dsnapcon;FireDACIBDriver;DBXFirebirdDriver;inet;VCLRESTComponents;DataSnapFireDAC;fmxobj;CloudService;FireDACDBXDriver;FireDACMySQLDriver;soapmidas;vclx;soapserver;inetdbxpress;DBXSybaseASADriver;dsnapxml;FireDACOracleDriver;FireDACInfxDriver;FireDACDb2Driver;fmxdae;RESTComponents;FireDACMSAccDriver;dbexpress;DataSnapIndy10ServerTransport;adortl;$(DCC_UsePackage)</DCC_UsePackage>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Cfg_1)'!=''">
@@ -110,6 +109,9 @@
         <DCC_RemoteDebug>false</DCC_RemoteDebug>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Cfg_1_Win64)'!=''">
+        <DCC_RangeChecking>false</DCC_RangeChecking>
+        <DCC_MaxStackSize>16777216</DCC_MaxStackSize>
+        <DCC_ConsoleTarget>true</DCC_ConsoleTarget>
         <DCC_StrictVarStrings>false</DCC_StrictVarStrings>
         <DCC_Optimize>true</DCC_Optimize>
         <DCC_IMPLICIT_STRING_CAST>false</DCC_IMPLICIT_STRING_CAST>
@@ -117,7 +119,6 @@
         <DCC_Alignment>1</DCC_Alignment>
         <DCC_BOUNDS_ERROR>false</DCC_BOUNDS_ERROR>
         <DCC_IntegerOverflowCheck>false</DCC_IntegerOverflowCheck>
-        <DCC_RangeChecking>false</DCC_RangeChecking>
         <DCC_OpenStringParams>false</DCC_OpenStringParams>
         <Manifest_File>None</Manifest_File>
         <VerInfo_Locale>1033</VerInfo_Locale>
@@ -144,9 +145,11 @@
         <Manifest_File>None</Manifest_File>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Cfg_2_Win64)'!=''">
+        <DCC_MinStackSize>1048576</DCC_MinStackSize>
+        <DCC_StrictVarStrings>false</DCC_StrictVarStrings>
+        <DCC_ConsoleTarget>true</DCC_ConsoleTarget>
         <DCC_Alignment>0</DCC_Alignment>
         <DCC_MaxStackSize>4194304</DCC_MaxStackSize>
-        <DCC_StrictVarStrings>false</DCC_StrictVarStrings>
         <DCC_EXPLICIT_STRING_CAST>true</DCC_EXPLICIT_STRING_CAST>
         <DCC_EXPLICIT_STRING_CAST_LOSS>true</DCC_EXPLICIT_STRING_CAST_LOSS>
         <DCC_IMPLICIT_STRING_CAST>false</DCC_IMPLICIT_STRING_CAST>
@@ -226,14 +229,14 @@
                         <Overwrite>true</Overwrite>
                     </Platform>
                 </DeployFile>
-                <DeployFile LocalName="Win64\Release\booot6.exe" Configuration="Release" Class="ProjectOutput">
-                    <Platform Name="Win64">
-                        <RemoteName>booot6.exe</RemoteName>
+                <DeployFile LocalName="$(BDS)\Redist\iossimulator\libcgunwind.1.0.dylib" Class="DependencyModule">
+                    <Platform Name="iOSSimulator">
                         <Overwrite>true</Overwrite>
                     </Platform>
                 </DeployFile>
-                <DeployFile LocalName="$(BDS)\Redist\iossimulator\libcgunwind.1.0.dylib" Class="DependencyModule">
-                    <Platform Name="iOSSimulator">
+                <DeployFile LocalName="Win64\Release\booot6.exe" Configuration="Release" Class="ProjectOutput">
+                    <Platform Name="Win64">
+                        <RemoteName>booot6.exe</RemoteName>
                         <Overwrite>true</Overwrite>
                     </Platform>
                 </DeployFile>
@@ -613,13 +616,13 @@
                         <Operation>1</Operation>
                     </Platform>
                 </DeployClass>
-                <ProjectRoot Platform="iOSDevice32" Name="$(PROJECTNAME).app"/>
+                <ProjectRoot Platform="OSX32" Name="$(PROJECTNAME).app"/>
                 <ProjectRoot Platform="Android" Name="$(PROJECTNAME)"/>
                 <ProjectRoot Platform="Win32" Name="$(PROJECTNAME)"/>
                 <ProjectRoot Platform="iOSDevice64" Name="$(PROJECTNAME).app"/>
-                <ProjectRoot Platform="OSX32" Name="$(PROJECTNAME).app"/>
-                <ProjectRoot Platform="iOSSimulator" Name="$(PROJECTNAME).app"/>
                 <ProjectRoot Platform="Win64" Name="$(PROJECTNAME)"/>
+                <ProjectRoot Platform="iOSSimulator" Name="$(PROJECTNAME).app"/>
+                <ProjectRoot Platform="iOSDevice32" Name="$(PROJECTNAME).app"/>
             </Deployment>
             <Platforms>
                 <Platform value="Win32">True</Platform>
