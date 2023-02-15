@@ -60,7 +60,7 @@ begin
   MatTableSize:=(MatTableSize * 1024 * 1024) div (32*16); {берем 1/32 долю хеша. Размер ячейки берем 16}
   MatTableMask:=MatTableSize-1;
   SetLength(MatTable,0);
-  SetLength(MatTable,MatTableMask);
+  SetLength(MatTable,MatTableSize);
   for i:=0 to MatTableMask do
     begin
       MatTable[i].MatKey:=0;

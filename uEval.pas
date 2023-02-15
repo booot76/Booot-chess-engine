@@ -206,7 +206,7 @@ begin
   EvalTableSize:=(EvalTableSize * 1024 * 1024) div (16*8); {Берем 1/16 от общего количества памяти под хеш. Принимаем размер ячейки за 8 (на самом деле 10) Оставляем 1/16 на пешечный и материальный хеш}
   EvalTableMask:=EvalTableSize-1;
   SetLength(EvalTable,0);
-  SetLength(EvalTable,EvalTableMask);
+  SetLength(EvalTable,EvalTableSize);
   for i:=0 to EvalTableMask do
     begin
       EvalTable[i].Key:=0;

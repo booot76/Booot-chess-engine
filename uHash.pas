@@ -1,7 +1,7 @@
 unit uHash;
 
 interface
-uses uBoard,uBitBoards,uAttacks,uMagic,SysUtils;
+uses uBoard,uBitBoards,uAttacks,uMagic,Ansistrings;
 Type
   TEntry = record
              Key        : int64;
@@ -100,7 +100,7 @@ Function HashProbe(var Board:TBoard;Key : int64):int64; inline;
 Procedure HashStore(Key:int64;var Board:TBoard;value:integer;depth:integer;typ:integer;move:integer); inline;
 Function ValueToTT(value:integer;ply:integer):integer;inline;
 Function ValueFromTT(value:integer;ply:integer):integer;inline;
-Procedure PV2Hash(var Board:Tboard;mlist:string);
+Function FindPonder(RootMove:integer;var Board:TBoard):integer;
 
 implementation
 uses usearch,uUci;
@@ -114,7 +114,7 @@ begin
   TTSize:=(TTSize * 1024 * 1024) div 16;//  ячейка весит 14 байт, но принимаем ее за 16. ќстаетс€ 2/16 дл€ остальных хешей!
   TTMask:=(TTSize div EntrySize)-1;
   SetLength(TT,0);
-  SetLength(TT,TTSize-1);
+  SetLength(TT,TTSize);
   ClearHash;
 end;
 Procedure ClearHash;
@@ -258,34 +258,31 @@ begin
   HashSave(rep,key,value,depth,typ,move);
 end;
 
-Procedure PV2Hash(var Board:Tboard;mlist:string);
+Function FindPonder(RootMove:integer;var Board:TBoard):integer;
 var
-  v               : integer;
-  smove           : ansistring;
-  move            :integer;
-  CheckInfo       :TCheckInfo;
+  CheckInfo,CheckInfo1 :TCheckInfo;
   isCheck         : boolean;
   Undo            : TUndo;
   HashIndex       : int64;
+  Ponder          : integer;
 begin
-  mlist := trim(mlist) + ' ';
-  repeat
-    v := pos(' ',mlist);
-    smove:= trim(copy(mlist,1,v));
-    if smove<>'' then
-      begin
-        move:=StrTomove(smove,Board);
-        FillCheckInfo(CheckInfo,Board);
-        SetUndo(Board,Undo);
-        isCheck:=isMoveCheck(move,CheckInfo,Board);
-        if not isLegal(move,CheckInfo.Pinned,Board) then exit;
-        HashIndex:=HAshProbe(Board,Board.Key);
-        if (HashIndex<0) or (TT[HashIndex].move<>move) then HashStore(Board.Key,Board,-infinite,0,0,move);
-        MakeMove(move,Board,Undo,isCheck);
-      end;
-    delete(mlist,1,v);
-  until length(mlist) < 4;
+  Ponder:=0;
+  FillCheckInfo(CheckInfo,Board);
+  SetUndo(Board,Undo);
+  isCheck:=isMoveCheck(Rootmove,CheckInfo,Board);
+  MakeMove(Rootmove,Board,Undo,isCheck);
+  HashIndex:=HAshProbe(Board,Board.Key);
+  If HashIndex>=0 then
+    begin
+      Ponder:=TT[HashIndex].move;
+      If Ponder<>0 then
+        begin
+         FillCheckInfo(CheckInfo1,Board);
+         if (not isLegal(Ponder,CheckInfo1.Pinned,Board)) then Ponder:=0;
+        end;
+    end;
+  UnMakeMove(RootMove,Board,Undo);
+  Result:=Ponder;
 end;
-
 
 end.

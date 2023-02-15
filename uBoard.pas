@@ -1469,6 +1469,8 @@ begin
   NewBoard.PstMid:=Board.PstMid;
   NewBoard.PstEnd:=Board.PstEnd;
   NewBoard.nullcnt:=Board.nullcnt;
+  NewBoard.Nodes:=Board.Nodes;
+  NewBoard.remain:=Board.remain;
   For i:=Pawn to Queen do
     NewBoard.Pieses[i]:=Board.Pieses[i];
   for i:=white to black do

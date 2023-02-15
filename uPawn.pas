@@ -80,13 +80,13 @@ implementation
 Procedure InitPawnTable(SizeMB:integer);
 // На входе - ОБЩЕЕ количество мегабайт кеша, полученного от оболочки
 var
-   i,PawnTableSize : int64;
+   PawnTableSize,i : int64;
 begin
   PawnTableSize:=SizeMb;
   PawnTableSize:=(PawnTableSize * 1024 * 1024) div (32*32);  {1/32 доля хеша. Размер ячейки берем 32 }
   PawnTableMask:=PawnTableSize-1;
   SetLength(PawnTable,0);
-  SetLength(PawnTable,PawnTableMask);
+  SetLength(PawnTable,PawnTableSize);
   for i:=0 to PawnTableMask do
     begin
       PawnTable[i].PawnKey:=0;
