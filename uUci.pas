@@ -7,9 +7,8 @@ Const
      StartPositionFen='rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
 VAR
-   stin,stout : int64;
+   stin,stout : cardinal;
    isConsole:boolean;
-
 
 Procedure MainLoop;
 procedure LWrite(s:ansistring);
@@ -32,7 +31,6 @@ begin
      SetConsoleMode(stin,mode);
      FlushConsoleInputBuffer(stin);
     end;
-
 end;
 
 procedure WriteData(pbuff:pointer; n:integer);
@@ -71,7 +69,7 @@ begin
   if bytesread >= MaxBufer then result := MaxBufer;
 end;
 
-function ReadInput(total:integer):string;
+function ReadInput(total:integer):ansistring;
 var
  n: cardinal;
  Inp: array[0..MaxBufer-1] of ansichar;
@@ -147,7 +145,7 @@ begin
    end;
  result:=res;
 end;
-Procedure ForceMoves(var Board:Tboard; var Tree:TTree;mlist:string);
+Procedure ForceMoves(var Board:Tboard; var Tree:TTree;mlist:ansistring);
 var
   v               : integer;
   smove           : ansistring;
@@ -165,6 +163,7 @@ begin
     if smove<>'' then
       begin
         move:=StrTomove(smove,Board);
+        SetUndo(Board,Undo);
         FillCheckInfo(CheckInfo,Board);
         isCheck:=isMoveCheck(move,CheckInfo,Board);
         LastKey:=PrevKey;
@@ -176,7 +175,8 @@ begin
   Tree[-1].key:=LastKey;
   Tree[0].key:=PrevKey;
 end;
-function FindStringParam(from:string;what:string): string;
+
+function FindStringParam(from:ansistring;what:ansistring): string;
 var n: integer;
 begin
   result := '';
@@ -187,7 +187,7 @@ begin
   result := copy(from,1,pos(' ',from)-1);
 end;
 
-function GetParam(from:string;what:string): integer;
+function GetParam(from:ansistring;what:ansistring): integer;
 var
   temp:string;
 begin
@@ -214,7 +214,7 @@ begin
  {$ENDIF}
   Result:=HashSizes[i];
 end;
-Procedure Parser(s:string);
+Procedure Parser(s:ansistring);
 // Процедура коммуникации с оболочкой - получает и отправляет команды
 var
    n,wtime,btime,winc,binc,movestocontrol,val,clock,incr,movetime : integer;
@@ -298,6 +298,7 @@ begin
       Trees[1][0].key:=0;
       Trees[1][-1].key:=0;
       ForceMoves(Boards[1],Trees[1],mlist);
+     // PrintBoard(Boards[1]);
       Trees[1][1].key:=Boards[1].Key;
       exit;
      end;
@@ -388,7 +389,7 @@ begin
       end;
     s := ReadInput(n);
   // Получили команду на выход
-    if s='quit' then break;
+    if s='quit' then exit;
   // Разбираем полученную команду
    Parser(s);
   until false;
@@ -412,7 +413,7 @@ begin
       game.rezerv:=game.ponderrezerv;
       game.oldtime:=game.time;
       SetRemain;
-      Board.remain:=game.remain;
+      Board.remain:=0;
     end;
 end;
 Procedure WaitPonderhit;
