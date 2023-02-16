@@ -2,7 +2,7 @@ unit uBitBoards;
 
  // Все что связано с работой битбордов - тут.
 
-{$Define POPCNT}   // Удалить или заккоментировать если процессор не поддерживает  64-битную инструкцию popcnt! В
+//{$Define POPCNT}   // Удалить или заккоментировать если процессор не поддерживает  64-битную инструкцию popcnt! В
 
 interface
 
@@ -12,7 +12,7 @@ interface
   T256 = array[0..255] of integer;
 
  Const
-  VersionName='Booot 6.0.2';                    // Номер версии движка
+  VersionName='Booot 6.1';                    // Номер версии движка
 
   BitCountTable8 :T256 =                // Количество установленных в единицу битов в единичном байте от 0 до 255. Используется в системах где нет ассемблерной команды подсчета
    (0,1,1,2,1,2,2,3,1,2,2,3,2,3,3,4,
@@ -44,7 +44,7 @@ interface
   a7=48;b7=49;c7=50;d7=51;e7=52;f7=53;g7=54;h7=55;
   a8=56;b8=57;c8=58;d8=59;e8=60;f8=61;g8=62;h8=63;
   // Декодируем поля
-  DecodeSQ : array[a1..h8] of ansistring =
+  DecodeSQ : array[a1..h8] of shortstring =
   ('a1','b1','c1','d1','e1','f1','g1','h1',
    'a2','b2','c2','d2','e2','f2','g2','h2',
    'a3','b3','c3','d3','e3','f3','g3','h3',
@@ -142,7 +142,7 @@ $0002000000000000,$0005000000000000,$000A000000000000,$0014000000000000,$0028000
   pboard : array[0..99] of integer;
   W00Sq,W000SQ,B00SQ,B000SQ,DarkSquaresBB,LightSquaresBB,ABCBB,FGHBB : TBitBoard;
   InterSect,FullLine: array[a1..h8,a1..h8] of TBitBoard;
-  SquareDist : array[a1..h8,a1..h8] of byte;
+  SquareDist,FileDist : array[a1..h8,a1..h8] of byte;
   ForwardBB,PasserBB : array[white..black,a1..h8] of TBitBoard;
   IsolatedBB : array[a1..h8] of TBitBoard;
   OutPostBB : array[white..black] of TBitBoard;
@@ -299,6 +299,7 @@ function BitCount(BB:TBitBoard): Integer;
         if n>k
           then SquareDist[i,j]:=n
           else SquareDist[i,j]:=k;
+        FileDist[i,j]:=abs(x1-x2);
       end;
     // заполняем проверочную доску
      for i:=0 to 99 do

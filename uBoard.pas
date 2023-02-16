@@ -1,7 +1,7 @@
 unit uBoard;
 
 interface
-uses ubitboards,uMagic,uThread,SysUtils;
+uses ubitboards,uMagic,SysUtils;
 
 Const
   White=0;
@@ -75,7 +75,7 @@ Const
    h7,g7,f7,e7,d7,c7,b7,a7,
    h8,g8,f8,e8,d8,c8,b8,a8);
 
-  MaxMoves=321;
+  MaxMoves=256;
 
   CaptureFlag  = 1 shl 15;
   PromoteFlag  =(1 shl 12) or (1 shl 13) or (1 shl 14);
@@ -132,7 +132,6 @@ Type
                  max      : integer;
                  curr     : integer;
                  badcap   : integer;
-                 countermove : integer;
                  value    : integer;
                  key      : int64;
                  StatEval : integer;
@@ -151,13 +150,10 @@ Type
           end;
   TMoveList=array[0..MaxMoves] of TMove;
 
-var
-  Boards : array[1..MaxThreads] of TBoard;
-  Trees  : array[1..MaxThreads] of Ttree;
 
 Procedure SetBoard(FEN : ansistring; var Board:TBoard);
 procedure PrintBoard(Board : TBoard);
-Function StringMove(move:integer):ansistring;
+Function StringMove(move:integer):shortstring;
 Function CalcNonPawnMat(color:integer;var Board:TBoard):integer;
 Function GeneratePseudoMoves(beg:integer;Target:TBitBoard;var Board:TBoard;var MList:TMoveList):integer;
 Function GeneratePseudoCaptures(beg:integer;Target:TBitBoard;var Board:TBoard;var MList:TMoveList):integer;
@@ -173,9 +169,8 @@ Procedure ReflectBoard(var Board:TBoard;var NewBoard:TBoard);
 Function Perft(Root:boolean;t1:TDateTime;var Board:TBoard;depth:integer):int64;
 Procedure MakeNullMove(var Board:TBoard);inline;
 Procedure UnMakeNullMove(var Board:TBoard;var Undo:TUndo);inline;
-
 implementation
-uses uAttacks,DateUtils,uHash,uMaterial,uPawn,uEval,uEndGame,uUci;
+uses uAttacks,DateUtils,uHash,uMaterial,uPawn,uEval,uEndGame,uUci,uThread,uSort;
 
 Procedure ClearBoard(var Board:TBoard);
 var
@@ -368,7 +363,7 @@ begin
   Board.NonPawnMat[white]:=CalcNonPawnMat(white,Board);
   Board.NonPawnMat[black]:=CalcNonPawnMat(black,Board);
   CalcFullPST(Board.PstMid,Board.PstEnd,Board);
-  Boards[1].nullcnt:=Boards[1].Rule50;
+  Threads[1].Board.nullcnt:=Threads[1].Board.Rule50;
 end;
 
 procedure PrintBoard(Board : TBoard);
@@ -433,7 +428,7 @@ begin
       temp:=temp and (temp-1);
     end;
 end;
-Function StringMove(move:integer):ansistring;
+Function StringMove(move:integer):shortstring;
 // Текст хода
 var
   s:ansistring;
@@ -1512,7 +1507,6 @@ Result:=false;
     if NewBoard.KingSq[i]<>Board.KingSq[i] then exit;
 Result:=true;
 end;
-
 
 
 end.

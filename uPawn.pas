@@ -1,7 +1,7 @@
 unit uPawn;
 
 interface
- uses uBoard,uBitBoards,uthread,uAttacks,uMagic;
+ uses uBoard,uBitBoards,uAttacks,uMagic;
 
 Type
   TPawnEntry = record
@@ -43,14 +43,14 @@ Const
   ShelterEdge     : array[1..8] of integer=(30,0, 5,15,20,25,25,25);
   ShelterCenter   : array[1..8] of integer=(30,0,10,20,25,30,30,30);
 
-  StormMiddle       : array[1..8] of integer=(10,0,35,20,10,0,0,0);
-  StormCenter       : array[1..8] of integer=(10,0,35,20,10,0,0,0);
-  StormEdge         : array[1..8] of integer=( 5,0,30,15, 5,0,0,0);
+  StormMiddle       : array[1..8] of integer=( 5,0,40,15,5,0,0,0);
+  StormCenter       : array[1..8] of integer=( 5,0,40,15,5,0,0,0);
+  StormEdge         : array[1..8] of integer=( 5,0,35,10,5,0,0,0);
 
   MaxShieldPenalty=255;
 
   PasserBaseMid : array[1..8] of Integer = (0,0,0,13,36,85,125,0);
-  PasserBaseEnd : array[1..8] of Integer = (0,2,5,15,25,50, 75,0);
+  PasserBaseEnd : array[1..8] of Integer = (0,2,5,15,35,65, 90,0);
 
   PasserFreeWay : array[1..8] of Integer = (0,0,0,12,36,72,120,0);
   PasserFreePush: array[1..8] of Integer = (0,0,0, 6,18,36, 60,0);
@@ -63,60 +63,64 @@ Const
 
   UnStopable=10;
 var
-   PawnTable : array of TPawnEntry;
-   PawnTableMask : int64;
    ConnectedMid,ConnectedEnd : array[2..7,False..True,False..True,False..True] of integer;
 
 Procedure InitPawnTable(SizeMB:integer);
-Function EvaluatePawns(var Board:TBoard):cardinal;inline;
-Function WKingSafety(PawnIndex:Cardinal;var Board:TBoard):integer;inline;
-Function BKingSafety(PawnIndex:Cardinal;var Board:TBoard):integer;inline;
+Function EvaluatePawns(var Board:TBoard;ThreadId:integer):cardinal;inline;
+Function WKingSafety(PawnIndex:Cardinal;var Board:TBoard;ThreadId:integer):integer;inline;
+Function BKingSafety(PawnIndex:Cardinal;var Board:TBoard;ThreadId:integer):integer;inline;
 Function WKShield(king:integer;var Board:TBoard):integer; inline;
 Function BKShield(king:integer;var Board:TBoard):integer; inline;
 Procedure EvaluatePassers(var PassMid:integer;var PassEnd:integer;PassersBB:TBitBoard;var Board:TBoard;WAtt:TBitBoard;BAtt:TBitBoard);inline;
 
 implementation
-
+  uses uThread,uSearch;
 Procedure InitPawnTable(SizeMB:integer);
 // На входе - ОБЩЕЕ количество мегабайт кеша, полученного от оболочки
 var
    PawnTableSize,i : int64;
+   j : integer;
 begin
   PawnTableSize:=SizeMb;
+  // Общая память под пешечный хеш
   PawnTableSize:=(PawnTableSize * 1024 * 1024) div (32*32);  {1/32 доля хеша. Размер ячейки берем 32 }
-  PawnTableMask:=PawnTableSize-1;
-  SetLength(PawnTable,0);
-  SetLength(PawnTable,PawnTableSize);
-  for i:=0 to PawnTableMask do
-    begin
-      PawnTable[i].PawnKey:=0;
-      PawnTable[i].ScoreMid:=0;
-      PawnTable[i].ScoreEnd:=0;
-      PawnTable[i].PassersBB:=0;
-      PawnTable[i].WShelter:=0;
-      PawnTable[i].BShelter:=0;
-      PawnTable[i].WKSq:=0;
-      PawnTable[i].BKSq:=0;
-      PawnTable[i].WCastle:=0;
-      PawnTable[i].BCastle:=0;
-      PawnTable[i].BPawn:=0;
-    end;
+  // Для каждого потока устанавливаем параметры памяти
+  for j:=1 to game.Threads do
+   begin
+    Threads[j].PawnTableMask:=(PawnTableSize div game.Threads)-1;
+    SetLength(Threads[j].PawnTable,0);
+    SetLength(Threads[j].PawnTable,Threads[j].PawnTableMask+1);
+    for i:=0 to Threads[j].PawnTableMask do
+     begin
+      Threads[j].PawnTable[i].PawnKey:=0;
+      Threads[j].PawnTable[i].ScoreMid:=0;
+      Threads[j].PawnTable[i].ScoreEnd:=0;
+      Threads[j].PawnTable[i].PassersBB:=0;
+      Threads[j].PawnTable[i].WShelter:=0;
+      Threads[j].PawnTable[i].BShelter:=0;
+      Threads[j].PawnTable[i].WKSq:=0;
+      Threads[j].PawnTable[i].BKSq:=0;
+      Threads[j].PawnTable[i].WCastle:=0;
+      Threads[j].PawnTable[i].BCastle:=0;
+      Threads[j].PawnTable[i].BPawn:=0;
+     end;
+   end;
 end;
 
-Function WKingSafety(PawnIndex:Cardinal;var Board:TBoard):integer;inline;
+Function WKingSafety(PawnIndex:Cardinal;var Board:TBoard;ThreadId:integer):integer;inline;
 var
   isHash:boolean;
   new,curr,will:integer;
 begin
   isHash:=false;
   // Пробуем секономить время и получить результат из кеша
-  if (PawnTable[PawnIndex].PawnKey=Board.PawnKey) then
+  if (Threads[ThreadId].PawnTable[PawnIndex].PawnKey=Board.PawnKey) then
     begin
       // В ячейке есть эта конфигурация пешек
-      if (PawnTable[PawnIndex].WKSq=Board.KingSq[white]) and (PawnTable[PawnIndex].WCastle=(Board.CastleRights and 3))  then
+      if (Threads[ThreadId].PawnTable[PawnIndex].WKSq=Board.KingSq[white]) and (Threads[ThreadId].PawnTable[PawnIndex].WCastle=(Board.CastleRights and 3))  then
         begin
           // Возвращаем ранее сохраненное значение
-          Result:=PawnTable[PawnIndex].WShelter;
+          Result:=Threads[ThreadId].PawnTable[PawnIndex].WShelter;
           exit;
         end;
       isHash:=true;
@@ -138,26 +142,26 @@ begin
    // Сохраняем
   if isHash then
      begin
-       PawnTable[PawnIndex].WShelter:=result;
-       PawnTable[PawnIndex].WKSq:=Board.KingSq[white];
-       PawnTable[PawnIndex].WCastle:=(Board.CastleRights and 3);
+       Threads[ThreadId].PawnTable[PawnIndex].WShelter:=result;
+       Threads[ThreadId].PawnTable[PawnIndex].WKSq:=Board.KingSq[white];
+       Threads[ThreadId].PawnTable[PawnIndex].WCastle:=(Board.CastleRights and 3);
      end;
 
 end;
-Function BKingSafety(PawnIndex:Cardinal;var Board:TBoard):integer;inline;
+Function BKingSafety(PawnIndex:Cardinal;var Board:TBoard;ThreadId:integer):integer;inline;
 var
   isHash:boolean;
   new,curr,will:integer;
 begin
   isHash:=false;
   // Пробуем секономить время и получить результат из кеша
-  if (PawnTable[PawnIndex].PawnKey=Board.PawnKey) then
+  if (Threads[ThreadId].PawnTable[PawnIndex].PawnKey=Board.PawnKey) then
     begin
       // В ячейке есть эта конфигурация пешек
-      if (PawnTable[PawnIndex].BKSq=Board.KingSq[black]) and (PawnTable[PawnIndex].BCastle=(Board.CastleRights and 12))  then
+      if (Threads[ThreadId].PawnTable[PawnIndex].BKSq=Board.KingSq[black]) and (Threads[ThreadId].PawnTable[PawnIndex].BCastle=(Board.CastleRights and 12))  then
         begin
           // Возвращаем ранее сохраненное значение
-          Result:=PawnTable[PawnIndex].BShelter;
+          Result:=Threads[ThreadId].PawnTable[PawnIndex].BShelter;
           exit;
         end;
       isHash:=true;
@@ -179,9 +183,9 @@ begin
    // Сохраняем
   if isHash then
      begin
-       PawnTable[PawnIndex].BShelter:=result;
-       PawnTable[PawnIndex].BKSq:=Board.KingSq[black];
-       PawnTable[PawnIndex].BCastle:=(Board.CastleRights and 12);
+       Threads[ThreadId].PawnTable[PawnIndex].BShelter:=result;
+       Threads[ThreadId].PawnTable[PawnIndex].BKSq:=Board.KingSq[black];
+       Threads[ThreadId].PawnTable[PawnIndex].BCastle:=(Board.CastleRights and 12);
      end;
 
 end;
@@ -233,7 +237,8 @@ begin
     else begin
            sq:=BitScanForward(temp);
            base:=StormMiddle[Posy[sq]];
-           if (Board.Pos[sq-8]=pawn) then base:=(base*2) div 3;     // Блокирована нашей пешкой
+           if (posy[sq]>3) and (Board.Pos[sq-8]=pawn) then base:=(base*2) div 3;     // Блокирована нашей пешкой
+
            res:=res+base;
          end;
                   // крайняя
@@ -248,7 +253,8 @@ begin
     else begin
            sq:=BitScanForward(temp);
            base:=StormEdge[Posy[sq]];
-           if (Board.Pos[sq-8]=pawn) then base:=(base*2) div 3;     // Блокирована  нашей пешкой
+           if  (posy[sq]>3) and (Board.Pos[sq-8]=pawn) then base:=(base*2) div 3;     // Блокирована  нашей пешкой
+           If (posy[sq]=2) and ((posx[sq]=1) or (posx[sq]=8)) then base:=-50;
            res:=res+base;
          end;
                   // к центру доски
@@ -264,10 +270,11 @@ begin
     else begin
            sq:=BitScanForward(temp);
            base:=StormCenter[Posy[sq]];
-           if (Board.Pos[sq-8]=pawn) then base:=(base*2) div 3;     // Блокирована  нашей пешкой
+           if  (posy[sq]>3) and (Board.Pos[sq-8]=pawn) then base:=(base*2) div 3;     // Блокирована  нашей пешкой
            res:=res+base;
          end;
    if res>MaxShieldPenalty then res:=MaxShieldPenalty;
+   If res<0 then res:=0;
    Result:=res;
 end;
 
@@ -319,7 +326,7 @@ begin
     else begin
            sq:=BitScanBackward(temp);
            base:=StormMiddle[9-posy[sq]];
-           if (Board.Pos[sq+8]=-pawn) then base:=(base*2) div 3;     // Блокирована нашей пешкой
+           if (posy[sq]<6) and (Board.Pos[sq+8]=-pawn) then base:=(base*2) div 3;     // Блокирована нашей пешкой
            res:=res+base;
          end;
                       // крайняя
@@ -334,7 +341,8 @@ begin
     else begin
            sq:=BitScanBackward(temp);
            base:=StormEdge[9-posy[sq]];
-           if (Board.Pos[sq+8]=-pawn) then base:=(base*2) div 3;     // Блокирована  нашей пешкой
+           if (posy[sq]<6) and (Board.Pos[sq+8]=-pawn) then base:=(base*2) div 3;     // Блокирована  нашей пешкой
+           If (posy[sq]=7) and ((posx[sq]=1) or (posx[sq]=8)) then base:=-50;
            res:=res+base;
          end;
                      // ближе к центру
@@ -349,22 +357,23 @@ begin
     else begin
            sq:=BitScanBackward(temp);
            base:=StormCenter[9-posy[sq]];
-           if (Board.Pos[sq+8]=-pawn) then base:=(base*2) div 3;     // Блокирована нашей пешкой
+           if (posy[sq]<6) and (Board.Pos[sq+8]=-pawn) then base:=(base*2) div 3;     // Блокирована нашей пешкой
            res:=res+base;
          end;
    if res>MaxShieldPenalty then res:=MaxShieldPenalty;
+   If res<0 then res:=0;
    Result:=res;
 end;
-Function EvaluatePawns(var Board:TBoard):cardinal;inline;
+Function EvaluatePawns(var Board:TBoard;ThreadId:integer):cardinal;inline;
 // Оценка пешек на доске. Возвращает индекс на ячейку с посчитанными и сохраненными значениями.
 var
   ScoreMid,ScoreEnd,sq,x,y,sq1,y1,sq2,wlight,wdark,blight,bdark : integer;
   temp,PassersBB,WhitePawnsBB,BlackPawnsBB,AllPawnsBB,BB,SupportedBB,Stoppers,Neighbors : TBitBoard;
   isolated,doubled,opened,backward,passed,supported,phalanx,connected,lever,ssup : boolean;
 begin
-  result:=Board.PawnKey and PawnTableMask;
+  result:=Board.PawnKey and Threads[ThreadId].PawnTableMask;
   // Проверяем не считали ли мы это соотношение материала ранее?
-  If  (Board.PawnKey=Pawntable[result].PawnKey) then exit;
+  If  (Board.PawnKey=Threads[ThreadId].Pawntable[result].PawnKey) then exit;
   ScoreMid:=0;ScoreEnd:=0; PassersBB:=0;wlight:=0;wdark:=0;blight:=0;bdark:=0;
   AllPawnsBB:=Board.Pieses[pawn];
   WhitePawnsBB:=AllPawnsBB and Board.Occupancy[white];
@@ -538,15 +547,15 @@ begin
       temp:=temp and (temp-1);
     end;
   // Сохраняем в хеш
-  PawnTable[result].PawnKey:=Board.PawnKey;
-  PawnTable[result].ScoreMid:=ScoreMid;
-  PawnTable[result].ScoreEnd:=ScoreEnd;
-  PawnTable[result].PassersBB:=PassersBB;
-  PawnTable[result].WKSq:=NonSq;
-  PawnTable[result].BKSq:=NonSq;
-  PawnTable[result].WCastle:=255;
-  PawnTable[result].BCastle:=255;
-  PawnTable[result].BPawn:=wlight or (wdark shl 4) or (blight shl 8) or (bdark shl 12);
+  Threads[ThreadId].PawnTable[result].PawnKey:=Board.PawnKey;
+  Threads[ThreadId].PawnTable[result].ScoreMid:=ScoreMid;
+  Threads[ThreadId].PawnTable[result].ScoreEnd:=ScoreEnd;
+  Threads[ThreadId].PawnTable[result].PassersBB:=PassersBB;
+  Threads[ThreadId].PawnTable[result].WKSq:=NonSq;
+  Threads[ThreadId].PawnTable[result].BKSq:=NonSq;
+  Threads[ThreadId].PawnTable[result].WCastle:=255;
+  Threads[ThreadId].PawnTable[result].BCastle:=255;
+  Threads[ThreadId].PawnTable[result].BPawn:=wlight or (wdark shl 4) or (blight shl 8) or (bdark shl 12);
 end;
 
 Procedure EvaluatePassers(var PassMid:integer;var PassEnd:integer;PassersBB:TBitBoard;var Board:TBoard;WAtt:TBitBoard;BAtt:TBitBoard);inline;

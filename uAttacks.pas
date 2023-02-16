@@ -186,8 +186,42 @@ begin
    Then Result:=white
    Else Result:=Black;
 end;
+Function SlowCheck(move:integer;var Board:TBoard):boolean;inline;
+//  Медленная проверка специфических ходов на корректность
+var
+  MoveList:TmoveList;
+  i,n:integer;
+begin
+  n:=GenerateLegals(0,Board,MoveList);
+  Result:=false;
+  for i:=0 to n-1 do
+    If MoveList[i].move=move then
+      begin
+        Result:=true;
+        exit;
+      end;
+end;
+Function MoveisSpec(move:integer;from:integer;dest:integer;piese:integer;var Board:TBoard):boolean; inline;
+begin
+  Result:=false;
+  If (move and PromoteFlag)<>0 then   // Превращения
+    begin
+      Result:=true;
+      exit;
+    end;
+  If ((move and CaptureFlag)<>0) and (TypOfPiese[piese]=pawn) and  (Board.Pos[dest]=Empty) and (dest=Board.EnPassSq) then    //  На проходе
+    begin
+      Result:=true;
+      exit;
+    end;
+  If (TypOfPiese[piese]=King) and (abs(from-dest)=2) then  // рокировка
+    begin
+      Result:=true;
+      exit;
+    end;
+end;
 
-Function isPseudoCorrect(move:integer;var Board:TBoard):boolean; inline;
+Function isPseudoCorrect(move:integer;var Board:TBoard):boolean;
 //Проверяет псевдоход на возможность в данной позиции.
 var
   FromSq,DestSQ,Piese,PieseTyp,MyColor,d,y,CheckSq : integer;
@@ -196,13 +230,19 @@ begin
   MyColor:=Board.SideToMove;
   FromSq:=move and 63;
   DestSq:=(move shr 6) and 63;
+  If FromSq=DestSq then exit;
   Piese:=Board.Pos[FromSq];
+  If MoveIsSpec(move,fromsq,destsq,piese,Board) then
+    begin
+      Result:=SlowCheck(move,Board);
+      exit;
+    end;
   // Если на поле не фигура нашего цвета
   If (Piese=Empty) or (ColorOf(Piese)<>MyColor) then exit;
   // Если конечное поле занято нашей же фигурой
   If ((Only[DestSq] and Board.Occupancy[MyColor])<>0) then exit;
   PieseTyp:=TypOfPiese[Piese];
-  // Специфические случаи
+  // Специфические пешечные случаи
   If (PieseTyp=Pawn) then
     begin
       if MyColor=White then
@@ -214,28 +254,16 @@ begin
          d:=7;
          y:=1;
         end;
+      // Пешка не может пойти на последнюю горизонталь
+      If (Only[destSq] and RanksBB[y])<>0 then exit;
       if (move and CaptureFlag)<>0 then
         begin
-          if (PawnAttacks[MyColor,fromSq] and Only[DestSq])=0 then exit; // не взятие
-          IF ((Board.Occupancy[MyColor xor 1] and Only[DestSQ])=0) and (Board.EnPassSq<>DestSq) then exit; // Пустое взятие  и не на проходе!
+          if (PawnAttacks[MyColor,fromSq] and Board.Pieses[MyColor xor 1] and  Only[DestSq])=0 then exit; // не взятие
         end else
         begin
           If (not((FromSQ+PawnPush[MyColor]=DestSQ) and (Board.Pos[DestSq]=Empty)))  and // не простой ход
              (not((FromSq+PawnPush[MyColor]+PawnPush[MyColor]=DestSq) and ((Only[FromSQ] and RanksBB[d])<>0) and (Board.Pos[FromSQ+PawnPush[MyColor]]=Empty) and (Board.Pos[DestSq]=Empty)))  // Не двойной ход
              then exit;
-        end;
-       if ((move and PromoteFlag)<>0) and ((RanksBB[y] and Only[DestSQ])=0) then exit; // не превращение
-    end else
-  if (PieseTyp=King) and ((FromSq-DestSq=2) or (FromSq-DestSq=-2)) then
-    begin
-      if MyColor=White then
-        begin
-          if (not((FromSq-DestSq=-2) and ((Board.CastleRights and WhiteShortCastleMask)<>0) and ((Board.AllPieses and W00SQ)=0) and ((SquareAttackedBB(f1,Board.AllPieses,Board) and Board.Occupancy[black])=0))) and    // Не короткая
-             (not(( FromSq-DestSq=2) and ((Board.CastleRights and WhiteLongCastleMask)<>0) and ((Board.AllPieses and W000SQ)=0) and ((SquareAttackedBB(d1,Board.AllPieses,Board) and Board.Occupancy[black])=0)))  then exit;  // Не длинная
-        end else
-        begin
-          if (not((FromSq-DestSq=-2) and ((Board.CastleRights and BlackShortCastleMask)<>0) and ((Board.AllPieses and B00SQ)=0) and ((SquareAttackedBB(f8,Board.AllPieses,Board) and Board.Occupancy[white])=0))) and    // Не короткая
-             (not(( FromSq-DestSq=2) and ((Board.CastleRights and BlackLongCastleMask)<>0) and ((Board.AllPieses and B000SQ)=0) and ((SquareAttackedBB(d8,Board.AllPieses,Board) and Board.Occupancy[white])=0)))  then exit;  // Не длинная
         end;
     end else If ((PieseAttacksBB(MyColor,PieseTyp,FromSq,Board.AllPieses) and Only[DestSq])=0) then exit; // Нельзя этой фигурой так пойти
     // Если нам шах, то смотрим еще специфические случаи
@@ -247,8 +275,7 @@ begin
             if (Board.CheckersBB and (Board.CheckersBB-1))<>0 then exit;
             // Должны этим своим ходом закрыться или побить шахующую (включая на проходе!)
             CheckSq:=BitScanForward(Board.CheckersBB);
-            If (not((((Intersect[Board.KingSq[MyColor],CheckSq]) or Only[CheckSq]) and Only[DestSq])<>0)) and
-               (not(((CheckSq+PawnPush[MyColor]=DestSq) and (Board.EnPassSq=DestSq) and (PieseTyp=Pawn) and ((move and CaptureFlag)<>0)))) then exit;
+            If (not((((Intersect[Board.KingSq[MyColor],CheckSq]) or Only[CheckSq]) and Only[DestSq])<>0))  then exit;
           end else
        If (SquareAttackedBB(DestSQ,(Board.AllPieses xor Only[Fromsq]),Board) and Board.Occupancy[MyColor xor 1])<>0 then exit;
       end;
