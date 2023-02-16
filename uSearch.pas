@@ -173,9 +173,8 @@ var
   s : ansistring;
   RootList : TMoveList;
   TimeEnd : Cardinal;
-  PVLine,smove,opv  : ansistring;
-  RootAlpha,RootBeta,Delta,BestValue,BestMove,StableBestMove,Pondermove,v,OldBest: integer;
-  NewBoard : TBoard;
+  PVLine  : ansistring;
+  RootAlpha,RootBeta,Delta,BestValue,BestMove,StableBestMove,Pondermove,OldBest: integer;
 begin
   NewSearch;
   PVLine:='';
@@ -195,7 +194,7 @@ begin
   RootAlpha:=-infinite;
   RootBeta:=infinite;
   Delta:=25;
-  StableBestMove:=0; OldBest:=0;PonderMove:=0;
+  StableBestMove:=0; OldBest:=0;
   // «апускаем цикл итераций начина€ с 2
   for i:=2 to MaxPly do
     begin
@@ -215,8 +214,6 @@ begin
              StableBestMove:=BestMove;
              // ќбновл€ем ѕор€док ходов в списке ходов из корн€ (лучший ход идет на первое место в списке)
              UpdateList(BestMove,0,n-1,RootList);
-             CopyBoard(Boards[1],NewBoard);
-             PV2Hash(NewBoard,PVLine);
            end;
          if game.AbortSearch then break;
          if BestValue<=RootAlpha then
@@ -239,17 +236,6 @@ begin
      // «авершили итерацию - обновл€ем статистику итерации (перебранные узлы и врем€)
      TimeEnd:=GetTickCount;
      if game.AbortSearch then break;
-     // ѕробуем вытащить PonderMove  если это возможно:
-     PonderMove:=0;
-     If length(pvline)>=9 then
-       begin
-         opv:=trim(pvline)+' ';
-         v := pos(' ',opv);
-         delete(opv,1,v); // ”бираем первый ход
-         v := pos(' ',opv);
-         smove:= trim(copy(opv,1,v)); // Ёто пондер
-         If smove<>'' then PonderMove:=StrTomove(smove,Boards[1]);
-       end;
      OldBest:=BestValue;
      PrintFullSearchInfo(i,0,' ',TimeEnd,TimeStat);
      // ѕосле заверщившейс€ итерации возвращаем нормальный показатель времени
@@ -267,6 +253,10 @@ begin
   if (i>=MaxPly-1) and (game.time>=48*3600*1000) and (game.rezerv>=48*3600*1000) and (game.uciPonder) then WaitPonderhit;
   // ѕечатаем оболочке лучший ход, полученный в процессе перебора ( и пондерход если находимс€ в соответствующем режиме)
   if StableBestMove=0 then StableBestMove:=RootList[0].move;
+  // ѕробуем вытащить PonderMove  если это возможно:
+  If game.uciPonder
+    then Pondermove:=FindPonder(StableBestMove,Boards[1])
+    else Pondermove:=0;
   s:=StringMove(StableBestmove);
   if (pondermove<>0) and (game.uciPonder)
         then s := s + ' ponder ' + StringMove(pondermove);

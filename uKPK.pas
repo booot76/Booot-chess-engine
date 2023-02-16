@@ -160,11 +160,7 @@ while (nodes<>0) or (rang=1) do
           newIndex:=KPKIndex(pawn,wk,newking);
           If KPKW[NewIndex] in [Draw,StaleMate,DeadDraw] then  fl:=true;
         end;
-      if (not fl) then
-       begin
-        inc(nodes);
-        KPKB[Index]:=rang;
-       end;
+      if (not fl) then KPKB[Index]:=rang;
     end;
   // Белый цикл
   nodes:=0;inc(rang);
