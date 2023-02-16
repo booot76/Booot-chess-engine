@@ -103,7 +103,7 @@ Function ValueFromTT(value:integer;ply:integer):integer;inline;
 Function FindPonder(RootMove:integer;var Board:TBoard):integer;
 
 implementation
-uses usearch,uUci;
+uses usearch,uUci,Windows,uThread;
 
 Procedure InitTT(SizeMB:integer);
 // На входе - ОБЩЕЕ количество мегабайт кеша, полученного от оболочки
@@ -114,7 +114,7 @@ begin
   TTSize:=(TTSize * 1024 * 1024) div 16;//  Ячейка весит 14 байт, но принимаем ее за 16. Остается 2/16 для остальных хешей!
   TTMask:=(TTSize div EntrySize)-1;
   SetLength(TT,0);
-  SetLength(TT,TTSize);
+  SetLength(TT,TTSize+1);
   ClearHash;
 end;
 Procedure ClearHash;
@@ -221,21 +221,24 @@ end;
 
 Procedure HashSave(index:int64;Key:int64;value:integer;depth:integer;typ:integer;move:integer);inline;
 begin
-  TT[index].Key:=Key;
   TT[index].move:=move;
   TT[index].value:=value;
   TT[index].depth:=depth;
   TT[index].typage:=game.HashAge or typ;
+  TT[index].Key:=Key;
 end;
 
 Procedure HashStore(Key:int64;var Board:TBoard;value:integer;depth:integer;typ:integer;move:integer); inline;
 var
-   i,score,repscore:integer;
+   i,score,repscore,val:integer;
    rep,index:int64;
 begin
   index:=(Key and TTMask) * EntrySize;
   rep:=index;
-  repscore:=TT[rep].depth-((259+game.HashAge-TT[rep].typage) and 252)*2;
+  val:=((game.HashAge and 252)-(TT[rep].typage and 252))*2;
+  If val>=0
+        then repscore:=TT[rep].depth-val
+        else repscore:=TT[rep].depth+val;
   for i:=0 to  EntrySize-1 do
     begin
       if  (TT[index+i].Key=Key) then
@@ -246,9 +249,12 @@ begin
         end;
       if i=0 then continue;
       // Вычисляем "оценку" имеющихся ячеек для схемы замещения.
-      score:=TT[index+i].depth-((259+game.HashAge-TT[index+i].typage) and 252)*2;
+      val:=((game.HashAge and 252)-(TT[index+i].typage and 252))*2;
+      If val>=0
+        then score:=TT[index+i].depth-val
+        else score:=TT[index+i].depth+val;
       // Ищем наименее ценную
-      if repscore>score then
+      if score<repscore then
         begin
           repscore:=score;
           rep:=index+i;

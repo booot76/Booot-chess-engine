@@ -1,5 +1,5 @@
 program booot6;
-{$APPTYPE CONSOLE}
+//{$APPTYPE CONSOLE}
 uses
   uBitBoards in 'uBitBoards.pas',
   SysUtils,

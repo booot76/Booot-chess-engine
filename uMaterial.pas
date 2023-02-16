@@ -1,6 +1,6 @@
 unit uMaterial;
 interface
-uses uBoard,uBitBoards,uEndgame,uThread;
+uses uBoard,uBitBoards,uEndgame;
 Type
    TMatEntry = record
                  MatKey    : int64;
@@ -14,13 +14,13 @@ Type
                end;
 Const
    PawnValueMid=80;    PawnValueEnd=100;
-   KnightValueMid=320; KnightValueEnd=350;
-   BishopValueMid=325; BishopValueEnd=355;
-   RookValueMid=495;   RookValueEnd=530;
-   QueenValueMid=985;  QueenValueEnd=1040;
-   DoubleBishopMid=40; DoubleBishopEnd=50;
+   KnightValueMid=320; KnightValueEnd=310;
+   BishopValueMid=325; BishopValueEnd=320;
+   RookValueMid=500;   RookValueEnd=510;
+   QueenValueMid=975;  QueenValueEnd=975;
+   DoubleBishopMid=35; DoubleBishopEnd=50;
    DoubleNoMinorMid=5; DoubleNoMinorEnd=10;
-   MinorBonusMid=20;   MinorBonusEnd=5;
+   MinorBonusMid=25;   MinorBonusEnd=10;
    KnightPawnMid=0;    KnightPawnEnd=5;
    RookPawnMid=5;      RookPawnEnd=0;
    DoubleRookMid=15;   DoubleRookEnd=30;
@@ -29,48 +29,50 @@ Const
    ScalePawn=80;
    ScaleNormal=64;
    ScaleOnePawn=48;
-   ScaleOneFlang=50;
    ScaleOpposit=32;
-   ScaleHardWin=8;
+   ScaleTought=24;
+   ScaleHardWin=12;
    ScaleDrawish=4;
    ScaleDraw=0;
-
+   RPPScale : array[1..8] of integer=(0,ScaleHardWin,ScaleHardWin,ScaleTought,ScaleOpposit,ScaleOnePawn,ScaleNormal,0);
    PhaseMinor=1;
    PhaseRook=3;
    PhaseQueen=6;
    MaxPhase=32;
    PhaseOpposit=2*PhaseMinor+2*PhaseQueen+2*PhaseRook;
-var
-   MatTable : array of TMatEntry;
-   MatTableMask : int64;
-
 
 Procedure InitMatTable(SizeMB:integer);
 Procedure CalcImbalance(var ScoreMid:integer;var ScoreEnd:integer;wp,bp,wn,bn,wb,bb,wr,br,wq,bq:integer);inline;
-Function EvaluateMaterial(var Board:TBoard):Cardinal; inline;
+Function EvaluateMaterial(var Board:TBoard;ThreadID:integer):Cardinal; inline;
 
 implementation
-
+  uses uThread,uSearch;
 Procedure InitMatTable(SizeMB:integer);
 // На входе - ОБЩЕЕ количество мегабайт кеша, полученного от оболочки
 var
    i,MatTableSize : int64;
+   j : integer;
 begin
   MatTableSize:=SizeMb;
+  // Суммарная память под хещ
   MatTableSize:=(MatTableSize * 1024 * 1024) div (32*16); {берем 1/32 долю хеша. Размер ячейки берем 16}
-  MatTableMask:=MatTableSize-1;
-  SetLength(MatTable,0);
-  SetLength(MatTable,MatTableSize);
-  for i:=0 to MatTableMask do
+  // Устанавливаем для каждого потока отдельно память под материальный хеш
+  for j:=1 to game.Threads do
     begin
-      MatTable[i].MatKey:=0;
-      MatTable[i].EvalMid:=0;
-      MatTable[i].EvalEnd:=0;
-      MatTable[i].WScale:=0;
-      MatTable[i].BScale:=0;
-      MatTable[i].EvalFunc:=0;
-      MatTable[i].ScaleFunc:=0;
-      MatTable[i].phase:=0;
+     Threads[j].MatTableMask:=(MatTableSize div game.Threads)-1;
+     SetLength(Threads[j].MatTable,0);
+     SetLength(Threads[j].MatTable,(Threads[j].MatTableMask+1));
+     for i:=0 to Threads[j].MatTableMask do
+      begin
+       Threads[j].MatTable[i].MatKey:=0;
+       Threads[j].MatTable[i].EvalMid:=0;
+       Threads[j].MatTable[i].EvalEnd:=0;
+       Threads[j].MatTable[i].WScale:=0;
+       Threads[j].MatTable[i].BScale:=0;
+       Threads[j].MatTable[i].EvalFunc:=0;
+       Threads[j].MatTable[i].ScaleFunc:=0;
+       Threads[j].MatTable[i].phase:=0;
+      end;
     end;
 end;
 
@@ -120,15 +122,15 @@ begin
       ScoreEnd:=ScoreEnd+DoubleRookEnd;
     end;
 end;
-Function EvaluateMaterial(var Board:TBoard):Cardinal; inline;
+Function EvaluateMaterial(var Board:TBoard;ThreadID:integer):Cardinal; inline;
 // Оценка материала на доске. Возвращает индекс на ячейку с посчитанными и сохраненными значениями.
 var
   ScoreMid,ScoreEnd,Wscale,BScale,NPW,NPB,phase,evalfun,scalefun : integer;
   wp,bp,wn,bn,wb,bb,wr,br,wq,bq : integer;
 begin
-  result:=Board.MatKey and MatTableMask;
+  result:=Board.MatKey and Threads[ThreadId].MatTableMask;
   // Проверяем не считали ли мы это соотношение материала ранее?
-  If Board.MatKey=Mattable[result].MatKey then exit;
+  If Board.MatKey=Threads[ThreadId].Mattable[result].MatKey then exit;
   // Нет - считаем полностью
   wp:=BitCount(Board.Pieses[Pawn]   and Board.Occupancy[white]);
   bp:=BitCount(Board.Pieses[Pawn]   and Board.Occupancy[black]);
@@ -186,10 +188,10 @@ begin
   // Ищем возможные внешние функции оценки и масштабирования
   if wp+bp=0 then  // беспешечные эндшпили
     begin
-     If ((Board.NonPawnMat[white]=0) and (Board.NonPawnMat[black]=(PieseTypValue[knight]+PieseTypValue[knight]))) or ((Board.NonPawnMat[black]=0) and (Board.NonPawnMat[white]=(PieseTypValue[knight]+PieseTypValue[knight]))) then evalfun:=f_knnk else
-     If ((Board.NonPawnMat[white]=0) and (Board.NonPawnMat[black]=(PieseTypValue[knight]+PieseTypValue[bishop]))) or ((Board.NonPawnMat[black]=0) and (Board.NonPawnMat[white]=(PieseTypValue[knight]+PieseTypValue[bishop]))) then evalfun:=f_kbnk else
+     If ((Board.NonPawnMat[white]=0) and (Board.NonPawnMat[black]=(PieseTypValue[knight]+PieseTypValue[knight]))) or ((Board.NonPawnMat[black]=0) and (Board.NonPawnMat[white]=(PieseTypValue[knight]+PieseTypValue[knight]))) then evalfun:=f_knnk else   //KNNK
+     If ((Board.NonPawnMat[white]=0) and (Board.NonPawnMat[black]=(PieseTypValue[knight]+PieseTypValue[bishop]))) or ((Board.NonPawnMat[black]=0) and (Board.NonPawnMat[white]=(PieseTypValue[knight]+PieseTypValue[bishop]))) then evalfun:=f_kbnk else   //KBNK
      If ((Board.NonPawnMat[white]=0) and (Board.NonPawnMat[black]>=PieseTypValue[rook])) or  ((Board.NonPawnMat[black]=0) and (Board.NonPawnMat[white]>=PieseTypValue[rook])) then evalfun:=f_kxk else  // Мат одинокому королю
-     If ((Board.NonPawnMat[white]=PieseTypValue[rook]) and (Board.NonPawnMat[black]=PieseTypValue[queen])) or ((Board.NonPawnMat[white]=PieseTypValue[queen]) and (Board.NonPawnMat[black]=PieseTypValue[rook])) then evalfun:=f_kqkr;
+     If ((Board.NonPawnMat[white]=PieseTypValue[rook]) and (Board.NonPawnMat[black]=PieseTypValue[queen])) or ((Board.NonPawnMat[white]=PieseTypValue[queen]) and (Board.NonPawnMat[black]=PieseTypValue[rook])) then evalfun:=f_kqkr;     //KQKR
     end;
   if (NPW=0) and (NPB=0) then // Пешечный эндшпиль
     begin
@@ -197,26 +199,29 @@ begin
        begin
         If Wscale=ScaleNormal then WScale:=ScalePawn;
         If Bscale=ScaleNormal then BScale:=ScalePawn;
-        if bp=0 then scalefun:=F_KPSKW;
-        if wp=0 then scalefun:=F_KPSKB;
+        scalefun:=F_KPSK;  // Предварительно надо проверить на ничейность ладейных пешек
        end;
     end;
-  if (NPW=PieseTypValue[bishop]) and (NPB=0) and (wp>0) then scalefun:=F_KBPSKW;
-  if (NPB=PieseTypValue[bishop]) and (NPW=0) and (bp>0) then scalefun:=F_KBPSKB;
+  if (NPW=PieseTypValue[bishop]) and (wb=1) and (wp>0) then scalefun:=F_KBPSKW;
+  if (NPB=PieseTypValue[bishop]) and (bb=1) and (bp>0) then scalefun:=F_KBPSKB;
   If (NPW=PieseTypValue[rook]) and (NPB=0) and (wp=0) and (bp=1) then evalfun:=f_KRKP;
   If (NPB=PieseTypValue[rook]) and (NPW=0) and (bp=0) and (wp=1) then evalfun:=f_KRKP;
   If (NPW=PieseTypValue[queen]) and (NPB=0) and (wp=0) and (bp=1) then evalfun:=f_KQKP;
   If (NPB=PieseTypValue[queen]) and (NPW=0) and (bp=0) and (wp=1) then evalfun:=f_KQKP;
   If (NPW=PieseTypValue[queen]) and (NPB=PieseTypValue[rook]) and (wp=0) and (bp>=1) then scalefun:=f_KQKRP;
   If (NPB=PieseTypValue[queen]) and (NPW=PieseTypValue[rook]) and (bp=0) and (wp>=1) then scalefun:=f_KQKRP;
+  If (NPW=PieseTypValue[rook])  and (NPB=PieseTypValue[bishop]) and (wp=1) and (bp=0) then scalefun:=f_KRKBPW;
+  If (NPB=PieseTypValue[rook])  and (NPW=PieseTypValue[bishop]) and (bp=1) and (wp=0) then scalefun:=f_KRKBPB;
+  If (NPW=PieseTypValue[rook])  and (NPB=PieseTypValue[rook]) and (wp=2) and (bp=1) then scalefun:=f_RPPRPW;
+  If (NPW=PieseTypValue[rook])  and (NPB=PieseTypValue[rook]) and (wp=1) and (bp=2) then scalefun:=f_RPPRPB;
   // Сохраняем все в хеш
-  MatTable[result].MatKey:=Board.MatKey;
-  MatTable[result].EvalMid:=ScoreMid;
-  MatTable[result].EvalEnd:=ScoreEnd;
-  MatTable[result].WScale:=Wscale;
-  MatTable[result].BScale:=BScale;
-  MatTable[result].EvalFunc:=evalfun;
-  MatTable[result].ScaleFunc:=scalefun;
-  MatTable[result].phase:=phase;
+  Threads[ThreadId].MatTable[result].MatKey:=Board.MatKey;
+  Threads[ThreadId].MatTable[result].EvalMid:=ScoreMid;
+  Threads[ThreadId].MatTable[result].EvalEnd:=ScoreEnd;
+  Threads[ThreadId].MatTable[result].WScale:=Wscale;
+  Threads[ThreadId].MatTable[result].BScale:=BScale;
+  Threads[ThreadId].MatTable[result].EvalFunc:=evalfun;
+  Threads[ThreadId].MatTable[result].ScaleFunc:=scalefun;
+  Threads[ThreadId].MatTable[result].phase:=phase;
 end;
 end.

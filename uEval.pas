@@ -12,11 +12,17 @@ Type
                   value : smallint;
                 end;
 Const
+  step : array[white..black] of integer =(8,-8);
+  RelRank : array[white..black,1..8] of integer =((1,2,3,4,5,6,7,8),(8,7,6,5,4,3,2,1));
+  lig=0;
+  dar=1;
+  BishopShift : array[white..black,lig..dar] of integer = ((0,4),(8,12));
+  CastleCheck : array[white..black] of integer = (3,12);
   PawnPstMid : array[a1..h8] of integer =(
     0, 0, 0, 0, 0, 0, 0, 0,   //1
    -9,-2, 0, 3, 3, 0,-2,-9,   //2
    -9,-2, 2,10,10, 2,-2,-9,   //3
-   -9,-2, 4,16,16, 4,-2,-9,   //4
+   -9,-2, 4,15,15, 4,-2,-9,   //4
    -9,-2, 2,10,10, 2,-2,-9,   //5
    -9,-2, 0, 3, 3, 0,-2,-9,   //6
    -9,-2, 0, 3, 3, 0,-2,-9,   //7
@@ -126,65 +132,58 @@ Const
   KingSafetyTable : array[0..15] of integer=(0,1,4,9,16,25,36,49,64,81,100,100,100,100,100,100);
   KingSafetyDivider=8;
 
-  QueenContactCheck=25;
+  QueenContactCheck=45;
   QueenSafeCheck=20;
   RookSafeCheck=15;
   BishopSafeCheck=10;
-  KnightSafeCheck=10;
-  UndefendedSquare=10;
-  BadKing=20;
+  KnightSafeCheck=15;
+  UndefendedSquare=15;
+  BadKing=25;
 
-  KnightMobMidMin=0;KnightMobEndMin=0;
-  KnightMobMidMax=28; KnightMobENdMax=32;
-  BishopMobMidMin=0;BishopMobEndMin=0;
-  BishopMobMidMax=40;BishopMobEndMax=38;
-  RookMobMidMin=0; RookMobEndMin=0;
-  RookMobMidMax=20; RookMobEndMax=70;
-  QueenMobMidMin=0; QueenMobEndMin=0;
-  QueenMobMidMax=35; QueenMobEndMax=60;
+  KnightMobMidMin=-25;KnightMobEndMin=-25;
+  KnightMobMidMax=15; KnightMobENdMax=15;
+  BishopMobMidMin=-20;BishopMobEndMin=-20;
+  BishopMobMidMax=40;BishopMobEndMax=40;
+  RookMobMidMin=-25; RookMobEndMin=-30;
+  RookMobMidMax=25; RookMobEndMax=70;
+  QueenMobMidMin=-15; QueenMobEndMin=-15;
+  QueenMobMidMax=50; QueenMobEndMax=80;
 
   KnightOutPostMid=4;
   KnightOutPostEnd=6;
   KnightOutPostProtectedMid=15;
   KnightOutPostProtectedEnd=25;
-  KnightOutPostDanger=5;
 
   BishopOutPostMid=2;
   BishopOutPostEnd=3;
   BishopOutPostProtectedMid=6;
   BishopOutPostProtectedEnd=8;
-  BishopOutPostDanger=3;
-  BishopPawnMid=2;
+
+  BishopPawnMid=3;
   BishopPawnEnd=5;
-  BishopWeakMid=4;
-  BishopWeakEnd=6;
   MinorBehindPawn=5;
 
   RookOpenMid=16;RookOpenEnd=8;
   RookHalfMid=8; RookHalfEnd=4;
-  RookPawn=5;
-  Rookon7Mid=10;
-  RookOn7End=25;
-  DoubRook7Mid=10;
-  DoubRook7End=15;
+  RookPawn=10;
   RookTrapped=35;
 
   ThreatHangingPawnMid=25;
   ThreatHangingPawnEnd=25;
-  ThreatStrongPawnMid=40;
-  ThreatStrongPawnEnd=40;
+  ThreatStrongPawnMid=50;
+  ThreatStrongPawnEnd=50;
   ForkMid=25;
-  ForkEnd=25;
-  KingThreatOne=15;
-  KingThreatMulti=25;
+  ForkEnd=40;
+  KingThreatOne=25;
+  KingThreatMulti=40;
   HangingMid=20;
   HangingEnd=10;
   PawnUnProtectedEnd=5;
   PieseUnProtected=10;
+  CheckMid=10;
+  CheckEnd=10;
   Tempo=8;
 var
-   EvalTable : array of TEvalEntry;
-   EvalTableMask: int64;
    PiesePSTMid,PiesePstEnd : array[white..black,Pawn..King,a1..h8] of integer;
    KnightMobMid,KnightMobEnd : array[0..8] of integer;
    BishopMobMid,BishopMobEnd : array[0..13] of integer;
@@ -193,25 +192,30 @@ var
 
 Procedure InitEvalTable(SizeMB:integer);
 Procedure CalcFullPst(var PstMid:integer;var PSTEnd:integer; var Board:TBoard);inline;
-Function Evaluate(var Board:TBoard):integer;inline;
+Function Evaluate(var Board:TBoard;ThreadID:integer):integer;inline;
 
 implementation
-
+   uses uThread,uSearch;
 Procedure InitEvalTable(SizeMB:integer);
 // На входе - ОБЩЕЕ количество мегабайт кеша, полученного от оболочки
 var
    i,EvalTableSize : int64;
+   j : integer;
 begin
   EvalTableSize:=SizeMb;
+  // Общая память под хеш оценок
   EvalTableSize:=(EvalTableSize * 1024 * 1024) div (16*8); {Берем 1/16 от общего количества памяти под хеш. Принимаем размер ячейки за 8 (на самом деле 10) Оставляем 1/16 на пешечный и материальный хеш}
-  EvalTableMask:=EvalTableSize-1;
-  SetLength(EvalTable,0);
-  SetLength(EvalTable,EvalTableSize);
-  for i:=0 to EvalTableMask do
-    begin
-      EvalTable[i].Key:=0;
-      EvalTable[i].value:=0;
-    end;
+  for j:=1 to game.Threads do
+   begin
+    Threads[j].EvalTableMask:=(EvalTableSize div game.Threads)-1;
+    SetLength(Threads[j].EvalTable,0);
+    SetLength(Threads[j].EvalTable,Threads[j].EvalTableMask+1);
+    for i:=0 to Threads[j].EvalTableMask do
+     begin
+      Threads[j].EvalTable[i].Key:=0;
+      Threads[j].EvalTable[i].value:=0;
+     end;
+   end;
 end;
 
 Function GetLogValue(Min:real;Max:real;i:integer;Total:integer):integer;
@@ -233,7 +237,7 @@ var
   full,half1,half2 : integer;
 begin
   range:=Max-Min;
-  range1:=trunc(0.66*range);
+  range1:=trunc(0.7*range);
   range2:=range-range1;
   full:=Total-1;
   Half1:=Full div 2;
@@ -245,47 +249,173 @@ begin
     begin
       if i<=Half1
         then result:=trunc(Min+step1*i)
-        else result:=trunc(range1+step2*(i-half1));
+        else result:=trunc(Min+range1+step2*(i-half1));
     end;
 end;
 
-Function Evaluate(var Board:TBoard):integer;inline;
+Procedure KingSafety(piesecol:integer;var Board:TBoard;var ExtraMid:TColor;var ExtraEnd:TColor;var KingAttackCount:Tcolor;var PAttacks:TAttacks;var Shield:TColor;var KingAttackWeight:TColor);inline;
+var
+  Undefended,temp,temp1:TBitBoard;
+  bonus:integer;
+begin
+  if KingAttackCount[piesecol]>0 then
+    begin
+     Undefended:=PAttacks[piesecol,all] and PAttacks[piesecol xor 1,king] and (not(PAttacks[piesecol xor 1,pawn] or PAttacks[piesecol xor 1,bishop] or PAttacks[piesecol xor 1,knight] or PAttacks[piesecol xor 1,rook] or PAttacks[piesecol xor 1,queen]));
+     if (KingAttackCount[piesecol]>1) and ((Board.Pieses[queen] and Board.Occupancy[piesecol])<>0) then
+       begin
+        KingAttackWeight[piesecol]:=KingAttackWeight[piesecol]+(Shield[piesecol xor 1] div 3);
+        If (PAttacks[piesecol xor 1,king] and (not(PAttacks[piesecol,all] or Board.Occupancy[piesecol xor 1])))=0 then KingAttackWeight[piesecol]:=KingAttackWeight[piesecol]+BadKing;
+        If Undefended<>0 then KingAttackWeight[piesecol]:=KingAttackWeight[piesecol]+UndefendedSquare*BitCount(Undefended);
+       end;
+
+     Undefended:=Undefended and PAttacks[piesecol,queen] and ( not Board.Occupancy[piesecol]);
+     If (Undefended<>0) then
+       begin
+         Undefended:=Undefended and (PAttacks[piesecol,pawn] or PAttacks[piesecol,knight] or PAttacks[piesecol,bishop] or PAttacks[piesecol,rook] or PAttacks[piesecol,king]);
+         If Undefended<>0 then KingAttackWeight[piesecol]:=KingAttackWeight[piesecol]+QueenContactCheck;
+       end;
+     Undefended:= not (PAttacks[piesecol xor 1,all] or Board.Occupancy[piesecol]);
+     temp:=RookAttacksBB(Board.KingSq[piesecol xor 1],Board.AllPieses) and Undefended;
+     temp1:=BishopAttacksBB(Board.KingSq[piesecol xor 1],Board.AllPieses) and Undefended;
+     // Шахи ферзем
+     If ((temp or temp1) and PAttacks[piesecol,queen])<>0 then
+       begin
+         KingAttackWeight[piesecol]:=KingAttackWeight[piesecol]+QueenSafeCheck;
+         ExtraMid[piesecol]:=ExtraMid[piesecol]+CheckMid;
+         ExtraEnd[piesecol]:=ExtraEnd[piesecol]+CheckEnd;
+       end;
+     // Шахи ладьей
+     If (temp and PAttacks[piesecol,rook])<>0 then
+       begin
+         KingAttackWeight[piesecol]:=KingAttackWeight[piesecol]+RookSafeCheck;
+         ExtraMid[piesecol]:=ExtraMid[piesecol]+CheckMid;
+         ExtraEnd[piesecol]:=ExtraEnd[piesecol]+CheckEnd;
+       end;
+     // Шахи слоном
+     If (temp1 and PAttacks[piesecol,bishop])<>0 then
+       begin
+         KingAttackWeight[piesecol]:=KingAttackWeight[piesecol]+BishopSafeCheck;
+         ExtraMid[piesecol]:=ExtraMid[piesecol]+CheckMid;
+         ExtraEnd[piesecol]:=ExtraEnd[piesecol]+CheckEnd;
+       end;
+     // Шахи Конем
+     If (KnightAttacksBB(Board.KingSq[piesecol xor 1]) and Undefended and PAttacks[piesecol,knight])<>0 then
+       begin
+         KingAttackWeight[piesecol]:=KingAttackWeight[piesecol]+KnightSafeCheck;
+         ExtraMid[piesecol]:=ExtraMid[piesecol]+CheckMid;
+         ExtraEnd[piesecol]:=ExtraEnd[piesecol]+CheckEnd;
+       end;
+     bonus:=((KingSafetyTable[KingAttackCount[piesecol]]*KingAttackWeight[piesecol]) div KingSafetyDivider);
+     if (Board.Pieses[queen] and Board.Occupancy[piesecol])=0 then bonus:=bonus div 2;
+     ExtraMid[piesecol]:=ExtraMid[piesecol]+bonus;
+    end;
+end;
+
+Procedure Threats(piesecol:integer;var Board:TBoard;var PAttacks:TAttacks;var ExtraMid:Tcolor;var ExtraEnd:TColor);inline;
+var
+  Weak,Temp,SafeThreats:TBitBoard;
+  ind:integer;
+begin
+   // Фигуры противника атакованы нашими пешками
+ Weak:=(Board.Occupancy[piesecol xor 1] and (not Board.Pieses[pawn])) and PAttacks[piesecol,pawn];
+ if Weak<>0 then
+   begin
+     Temp:=(Board.Pieses[pawn] and Board.Occupancy[piesecol]) and ((not PAttacks[piesecol xor 1,all]) or PAttacks[piesecol,all]);
+     If piesecol=white
+        then SafeThreats:=(((temp and (not FilesBB[1])) shl 7) or ((temp and (not FilesBB[8])) shl 9)) and Weak
+        else SafeThreats:=(((temp and (not FilesBB[1])) shr 9) or ((temp and (not FilesBB[8])) shr 7)) and Weak;
+     If (Weak and (not SafeThreats))<>0 then
+       begin
+         ExtraMid[piesecol]:=ExtraMid[piesecol]+ThreatHangingPawnMid;
+         ExtraEnd[piesecol]:=ExtraEnd[piesecol]+ThreatHangingPawnEnd;
+       end;
+     If SafeThreats<>0 then
+       begin
+         ind:=BitCount(SafeThreats);
+         ExtraMid[piesecol]:=ExtraMid[piesecol]+ind*ThreatStrongPawnMid;
+         ExtraEnd[piesecol]:=ExtraEnd[piesecol]+ind*ThreatStrongPawnEnd;
+       end;
+   end;
+  // Вилки легкими фигурами
+  Weak:=(Board.Occupancy[piesecol xor 1] and (Board.Pieses[rook] or Board.Pieses[queen])) and (PAttacks[piesecol,knight] or PAttacks[piesecol,bishop]);
+  If Weak<>0 then
+    begin
+      ind:=BitCount(Weak);
+      ExtraMid[piesecol]:=ExtraMid[piesecol]+ForkMid*ind;
+      ExtraEnd[piesecol]:=ExtraEnd[piesecol]+ForkEnd*ind;
+    end;
+  // Атаки Королей
+  Weak:=Board.Occupancy[piesecol xor 1] and (not PAttacks[piesecol xor 1,pawn]) and PAttacks[piesecol,king];
+  If Weak<>0 then
+    begin
+      If (Weak and (Weak-1))<>0
+        then ExtraEnd[piesecol]:=ExtraEnd[piesecol]+KingThreatMulti
+        else ExtraEnd[piesecol]:=ExtraEnd[piesecol]+KingThreatOne;
+    end;
+   // Висячие фигуры (не защищенные под атакой)
+  Weak:=Board.Occupancy[piesecol xor 1] and PAttacks[piesecol,all] and (not PAttacks[piesecol xor 1,all]);
+  if Weak<>0 then
+    begin
+      ind:=BitCount(Weak);
+      ExtraMid[piesecol]:=ExtraMid[piesecol]+HangingMid*ind;
+      ExtraEnd[piesecol]:=ExtraEnd[piesecol]+HangingEnd*ind;
+    end;
+
+  // Атаки на незащищенные пешками цели
+  Temp:=Board.Occupancy[piesecol xor 1] and (PAttacks[piesecol,knight] or PAttacks[piesecol,bishop] or PAttacks[piesecol,rook]) and (not PAttacks[piesecol xor 1,pawn]);
+  // На пешки
+  Weak:=Temp and Board.Pieses[pawn];
+  If Weak<>0 then ExtraEnd[piesecol]:=ExtraEnd[piesecol]+PawnUnProtectedEnd*BitCount(weak);
+  // На легкие фигуры
+  Weak:=Temp and (Board.Pieses[knight] or Board.Pieses[bishop]);
+  If Weak<>0 then
+    begin
+      ind:=BitCount(weak);
+      ExtraMid[piesecol]:=ExtraMid[piesecol]+ind*PieseUnProtected;
+      ExtraEnd[piesecol]:=ExtraEnd[piesecol]+ind*PieseUnProtected;
+    end;
+end;
+Function Evaluate(var Board:TBoard;ThreadId:integer):integer;inline;
 var
   EvalIndex : int64;
   PawnIndex,MatIndex: Cardinal;
-  ScoreMid,ScoreEnd,score,WScale,BScale,Phase,PassMid,PassEnd,sq,ind,piesecol,bonus,x,wb,bb,Kx,Ky: integer;
+  ScoreMid,ScoreEnd,score,WScale,BScale,Phase,PassMid,PassEnd,sq,ind,piesecol,x,Kx,Ky: integer;
   PAttacks : TAttacks;
-  Temp,Att,temp1,Undefended,Weak,SafeThreats,Temp2 : TBitBoard;
-  KingAttackCount,KingAttackWeight,Shield:TColor;
+  Temp,Att,temp1 : TBitBoard;
+  KingAttackCount,KingAttackWeight,Shield,MobilityMid,MobilityEnd,ExtraMid,ExtraEnd,BishopNum:TColor;
   MobilityArea,KingZone,Pines,BlockedPawns : TcolorZone;
 begin
   // Пробуем воспрльзоваться хешем
-  EvalIndex:=Board.Key and EvalTableMask;
-  If Evaltable[EvalIndex].Key=Board.Key then
+  EvalIndex:=Board.Key and Threads[ThreadId].EvalTableMask;
+  If Threads[ThreadId].Evaltable[EvalIndex].Key=Board.Key then
     begin
-      Result:=Evaltable[EvalIndex].value;
+      Result:=Threads[ThreadId].Evaltable[EvalIndex].value;
       exit;
     end;
   // Сначала считаем материальную оценку
      // Получаем индекс в таблице с посчитанными данными по материалу.
-  MatIndex:=EvaluateMaterial(Board);
+  MatIndex:=EvaluateMaterial(Board,ThreadID);
      // Если на доске эндшпиль, где нужна специальная оценочная функция то вызываем ее и возвращаемся
-  if MatTable[MatIndex].EvalFunc<>0 then
+  if Threads[ThreadID].MatTable[MatIndex].EvalFunc<>0 then
     begin
-      Result:=EvaluateSpecialEndgame(MatTable[MatIndex].EvalFunc,MatTable[MatIndex].EvalEnd,Board);
+      Result:=EvaluateSpecialEndgame(Threads[ThreadID].MatTable[MatIndex].EvalFunc,Threads[ThreadID].MatTable[MatIndex].EvalEnd,Board);
       exit;
     end;
     // Берем данные для инициализации
-  ScoreMid:=MatTable[MatIndex].EvalMid;
-  ScoreEnd:=MatTable[MatIndex].EvalEnd;
-  WScale:=MatTable[MatIndex].WScale;
-  BScale:=MatTable[MatIndex].BScale;
-  Phase :=MatTable[MatIndex].phase;
+  ScoreMid:=Threads[ThreadID].MatTable[MatIndex].EvalMid;
+  ScoreEnd:=Threads[ThreadID].MatTable[MatIndex].EvalEnd;
+  WScale:=Threads[ThreadID].MatTable[MatIndex].WScale;
+  BScale:=Threads[ThreadID].MatTable[MatIndex].BScale;
+  Phase :=Threads[ThreadID].MatTable[MatIndex].phase;
      // Если на доске соотношение материала, требующее дополнительной оценки для получения мастабирующих коэффициентов - считаем и их
-  if MatTable[MatIndex].ScaleFunc<>0 then GetSpecialScales(MatTable[MatIndex].ScaleFunc,Wscale,BScale,Board);
+  if Threads[ThreadID].MatTable[MatIndex].ScaleFunc<>0 then GetSpecialScales(Threads[ThreadID].MatTable[MatIndex].ScaleFunc,Wscale,BScale,Board);
   // Обнуляем счетчики безопасности
   KingAttackCount[white]:=0;KingAttackCount[black]:=0;
   KingAttackWeight[white]:=0;KingAttackWeight[black]:=0;
+  MobilityMid[white]:=0;MobilityMid[black]:=0;
+  MobilityEnd[white]:=0;MobilityEnd[black]:=0;
+  ExtraMid[white]:=0; ExtraMid[black]:=0;
+  ExtraEnd[white]:=0; ExtraEnd[black]:=0;
   // Инициализируем битборды атак фигур
   PAttacks[white,all]:=0; PAttacks[black,all]:=0;
   PAttacks[white,knight]:=0; PAttacks[black,knight]:=0;
@@ -312,11 +442,11 @@ begin
   MobilityArea[white]:=not(BlockedPawns[white] or PAttacks[black,pawn] or Only[Board.KingSq[white]]);
   MobilityArea[black]:=not(BlockedPawns[black] or PAttacks[white,pawn] or Only[Board.KingSq[black]]);
   //Теперь оценка пешек
-  PawnIndex:=EvaluatePawns(Board);
-  ScoreMid:=ScoreMid+PawnTable[PawnIndex].ScoreMid;
-  ScoreEnd:=ScoreEnd+PawnTable[PawnIndex].ScoreEnd;
-  Shield[white]:=WkingSafety(PawnIndex,Board);
-  Shield[black]:=BkingSafety(PawnIndex,Board);
+  PawnIndex:=EvaluatePawns(Board,ThreadId);
+  ScoreMid:=ScoreMid+Threads[ThreadID].PawnTable[PawnIndex].ScoreMid;
+  ScoreEnd:=ScoreEnd+Threads[ThreadID].PawnTable[PawnIndex].ScoreEnd;
+  Shield[white]:=WkingSafety(PawnIndex,Board,ThreadID);
+  Shield[black]:=BkingSafety(PawnIndex,Board,ThreadId);
   if Board.NonPawnMat[white]>=PieseTypValue[queen]
     then KingZone[black]:=PAttacks[black,king] or (PAttacks[black,king] shr 8)
     else KingZone[black]:=0;
@@ -352,56 +482,35 @@ begin
        end;
      // Подвижность
      ind:=BitCount(Att and MobilityArea[piesecol]);
-     if piesecol=white then
+     MobilityMid[piesecol]:=MobilityMid[piesecol]+KnightMobMid[ind];
+     MobilityEnd[piesecol]:=MobilityEnd[piesecol]+KnightMobEnd[ind];
+     // Форпосты
+     If ((ForwardBB[piesecol,sq] and IsolatedBB[sq] and Board.Pieses[pawn] and Board.Occupancy[piesecol xor 1])=0) and ((OutPostBB[piesecol] and Only[sq])<>0) then
        begin
-         ScoreMid:=ScoreMid+KnightMobMid[ind];
-         ScoreEnd:=ScoreEnd+KnightMobEnd[ind];
-         // Форпосты
-         If ((ForwardBB[white,sq] and IsolatedBB[sq] and Board.Pieses[pawn] and Board.Occupancy[black])=0) and ((OutPostBB[white] and Only[sq])<>0) then
-           begin
-             if ((PawnAttacks[black,sq] and Board.Pieses[pawn] and Board.Occupancy[white])<>0) then
-               begin
-                 ScoreMid:=ScoreMid+KnightOutPostProtectedMid;
-                 ScoreEnd:=ScoreEnd+KnightOutPostProtectedEnd;
-                 if (Att and KingZone[piesecol xor 1])<>0 then ScoreMid:=ScoreMid+KnightOutPostDanger;
-               end else
-               begin
-                 ScoreMid:=ScoreMid+KnightOutPostMid;
-                 ScoreEnd:=ScoreEnd+KnightOutPostEnd;
-               end;
-           end;
-         if (posy[sq]<5) and ((Only[sq+8] and Board.Pieses[pawn])<>0) then ScoreMid:=ScoreMid+MinorBehindPawn;
-       end else
-       begin
-         ScoreMid:=ScoreMid-KnightMobMid[ind];
-         ScoreEnd:=ScoreEnd-KnightMobEnd[ind];
-         // Форпосты
-         If ((ForwardBB[black,sq] and IsolatedBB[sq] and Board.Pieses[pawn] and Board.Occupancy[white])=0) and ((OutPostBB[black] and Only[sq])<>0) then
-           begin
-             if ((PawnAttacks[white,sq] and Board.Pieses[pawn] and Board.Occupancy[black])<>0) then
-               begin
-                 ScoreMid:=ScoreMid-KnightOutPostProtectedMid;
-                 ScoreEnd:=ScoreEnd-KnightOutPostProtectedEnd;
-                 if (Att and KingZone[piesecol xor 1])<>0 then ScoreMid:=ScoreMid-KnightOutPostDanger;
-               end else
-               begin
-                 ScoreMid:=ScoreMid-KnightOutPostMid;
-                 ScoreEnd:=ScoreEnd-KnightOutPostEnd;
-               end;
-           end;
-         if (posy[sq]>4) and ((Only[sq-8] and Board.Pieses[pawn])<>0) then ScoreMid:=ScoreMid-MinorBehindPawn;
+         if ((PawnAttacks[piesecol xor 1,sq] and Board.Pieses[pawn] and Board.Occupancy[piesecol])<>0) then
+         begin
+           ExtraMid[piesecol]:=ExtraMid[piesecol]+KnightOutPostProtectedMid;
+           ExtraEnd[piesecol]:=ExtraEnd[piesecol]+KnightOutPostProtectedEnd;
+         end else
+         begin
+           ExtraMid[piesecol]:=ExtraMid[piesecol]+KnightOutPostMid;
+           ExtraEnd[piesecol]:=ExtraEnd[piesecol]+KnightOutPostEnd;
+         end;
        end;
+     // Легкая фигура за пешкой (своей или чужой)
+     if (RelRank[piesecol,posy[sq]]<5) and ((Only[sq+step[piesecol]] and Board.Pieses[pawn])<>0) then ExtraMid[piesecol]:=ExtraMid[piesecol]+MinorBehindPawn;
      temp:=temp and (temp-1);
     end;
   // Слоны
-  wb:=0;
-  bb:=0;
+  BishopNum[white]:=0;
+  BishopNum[black]:=0;
   temp1:=(Board.Pieses[bishop] or Board.Pieses[queen]);
   temp:=Board.Pieses[bishop];
   while temp<>0 do
     begin
      sq:=BitScanForward(temp);
      piesecol:=PieseColor[Board.Pos[sq]];
+     inc(BishopNum[piesecol]);
      // Атакованные поля
      att:=BishopAttacksBB(sq,Board.AllPieses and (not(temp1 and Board.Occupancy[piesecol])) );
      If (Only[sq] and Pines[piesecol])<>0 then Att:=Att and FullLine[sq,Board.KingSq[piesecol]];
@@ -415,87 +524,33 @@ begin
        end;
      // Подвижность
      ind:=BitCount(Att and MobilityArea[piesecol]);
-     if piesecol=white then
+     MobilityMid[piesecol]:=MobilityMid[piesecol]+BishopMobMid[ind];
+     MobilityEnd[piesecol]:=MobilityEnd[piesecol]+BishopMobEnd[ind];
+     // Форпосты
+     If ((ForwardBB[piesecol,sq] and IsolatedBB[sq] and Board.Pieses[pawn] and Board.Occupancy[piesecol xor 1])=0) and ((OutPostBB[piesecol] and Only[sq])<>0)  then
        begin
-         inc(wb);
-         ScoreMid:=ScoreMid+BishopMobMid[ind];
-         ScoreEnd:=ScoreEnd+BishopMobEnd[ind];
-         // Форпосты
-         If ((ForwardBB[white,sq] and IsolatedBB[sq] and Board.Pieses[pawn] and Board.Occupancy[black])=0) and ((OutPostBB[white] and Only[sq])<>0)  then
+         if ((PawnAttacks[piesecol xor 1,sq] and Board.Pieses[pawn] and Board.Occupancy[piesecol])<>0) then
            begin
-             if ((PawnAttacks[black,sq] and Board.Pieses[pawn] and Board.Occupancy[white])<>0) then
-               begin
-                 ScoreMid:=ScoreMid+BishopOutPostProtectedMid;
-                 ScoreEnd:=ScoreEnd+BishopOutPostProtectedEnd;
-                 if (Att and KingZone[piesecol xor 1])<>0 then ScoreMid:=ScoreMid+BishopOutPostDanger;
-               end else
-               begin
-                 ScoreMid:=ScoreMid+BishopOutPostMid;
-                 ScoreEnd:=ScoreEnd+BishopOutPostEnd;
-               end;
+             ExtraMid[piesecol]:=ExtraMid[piesecol]+BishopOutPostProtectedMid;
+             ExtraEnd[piesecol]:=ExtraEnd[piesecol]+BishopOutPostProtectedEnd;
+           end else
+           begin
+             ExtraMid[piesecol]:=ExtraMid[piesecol]+BishopOutPostMid;
+             ExtraEnd[piesecol]:=ExtraEnd[piesecol]+BishopOutPostEnd;
            end;
-        // Блокированность пешками
-        if (Only[sq] and LightSquaresBB)<>0 then
-          begin
-            ScoreMid:=ScoreMid-BishopPawnMid*(PawnTable[PawnIndex].BPawn and 15);
-            ScoreEnd:=ScoreEnd-BishopPawnEnd*(PawnTable[PawnIndex].BPawn and 15);
-          end else
-          begin
-            ScoreMid:=ScoreMid-BishopPawnMid*((PawnTable[PawnIndex].BPawn shr 4) and 15);
-            ScoreEnd:=ScoreEnd-BishopPawnEnd*((PawnTable[PawnIndex].BPawn shr 4) and 15);
-          end;
-        if (posy[sq]<5) then
-          begin
-           if ((Only[sq+8] and Board.Pieses[pawn])<>0) then ScoreMid:=ScoreMid+MinorBehindPawn;
-           Temp2:=(BishopFullAttacks[sq] and ForwardBB[white,sq] and (RanksBB[Posy[sq]+1] or RanksBB[Posy[sq]+2]) and Board.Pieses[pawn] and Board.Occupancy[white]);
-           if Temp2<>0 then
-             begin
-               ind:=BitCount(temp2);
-               ScoreMid:=ScoreMid-BishopWeakMid*ind;
-               ScoreEnd:=ScoreEnd-BishopWeakEnd*ind;
-             end;
-          end;
+       end;
+     // Блокированность пешками
+     if (Only[sq] and LightSquaresBB)<>0 then
+       begin
+         ExtraMid[piesecol]:=ExtraMid[piesecol]-BishopPawnMid*((Threads[ThreadID].PawnTable[PawnIndex].BPawn shr BishopShift[piesecol,lig]) and 15);
+         ExtraEnd[piesecol]:=ExtraEnd[piesecol]-BishopPawnEnd*((Threads[ThreadID].PawnTable[PawnIndex].BPawn shr BishopShift[piesecol,lig]) and 15);
        end else
        begin
-         inc(bb);
-         ScoreMid:=ScoreMid-BishopMobMid[ind];
-         ScoreEnd:=ScoreEnd-BishopMobEnd[ind];
-         // Форпосты
-         If ((ForwardBB[black,sq] and IsolatedBB[sq] and Board.Pieses[pawn] and Board.Occupancy[white])=0) and ((OutPostBB[black] and Only[sq])<>0) then
-           begin
-             if ((PawnAttacks[white,sq] and Board.Pieses[pawn] and Board.Occupancy[black])<>0) then
-               begin
-                 ScoreMid:=ScoreMid-BishopOutPostProtectedMid;
-                 ScoreEnd:=ScoreEnd-BishopOutPostProtectedEnd;
-                 if (Att and KingZone[piesecol xor 1])<>0 then ScoreMid:=ScoreMid-BishopOutPostDanger;
-               end else
-               begin
-                 ScoreMid:=ScoreMid-BishopOutPostMid;
-                 ScoreEnd:=ScoreEnd-BishopOutPostEnd;
-               end;
-           end;
-         // Блокированность пешками
-        if (Only[sq] and LightSquaresBB)<>0 then
-          begin
-            ScoreMid:=ScoreMid+BishopPawnMid*((PawnTable[PawnIndex].BPawn shr 8) and 15);
-            ScoreEnd:=ScoreEnd+BishopPawnEnd*((PawnTable[PawnIndex].BPawn shr 8) and 15);
-          end else
-          begin
-            ScoreMid:=ScoreMid+BishopPawnMid*((PawnTable[PawnIndex].BPawn shr 12) and 15);
-            ScoreEnd:=ScoreEnd+BishopPawnEnd*((PawnTable[PawnIndex].BPawn shr 12) and 15);
-          end;
-        if (posy[sq]>4) then
-          begin
-           if ((Only[sq-8] and Board.Pieses[pawn])<>0) then ScoreMid:=ScoreMid-MinorBehindPawn;
-           Temp2:=(BishopFullAttacks[sq] and ForwardBB[black,sq] and (RanksBB[Posy[sq]-1] or RanksBB[Posy[sq]-2]) and Board.Pieses[pawn] and Board.Occupancy[black]);
-           if Temp2<>0 then
-             begin
-               ind:=BitCount(temp2);
-               ScoreMid:=ScoreMid+BishopWeakMid*ind;
-               ScoreEnd:=ScoreEnd+BishopWeakEnd*ind;
-             end;
-          end;
+         ExtraMid[piesecol]:=ExtraMid[piesecol]-BishopPawnMid*((Threads[ThreadID].PawnTable[PawnIndex].BPawn shr BishopShift[piesecol,dar]) and 15);
+         ExtraEnd[piesecol]:=ExtraEnd[piesecol]-BishopPawnEnd*((Threads[ThreadID].PawnTable[PawnIndex].BPawn shr BishopShift[piesecol,dar]) and 15);
        end;
+     // Легкая фигура за пешкой (своей или чужой)
+     if (RelRank[piesecol,posy[sq]]<5) and ((Only[sq+step[piesecol]] and Board.Pieses[pawn])<>0) then ExtraMid[piesecol]:=ExtraMid[piesecol]+MinorBehindPawn;
      temp:=temp and (temp-1);
     end;
   // Ладьи
@@ -504,8 +559,8 @@ begin
   while temp<>0 do
     begin
      sq:=BitScanForward(temp);
-     x:=posx[sq];
      piesecol:=PieseColor[Board.Pos[sq]];
+     x:=posx[sq];
      // Атакованные поля
      att:=RookAttacksBB(sq,Board.AllPieses and (not(temp1 and Board.Occupancy[piesecol])) );
      If (Only[sq] and Pines[piesecol])<>0 then Att:=Att and FullLine[sq,Board.KingSq[piesecol]];
@@ -519,75 +574,30 @@ begin
        end;
      // Подвижность
      ind:=BitCount(Att and MobilityArea[piesecol]);
-     if piesecol=white then
+     MobilityMid[piesecol]:=MobilityMid[piesecol]+RookMobMid[ind];
+     MobilityEnd[piesecol]:=MobilityEnd[piesecol]+RookMobEnd[ind];
+     // Открытые и полуоткрытые вертикали
+     If (FilesBB[x] and Board.Pieses[pawn] and Board.Occupancy[piesecol])=0 then
        begin
-         ScoreMid:=ScoreMid+RookMobMid[ind];
-         ScoreEnd:=ScoreEnd+RookMobEnd[ind];
-         // Специфика для Ладьи
-         If (FilesBB[x] and Board.Pieses[pawn] and Board.Occupancy[white])=0 then
+         If (FilesBB[x] and Board.Pieses[pawn] and Board.Occupancy[piesecol xor 1])=0 then
            begin
-            If (FilesBB[x] and Board.Pieses[pawn] and Board.Occupancy[black])=0 then
-             begin
-              ScoreMid:=ScoreMid+RookOpenMid;
-              ScoreEnd:=ScoreEnd+RookOpenEnd;
-             end else
-             begin
-              ScoreMid:=ScoreMid+RookHalfMid;
-              ScoreEnd:=ScoreEnd+RookHalfEnd;
-             end;
+             ExtraMid[piesecol]:=ExtraMid[piesecol]+RookOpenMid;
+             ExtraEnd[piesecol]:=ExtraEnd[piesecol]+RookOpenEnd;
            end else
-         if (ind<4) and ((Board.CastleRights and 3)=0) then
            begin
-             Kx:=Posx[Board.KingSq[white]];
-             Ky:=Posy[Board.KingSq[white]];
-             if (((Kx<5) and (x<Kx)) or ((Kx>=5) and (X>Kx))) and ((Ky=1) or (Ky=Posy[sq])) then ScoreMid:=ScoreMid-RookTrapped;
+             ExtraMid[piesecol]:=ExtraMid[piesecol]+RookHalfMid;
+             ExtraEnd[piesecol]:=ExtraEnd[piesecol]+RookHalfEnd;
            end;
-         If (Posy[sq]=7) and (Posy[Board.KingSq[black]]>=7) then
-           begin
-             ScoreMid:=Scoremid+RookOn7Mid;
-             ScoreEnd:=ScoreEnd+RookOn7End;
-             If (Att and RanksBB[7] and (Board.Pieses[rook] or Board.Pieses[queen]) and Board.Occupancy[white])<>0 then
-               begin
-                 ScoreMid:=ScoreMid+DoubRook7Mid;
-                 ScoreEnd:=ScoreEnd+DoubRook7End;
-               end;
-           end;
-         If (Posy[sq]>4) and ((RookFullAttacks[sq] and Board.Pieses[pawn] and Board.Occupancy[black])<>0) then ScoreEnd:=ScoreEnd+RookPawn*BitCount(RookFullAttacks[sq] and Board.Pieses[pawn] and Board.Occupancy[black]);
        end else
+     // Запертая ладья
+     if (ind<4) and ((Board.CastleRights and CastleCheck[piesecol])=0) then
        begin
-         ScoreMid:=ScoreMid-RookMobMid[ind];
-         ScoreEnd:=ScoreEnd-RookMobEnd[ind];
-         // Специфика для Ладьи
-         If (FilesBB[x] and Board.Pieses[pawn] and Board.Occupancy[black])=0 then
-           begin
-            If (FilesBB[x] and Board.Pieses[pawn] and Board.Occupancy[white])=0 then
-             begin
-              ScoreMid:=ScoreMid-RookOpenMid;
-              ScoreEnd:=ScoreEnd-RookOpenEnd;
-             end else
-             begin
-              ScoreMid:=ScoreMid-RookHalfMid;
-              ScoreEnd:=ScoreEnd-RookHalfEnd;
-             end;
-           end else
-         if (ind<4) and ((Board.CastleRights and 12)=0) then
-           begin
-             Kx:=Posx[Board.KingSq[black]];
-             Ky:=Posy[Board.KingSq[black]];
-             if (((Kx<5) and (x<Kx)) or ((Kx>=5) and (X>Kx))) and ((Ky=8) or (Ky=Posy[sq])) then ScoreMid:=ScoreMid+RookTrapped;
-           end;
-         If (Posy[sq]=2) and (Posy[Board.KingSq[white]]<=2) then
-           begin
-             ScoreMid:=Scoremid-RookOn7Mid;
-             ScoreEnd:=ScoreEnd-RookOn7End;
-             If (Att and RanksBB[2] and (Board.Pieses[rook] or Board.Pieses[queen]) and Board.Occupancy[black])<>0 then
-               begin
-                 ScoreMid:=ScoreMid-DoubRook7Mid;
-                 ScoreEnd:=ScoreEnd-DoubRook7End;
-               end;
-           end;
-         If (Posy[sq]<5) and ((RookFullAttacks[sq] and Board.Pieses[pawn] and Board.Occupancy[white])<>0) then ScoreEnd:=ScoreEnd-RookPawn*BitCount(RookFullAttacks[sq] and Board.Pieses[pawn] and Board.Occupancy[white]);
+         Kx:=Posx[Board.KingSq[piesecol]];
+         Ky:=Posy[Board.KingSq[piesecol]];
+         if (((Kx<5) and (x<Kx)) or ((Kx>=5) and (X>Kx))) and ((RelRank[piesecol,Ky]=1) or (Ky=Posy[sq])) then ExtraMid[piesecol]:=ExtraMid[piesecol]-RookTrapped;
        end;
+     // Активная ладья в эндшпиле
+     If (RelRank[piesecol,Posy[sq]]>4) and ((RookFullAttacks[sq] and Board.Pieses[pawn] and Board.Occupancy[piesecol xor 1])<>0) then ExtraEnd[piesecol]:=ExtraEnd[piesecol]+RookPawn*BitCount(RookFullAttacks[sq] and Board.Pieses[pawn] and Board.Occupancy[piesecol xor 1]);
      temp:=temp and (temp-1);
     end;
   // Ферзи
@@ -610,223 +620,34 @@ begin
      // Подвижность
      Att:=Att and (not(Pattacks[piesecol xor 1,knight] or Pattacks[piesecol xor 1,bishop] or Pattacks[piesecol xor 1,rook]));
      ind:=BitCount(Att and MobilityArea[piesecol]);
-     if piesecol=white then
-       begin
-         ScoreMid:=ScoreMid+QueenMobMid[ind];
-         ScoreEnd:=ScoreEnd+QueenMobEnd[ind];
-       end else
-       begin
-         ScoreMid:=ScoreMid-QueenMobMid[ind];
-         ScoreEnd:=ScoreEnd-QueenMobEnd[ind];
-       end;
+     MobilityMid[piesecol]:=MobilityMid[piesecol]+QueenMobMid[ind];
+     MobilityEnd[piesecol]:=MobilityEnd[piesecol]+QueenMobEnd[ind];
      temp:=temp and (temp-1);
     end;
   // Оценка безопасности короля
-  ScoreMid:=ScoreMid-Shield[white]+Shield[black];
-  if KingAttackCount[white]>0 then
-    begin
-     if (KingAttackCount[white]>1) and ((Board.Pieses[queen] and Board.Occupancy[white])<>0) then
-       begin
-        KingAttackWeight[white]:=KingAttackWeight[white]+(Shield[black] div 4);
-        If (PAttacks[black,king] and (not(PAttacks[white,all] or Board.Occupancy[black])))=0 then KingAttackWeight[white]:=KingAttackWeight[white]+BadKing;
-       end;
-     Undefended:=PAttacks[white,all] and PAttacks[black,king] and (not(PAttacks[black,pawn] or PAttacks[black,bishop] or PAttacks[black,knight] or PAttacks[black,rook] or PAttacks[black,queen]));
-     If Undefended<>0 then KingAttackWeight[white]:=KingAttackWeight[white]+UndefendedSquare*BitCount(Undefended);
-     Undefended:=Undefended and PAttacks[white,queen] and ( not Board.Occupancy[white]);
-     If (Undefended<>0) then
-       begin
-         Undefended:=Undefended and (PAttacks[white,pawn] or PAttacks[white,knight] or PAttacks[white,bishop] or PAttacks[white,rook] or PAttacks[white,king]);
-         If Undefended<>0 then KingAttackWeight[white]:=KingAttackWeight[white]+QueenContactCheck;
-       end;
-     Undefended:= not (PAttacks[black,all] or Board.Occupancy[white]);
-     temp:=RookAttacksBB(Board.KingSq[black],Board.AllPieses) and Undefended;
-     temp1:=BishopAttacksBB(Board.KingSq[black],Board.AllPieses) and Undefended;
-     // Шахи ферзем
-     If ((temp or temp1) and PAttacks[white,queen])<>0 then
-       begin
-         KingAttackWeight[white]:=KingAttackWeight[white]+QueenSafeCheck;
-       end;
-     // Шахи ладьей
-     If (temp and PAttacks[white,rook])<>0 then
-       begin
-         KingAttackWeight[white]:=KingAttackWeight[white]+RookSafeCheck;
-       end;
-     // Шахи слоном
-     If (temp1 and PAttacks[white,bishop])<>0 then
-       begin
-         KingAttackWeight[white]:=KingAttackWeight[white]+BishopSafeCheck;
-       end;
-     // Шахи Конем
-     If (KnightAttacksBB(Board.KingSq[black]) and Undefended and PAttacks[white,knight])<>0 then
-       begin
-         KingAttackWeight[white]:=KingAttackWeight[white]+KnightSafeCheck;
-       end;
-     bonus:=((KingSafetyTable[KingAttackCount[white]]*KingAttackWeight[white]) div KingSafetyDivider);
-     if (Board.Pieses[queen] and Board.Occupancy[white])=0 then bonus:=bonus div 2;
-     ScoreMid:=ScoreMid+bonus;
-    end;
-  if KingAttackCount[black]>0 then
-    begin
-     if (KingAttackCount[black]>1) and ((Board.Pieses[queen] and Board.Occupancy[black])<>0) then
-       begin
-        KingAttackWeight[black]:=KingAttackWeight[black]+(Shield[white] div 4);
-        If (PAttacks[white,king] and (not(PAttacks[black,all] or Board.Occupancy[white])))=0 then KingAttackWeight[black]:=KingAttackWeight[black]+BadKing;
-       end;
-     Undefended:=PAttacks[black,all] and PAttacks[white,king] and (not(PAttacks[white,pawn] or PAttacks[white,bishop] or PAttacks[white,knight] or PAttacks[white,rook] or PAttacks[white,queen]));
-     If Undefended<>0 then KingAttackWeight[black]:=KingAttackWeight[black]+UndefendedSquare*BitCount(Undefended);
-     Undefended:=Undefended and PAttacks[black,queen] and ( not Board.Occupancy[black]);
-     If (Undefended<>0) then
-       begin
-         Undefended:=Undefended and (PAttacks[black,pawn] or PAttacks[black,knight] or PAttacks[black,bishop] or PAttacks[black,rook] or PAttacks[black,king]);
-         If Undefended<>0 then KingAttackWeight[black]:=KingAttackWeight[black]+QueenContactCheck;
-       end;
-     Undefended:= not (PAttacks[white,all] or Board.Occupancy[black]);
-     temp:=RookAttacksBB(Board.KingSq[white],Board.AllPieses) and Undefended;
-     temp1:=BishopAttacksBB(Board.KingSq[white],Board.AllPieses) and Undefended;
-     // Шахи ферзем
-     If ((temp or temp1) and PAttacks[black,queen])<>0 then
-       begin
-         KingAttackWeight[black]:=KingAttackWeight[black]+QueenSafeCheck;
-       end;
-     // Шахи ладьей
-     If (temp and PAttacks[black,rook])<>0 then
-       begin
-         KingAttackWeight[black]:=KingAttackWeight[black]+RookSafeCheck;
-       end;
-     // Шахи слоном
-     If (temp1 and PAttacks[black,bishop])<>0 then
-       begin
-         KingAttackWeight[black]:=KingAttackWeight[black]+BishopSafeCheck;
-       end;
-     // Шахи Конем
-     If (KnightAttacksBB(Board.KingSq[white]) and Undefended and PAttacks[black,knight])<>0 then
-       begin
-         KingAttackWeight[black]:=KingAttackWeight[black]+KnightSafeCheck;
-       end;
-     bonus:=((KingSafetyTable[KingAttackCount[black]]*KingAttackWeight[black]) div KingSafetyDivider);
-     if (Board.Pieses[queen] and Board.Occupancy[black])=0 then bonus:=bonus div 2;
-     ScoreMid:=ScoreMid-bonus;
-    end;
+  KingSafety(white,Board,ExtraMid,ExtraEnd,KingAttackCount,PAttacks,Shield,KingAttackWeight);
+  KingSafety(black,Board,ExtraMid,ExtraEnd,KingAttackCount,PAttacks,Shield,KingAttackWeight);
 
   //  Если есть проходные - запускаем специальную оценочную и для них
-  if PawnTable[PawnIndex].PassersBB<>0 then
+  if Threads[ThreadID].PawnTable[PawnIndex].PassersBB<>0 then
     begin
-      EvaluatePassers(PassMid,PassEnd,PawnTable[PawnIndex].PassersBB,Board,PAttacks[white,all],PAttacks[black,all]);
+      EvaluatePassers(PassMid,PassEnd,Threads[ThreadID].PawnTable[PawnIndex].PassersBB,Board,PAttacks[white,all],PAttacks[black,all]);
       ScoreMid:=ScoreMid+PassMid;
       ScoreEnd:=ScoreEnd+PassEnd;
     end;
+
   //  Угрозы
- // Фигуры противника атакованы нашими пешками
- Weak:=(Board.Occupancy[black] and (not Board.Pieses[pawn])) and PAttacks[white,pawn];
- if Weak<>0 then
-   begin
-     Temp:=(Board.Pieses[pawn] and Board.Occupancy[white]) and ((not PAttacks[black,all]) or PAttacks[white,all]);
-     SafeThreats:=(((temp and (not FilesBB[1])) shl 7) or ((temp and (not FilesBB[8])) shl 9)) and Weak;
-     If (Weak and (not SafeThreats))<>0 then
-       begin
-         ScoreMid:=ScoreMid+ThreatHangingPawnMid;
-         ScoreEnd:=ScoreEnd+ThreatHangingPawnEnd;
-       end;
-     If SafeThreats<>0 then
-       begin
-         ind:=BitCount(SafeThreats);
-         ScoreMid:=ScoreMid+ind*ThreatStrongPawnMid;
-         ScoreEnd:=ScoreEnd+ind*ThreatStrongPawnEnd;
-       end;
-   end;
- Weak:=(Board.Occupancy[white] and (not Board.Pieses[pawn])) and PAttacks[black,pawn];
- if Weak<>0 then
-   begin
-     Temp:=(Board.Pieses[pawn] and Board.Occupancy[black]) and ((not PAttacks[white,all]) or PAttacks[black,all]);
-     SafeThreats:=(((temp and (not FilesBB[1])) shr 9) or ((temp and (not FilesBB[8])) shr 7)) and Weak;
-     If (Weak and (not SafeThreats))<>0 then
-       begin
-         ScoreMid:=ScoreMid-ThreatHangingPawnMid;
-         ScoreEnd:=ScoreEnd-ThreatHangingPawnEnd;
-       end;
-     If SafeThreats<>0 then
-       begin
-         ind:=BitCount(SafeThreats);
-         ScoreMid:=ScoreMid-ind*ThreatStrongPawnMid;
-         ScoreEnd:=ScoreEnd-ind*ThreatStrongPawnEnd;
-       end;
-   end;
-  // Вилки легкими фигурами
-  Weak:=(Board.Occupancy[black] and (Board.Pieses[rook] or Board.Pieses[queen])) and (PAttacks[white,knight] or PAttacks[white,bishop]);
-  If Weak<>0 then
-    begin
-      ind:=BitCount(Weak);
-      ScoreMid:=ScoreMid+ForkMid*ind;
-      ScoreEnd:=ScoreEnd+ForkEnd*ind;
-    end;
-  Weak:=(Board.Occupancy[white] and (Board.Pieses[rook] or Board.Pieses[queen])) and (PAttacks[black,knight] or PAttacks[black,bishop]);
-  If Weak<>0 then
-    begin
-      ind:=BitCount(Weak);
-      ScoreMid:=ScoreMid-ForkMid*ind;
-      ScoreEnd:=ScoreEnd-ForkEnd*ind;
-    end;
-  // Атаки Королей
-  Weak:=Board.Occupancy[black] and (not PAttacks[black,pawn]) and PAttacks[white,king];
-  If Weak<>0 then
-    begin
-      If (Weak and (Weak-1))<>0
-        then ScoreEnd:=ScoreEnd+KingThreatMulti
-        else ScoreEnd:=ScoreEnd+KingThreatOne;
-    end;
+  Threats(white,Board,PAttacks,ExtraMid,ExtraEnd);
+  Threats(black,Board,PAttacks,ExtraMid,ExtraEnd);
 
-  Weak:=Board.Occupancy[white] and (not PAttacks[white,pawn]) and PAttacks[black,king];
-  If Weak<>0 then
-    begin
-      If (Weak and (Weak-1))<>0
-        then ScoreEnd:=ScoreEnd-KingThreatMulti
-        else ScoreEnd:=ScoreEnd-KingThreatOne;
-    end;
-   // Висячие фигуры (не защищенные под атакой)
-  Weak:=Board.Occupancy[black] and PAttacks[white,all] and (not PAttacks[black,all]);
-  if Weak<>0 then
-    begin
-      ind:=BitCount(Weak);
-      ScoreMid:=ScoreMid+HangingMid*ind;
-      ScoreEnd:=ScoreEnd+HangingEnd*ind;
-    end;
-
-  Weak:=Board.Occupancy[white] and PAttacks[black,all] and (not PAttacks[white,all]);
-  if Weak<>0 then
-    begin
-      ind:=BitCount(Weak);
-      ScoreMid:=ScoreMid-HangingMid*ind;
-      ScoreEnd:=ScoreEnd-HangingEnd*ind;
-    end;
-  // Атаки на незащищенные пешками цели
-  Temp:=Board.Occupancy[black] and (PAttacks[white,knight] or PAttacks[white,bishop] or PAttacks[white,rook]) and (not PAttacks[black,pawn]);
-  // На пешки
-  Weak:=Temp and Board.Pieses[pawn];
-  If Weak<>0 then ScoreEnd:=ScoreEnd+PawnUnProtectedEnd*BitCount(weak);
-  // На легкие фигуры
-  Weak:=Temp and (Board.Pieses[knight] or Board.Pieses[bishop]);
-  If Weak<>0 then
-    begin
-      ind:=BitCount(weak);
-      ScoreMid:=ScoreMid+ind*PieseUnProtected;
-      ScoreEnd:=ScoreEnd+ind*PieseUnProtected;
-    end;
-  Temp:=Board.Occupancy[white] and (PAttacks[black,knight] or PAttacks[black,bishop] or PAttacks[black,rook]) and (not PAttacks[white,pawn]);
-  // На пешки
-  Weak:=Temp and Board.Pieses[pawn];
-  If Weak<>0 then ScoreEnd:=ScoreEnd-PawnUnProtectedEnd*BitCount(weak);
-  // На легкие фигуры
-  Weak:=Temp and (Board.Pieses[knight] or Board.Pieses[bishop]);
-  If Weak<>0 then
-    begin
-      ind:=BitCount(weak);
-      ScoreMid:=ScoreMid-ind*PieseUnProtected;
-      ScoreEnd:=ScoreEnd-ind*PieseUnProtected;
-    end;
+  // Собираем оценки
+  ScoreMid:=ScoreMid+MobilityMid[white]-MobilityMid[black]+ExtraMid[white]-ExtraMid[black]-Shield[white]+Shield[black];
+  ScoreEnd:=ScoreEnd+MobilityEnd[white]-MobilityEnd[black]+ExtraEnd[white]-ExtraEnd[black];
+  // Некоторые особенные эндшпильные случаи
   if (Phase<=PhaseOpposit) then
     begin
       // Слоновый эндшпиль ( Возможные разноцветные слоны)
-      If  (wb=1) and (bb=1) then OppositeBishops(WScale,BScale,Board);
+      If  (BishopNum[white]=1) and (BishopNum[black]=1) then OppositeBishops(WScale,BScale,Board);
       If (Abs(ScoreEnd)<300) then
         begin
           // Король успел под пешки противника
@@ -844,8 +665,8 @@ begin
     then score:=-score+Tempo
     else score:=score+Tempo;
   // Пишем в хеш
-  EvalTable[EvalIndex].Key:=Board.Key;
-  EvalTable[EvalIndex].value:=score;
+  Threads[ThreadId].EvalTable[EvalIndex].Key:=Board.Key;
+  Threads[ThreadId].EvalTable[EvalIndex].value:=score;
   Result:=score;
 end;
 

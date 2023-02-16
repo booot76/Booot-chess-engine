@@ -12,12 +12,13 @@ VAR
 
 Procedure MainLoop;
 procedure LWrite(s:ansistring);
-Procedure poll(var AbortSearch:boolean;var Board:Tboard);
-Procedure NewSearch;
+Procedure poll(var Board:Tboard);
+Procedure NewSearch(ThreadId:integer);
 Function StrToMove(smove:ansistring;var Board:Tboard):integer;
 Procedure WaitPonderhit;
 
 implementation
+   uses uThread;
 
 Procedure SetupChanels;
 var mode: cardinal;
@@ -89,7 +90,12 @@ end;
 
 Procedure NewGame;
 begin
-  SetBoard(StartPositionFen,Boards[1]);
+  If game.Threads>1 then
+    begin
+      StopThreads;
+      Init_Threads(game.Threads);
+    end;
+  SetBoard(StartPositionFen,Threads[1].Board);
   SetHash(game.hashsize);
   game.HashAge:=0;
 end;
@@ -103,16 +109,19 @@ begin
   If (game.time>300)  then game.remain:=20000   else // Если больше 0,3 секунд на ход  - проверка через каждые 20к позиций
                            game.remain:=10000; // Если меньше 0,3 секунд на ход  - проверка через каждые 10к позиций
 end;
-Procedure NewSearch;
+Procedure NewSearch(ThreadId:integer);
 begin
-  ClearHistory(SortUnits[1]);
-  game.HashAge:=game.HashAge+4;
-  if game.HashAge>=256 then game.HashAge:=0;
-  game.TimeStart:=GetTickCount;
-  Boards[1].Nodes:=0;
-  SetRemain;
-  Boards[1].remain:=game.remain;
-  game.AbortSearch:=false;
+  ClearHistory(Threads[ThreadId].Sortunit);
+  Threads[ThreadId].Board.Nodes:=0;
+  Threads[ThreadId].AbortSearch:=false;
+  If ThreadId=1 then
+    begin
+     game.HashAge:=game.HashAge+4;
+     if game.HashAge>=256 then game.HashAge:=0;
+     game.TimeStart:=GetTickCount;
+     SetRemain;
+     Threads[1].Board.remain:=game.remain;
+    end;
 end;
 Function FindSq(s:ansistring):integer;
 var
@@ -225,7 +234,7 @@ begin
   if s='' then exit;
   if s='eval' then
     begin
-      Lwrite('Score = '+InttoStr(Evaluate(Boards[1])));                         // Статическая оценка позиции
+      Lwrite('Score = '+InttoStr(Evaluate(Threads[1].Board,1)));                         // Статическая оценка позиции
       exit;
     end;
   if pos('perft ',s)=1 then                                                     // тест perft
@@ -233,7 +242,7 @@ begin
       n:=pos(' ',s);
       sval:=trim(copy(s,n,length(s)));
       val:=StrToInt(sval);
-      Perft(true,now,Boards[1],val);
+      Perft(true,now,Threads[1].Board,val);
       exit;
     end;
   if s='uci' then                                                               //uci
@@ -243,6 +252,7 @@ begin
      // Тут вываливаем список параметров движка
      LWrite('option name Hash type spin default 128 min 16 max 8192');
      LWrite('option name Ponder type check default false');
+     LWrite('option name Threads type spin default 1 min 1 max '+inttostr(MaxThreads));
      LWrite('uciok');
      exit;
     end;
@@ -269,6 +279,18 @@ begin
          begin
            if pos('true',sval) > 0 then game.uciPonder:=true else
            if pos('false',sval) > 0  then game.uciPonder:=false;
+         end else
+        if (pos('name threads',s) > 0) or (pos('name Threads',s) > 0) then
+         begin
+           val := StrToIntDef(sval,1);
+           if val>MaxThreads then val:=MaxThreads;
+           game.Threads:=val;
+           // Останавливаем потоки которые могли быть запущены ранее
+           StopThreads;
+           // Запускаем потоки
+           If game.Threads>1 then Init_Threads(game.Threads);
+           // После изменения количества потоков перезапускаем хеш, чтобы пересчитатьт память под новое количество
+           SetHash(val);
          end;
        end;
      exit;
@@ -294,12 +316,12 @@ begin
       n := pos('fen ',fen);
       if n > 0 then fen := copy(fen,n+4,length(fen)) else fen := '';
       if (fen='') or (fen='startpos') then fen:=StartPositionFEN;
-      SetBoard(fen,Boards[1]);
-      Trees[1][0].key:=0;
-      Trees[1][-1].key:=0;
-      ForceMoves(Boards[1],Trees[1],mlist);
+      SetBoard(fen,Threads[1].Board);
+      Threads[1].tree[0].key:=0;
+      Threads[1].tree[-1].key:=0;
+      ForceMoves(Threads[1].Board,Threads[1].tree,mlist);
      // PrintBoard(Boards[1]);
-      Trees[1][1].key:=Boards[1].Key;
+      Threads[1].tree[1].key:=Threads[1].Board.Key;
       exit;
      end;
   if pos('go ',s) = 1 then
@@ -317,7 +339,7 @@ begin
         binc:=GetParam(s,'binc');
         movetime:=GetParam(s,'movetime');
         movestocontrol:=GetParam(s,'movestogo');
-        if Boards[1].SideToMove=white then
+        if Threads[1].Board.SideToMove=white then
           begin
             clock:=wtime;
             incr:=winc;
@@ -332,7 +354,7 @@ begin
             //Контроль времени
             game.time:=clock div (movestocontrol+1);
             If (clock>10000) and (movestoControl>2)
-              then  game.rezerv:=game.time*3
+              then  game.rezerv:=clock div 4
               else  game.rezerv:=game.time;
           end else
           begin
@@ -340,14 +362,14 @@ begin
             if incr>0 then
               begin
                 // С добавлением
-                game.time:=(clock div 30)+ (incr div 3)*2;
+                game.time:=(clock div 20)+(incr div 2);
                 If clock>10000
-                  then  game.rezerv:=game.time*3
+                  then  game.rezerv:=clock div 4
                   else  game.rezerv:=game.time;
               end else
               begin
                 // без добавления
-                game.time:=clock div 40;
+                game.time:=clock div 30;
                 If clock>20000
                   then  game.rezerv:=game.time*2
                   else  game.rezerv:=game.time;
@@ -373,12 +395,18 @@ end;
 
 Procedure MainLoop;
 var
-  n:integer;
+  n,i:integer;
   s:ansistring;
 begin
   SetupChanels;
   game.uciPonder:=false;
   game.hashsize:=128;
+  game.Threads:=1;
+  for i:=1 to MaxThreads do
+    begin
+      Threads[i].isRun:=false;
+      Threads[i].idle:=true;
+    end;
   NewGame;
   repeat
     n := CheckInput;
@@ -389,24 +417,28 @@ begin
       end;
     s := ReadInput(n);
   // Получили команду на выход
-    if s='quit' then exit;
+    if s='quit' then
+      begin
+        stopthreads;
+        exit;
+      end;
   // Разбираем полученную команду
    Parser(s);
   until false;
 end;
 
-Procedure poll(var AbortSearch:boolean;var Board:Tboard);
+Procedure poll(var Board:Tboard);
 var
    n:integer;
    s:ansistring;
    timetot:cardinal;
 begin
   Timetot:=gettickcount - game.TimeStart;
-  if timetot>=game.time then AbortSearch:=true;
+  if timetot>=game.time then Threads[1].AbortSearch:=true;
   n := CheckInput;
   if n = 0 then exit;
   s := ReadInput(n);
-  if (s='quit') or (s='stop') then AbortSearch:=true;
+  if (s='stop') or (s='quit') then Threads[1].AbortSearch:=true;
   if (s='ponderhit') then
     begin
       game.time:=game.pondertime;
