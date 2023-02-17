@@ -4,7 +4,7 @@ interface
 uses uBitBoards,uMagic,uBoard;
 
 Const
-  SeeValues  : array[Pawn..King] of integer =(100,300,300,500,900,0);
+  SeeValues  : array[Empty..King] of integer =(0,100,300,300,500,900,0);
   PieseColor : array[-King..King] of integer=(black,black,black,black,black,black,white,white,white,white,white,white,white);
   PositiveSee=10000;
 

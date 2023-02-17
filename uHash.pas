@@ -223,7 +223,7 @@ end;
 Procedure HashSave(index:int64;Key:int64;value:integer;depth:integer;typ:integer;move:integer;steval:integer);inline;
 begin
   If (move<>0) or (TT[index].Key<>Key) then  TT[index].move:=move;
-  If (TT[index].Key<>Key) or (depth>TT[index].depth-4)  then
+  If (TT[index].Key<>Key) or (depth>TT[index].depth-4) or (typ=HashExact)  then
     begin
      TT[index].value:=value;
      TT[index].depth:=depth;

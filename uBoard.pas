@@ -141,7 +141,6 @@ Type
                  CurrMove : integer;
                  CurrStat : PHistory;
                  CurrNum  : integer;
-                 HistVal  : integer;
                end;
   Ttree = array [-101..129]  of TTreeEntry;
   TCheckInfo = record

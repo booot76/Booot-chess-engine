@@ -12,22 +12,21 @@ Type
                  ScaleFunc : byte;
                  phase     : byte;
                end;
+   TT8 = array[0..8] of integer;
 Const
    PawnValueMid=80;    PawnValueEnd=100;
-   KnightValueMid=320; KnightValueEnd=310;
-   BishopValueMid=325; BishopValueEnd=320;
-   RookValueMid=500;   RookValueEnd=510;
-   QueenValueMid=960;  QueenValueEnd=970;
-   DoubleBishopMid=40; DoubleBishopEnd=50;
-   DoubleNoMinorMid=10;DoubleNoMinorEnd=15;
-   MinorBonusMid=15;   MinorBonusEnd=30;
-   KnightPawnMid=5;    KnightPawnEnd=5;
-   RookPawnMid=10;     RookPawnEnd=10;
+   KnightValueMid=370; KnightValueEnd=360;
+   BishopValueMid=380; BishopValueEnd=370;
+   RookValueMid=560;   RookValueEnd=600;
+   QueenValueMid=1150; QueenValueEnd=1150;
+   DoubleBishopMid=30; DoubleBishopEnd=50;
+   DoubleNoMinorMid=10; DoubleNoMinorEnd=10;
+   KnightPawn :TT8=(0,0,0,0,0,0,  5, 10, 15);
+   RookPawn   :TT8=(0,0,0,0,0,0, -8,-16,-25);
    DoubleRookMid=16;   DoubleRookEnd=32;
    ExtraMajorMid=8;    ExtraMajorEnd=16;
 
    PieseTypValue : array[Pawn..Queen] of integer = (0,KnightValueMid,BishopValueMid,RookValueMid,QueenValueMid); // Для обновления внутри make непешечного материала на доске. Поэтому ценность пешки =0
-   ScalePawn=80;
    ScaleNormal=64;
    ScaleOnePawn=48;
    ScaleOpposit=32;
@@ -40,8 +39,7 @@ Const
    PhaseRook=3;
    PhaseQueen=6;
    MaxPhase=32;
-   PhaseOpposit=2*PhaseMinor+2*PhaseQueen+2*PhaseRook;
-   PhaseSpace=2*PhaseQueen+4*PhaseRook+2*Phaseminor;
+   PhaseSpace=2*QueenValueMid+4*RookValueMid+2*BishopValueMid;
 
 Procedure InitMatTable(SizeMB:integer);
 Procedure CalcImbalance(var ScoreMid:integer;var ScoreEnd:integer;wp,bp,wn,bn,wb,bb,wr,br,wq,bq:integer);inline;
@@ -81,8 +79,8 @@ end;
 Procedure CalcImbalance(var ScoreMid:integer;var ScoreEnd:integer;wp,bp,wn,bn,wb,bb,wr,br,wq,bq:integer);inline;
 // Считает материальную оценку при данном конкретном соотношении материала
 begin
-  ScoreMid:=(wp-bp)*PawnValueMid+(wn-bn)*KnightValueMid+(wp-5)*wn*KnightPawnMid-(bp-5)*bn*KnightPawnMid+(wb-bb)*BishopValueMid+(wr-br)*RookValueMid-(wp-5)*wr*RookPawnMid+(bp-5)*br*RookPawnMid+(wq-bq)*QueenValueMid;
-  ScoreEnd:=(wp-bp)*PawnValueEnd+(wn-bn)*KnightValueEnd+(wp-5)*wn*KnightPawnEnd-(bp-5)*bn*KnightPawnEnd+(wb-bb)*BishopValueEnd+(wr-br)*RookValueEnd-(wp-5)*wr*RookPawnEnd+(bp-5)*br*RookPawnEnd+(wq-bq)*QueenValueEnd;
+  ScoreMid:=(wp-bp)*PawnValueMid+(wn-bn)*KnightValueMid+wn*KnightPawn[wp]-bn*KnightPawn[bp]+(wb-bb)*BishopValueMid+(wr-br)*RookValueMid+wr*RookPawn[wp]-br*RookPawn[bp]+(wq-bq)*QueenValueMid;
+  ScoreEnd:=(wp-bp)*PawnValueEnd+(wn-bn)*KnightValueEnd+wn*KnightPawn[wp]-bn*KnightPawn[bp]+(wb-bb)*BishopValueEnd+(wr-br)*RookValueEnd+wr*RookPawn[wp]-br*RookPawn[bp]+(wq-bq)*QueenValueEnd;
   if wb>1 then
     begin
       ScoreMid:=ScoreMid+DoubleBishopMid;
@@ -102,16 +100,6 @@ begin
           ScoreMid:=ScoreMid-DoubleNoMinorMid;
           ScoreEnd:=ScoreEnd-DoubleNoMinorEnd;
         end;
-    end;
-  if (wn+wb>bn+bb+1) then
-    begin
-      ScoreMid:=ScoreMid+MinorBonusMid;
-      ScoreEnd:=ScoreEnd+MinorBonusEnd;
-    end else
-  if (bn+bb>wn+wb+1) then
-    begin
-      ScoreMid:=ScoreMid-MinorBonusMid;
-      ScoreEnd:=ScoreEnd-MinorBonusEnd;
     end;
   if wr>1 then
     begin
@@ -169,11 +157,6 @@ begin
               then WScale:=ScaleDrawish   // KRKB* KRKN* KBNKB* etc
               else WScale:=ScaleHardWin;  // KRBKR*  etc.
         end;
-    end else
-  if wp=1 then
-    begin
-      // Если осталась последняя пешка  то выигрыш тоже может быть непрост
-      if NPW-NPB<=PieseTypValue[Bishop] then WScale:=ScaleOnePawn;
     end;
   if bp=0 then
     begin
@@ -185,11 +168,6 @@ begin
               then BScale:=ScaleDrawish   // KRKB* KRKN* KBNKB* etc
               else BScale:=ScaleHardWin;  // KRBKR*  etc.
         end;
-    end else
-  if bp=1 then
-    begin
-      // Если осталась последняя пешка  то выигрыш тоже может быть непрост
-      if NPB-NPW<=PieseTypValue[Bishop] then BScale:=ScaleOnePawn;
     end;
   // Теперь считаем материал
   CalcImbalance(ScoreMid,ScoreEnd,wp,bp,wn,bn,wb,bb,wr,br,wq,bq);
@@ -207,12 +185,9 @@ begin
     end;
   if (NPW=0) and (NPB=0) then // Пешечный эндшпиль
     begin
-     if (wp+bp)=1 then evalfun:=f_KPK else
-       begin
-        If Wscale=ScaleNormal then WScale:=ScalePawn;
-        If Bscale=ScaleNormal then BScale:=ScalePawn;
-        scalefun:=F_KPSK;  // Предварительно надо проверить на ничейность ладейных пешек
-       end;
+     if (wp+bp)=1
+       then evalfun:=f_KPK
+       else scalefun:=F_KPSK;  // Предварительно надо проверить на ничейность ладейных пешек
     end;
   if (NPW=PieseTypValue[bishop]) and (wb=1) and (wp>0) then scalefun:=F_KBPSKW;
   if (NPB=PieseTypValue[bishop]) and (bb=1) and (bp>0) then scalefun:=F_KBPSKB;
