@@ -127,6 +127,8 @@ Type
            PstEnd       : integer;
            nullcnt      : integer;
           end;
+  Thistory = array[-King..King,a1..h8] of integer;
+  PHistory = ^THistory;
   TTreeEntry = record
                  Status   : integer;
                  max      : integer;
@@ -136,8 +138,12 @@ Type
                  key      : int64;
                  StatEval : integer;
                  StatKey  : int64;
+                 CurrMove : integer;
+                 CurrStat : PHistory;
+                 CurrNum  : integer;
+                 HistVal  : integer;
                end;
-  Ttree = array [-1..127]  of TTreeEntry;
+  Ttree = array [-4..129]  of TTreeEntry;
   TCheckInfo = record
                  DiscoverCheckBB : TBitBoard;
                  DirectCheckBB : array [Pawn..King] of TBitBoard;

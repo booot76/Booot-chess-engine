@@ -12,7 +12,7 @@ interface
   T256 = array[0..255] of integer;
 
  Const
-  VersionName='Booot 6.1';                    // Номер версии движка
+  VersionName='Booot 6.2';                    // Номер версии движка
 
   BitCountTable8 :T256 =                // Количество установленных в единицу битов в единичном байте от 0 до 255. Используется в системах где нет ассемблерной команды подсчета
    (0,1,1,2,1,2,2,3,1,2,2,3,2,3,3,4,
@@ -145,7 +145,7 @@ $0002000000000000,$0005000000000000,$000A000000000000,$0014000000000000,$0028000
   SquareDist,FileDist : array[a1..h8,a1..h8] of byte;
   ForwardBB,PasserBB : array[white..black,a1..h8] of TBitBoard;
   IsolatedBB : array[a1..h8] of TBitBoard;
-  OutPostBB : array[white..black] of TBitBoard;
+  OutPostBB,SpaceBB : array[white..black] of TBitBoard;
 
  function BitCount(BB:TBitBoard): Integer;
  function BitScanForward(BB:TBitBoard): Integer;
@@ -322,6 +322,8 @@ function BitCount(BB:TBitBoard): Integer;
                     Only[a5] or Only[c5] or Only[e5] or Only[g5] or Only[b6] or Only[d6] or Only[f6] or Only[h6] or Only[a7] or Only[c7] or Only[e7] or Only[g7] or Only[b8] or Only[d8] or Only[f8] or Only[h8];
      OutPostBB[white]:=(RanksBB[4] or RanksBB[5] or RanksBB[6]) and (not(FilesBB[1] or FilesBB[8]));
      OutPostBB[black]:=(RanksBB[5] or RanksBB[4] or RanksBB[3]) and (not(FilesBB[1] or FilesBB[8]));
+     SpaceBB[white]:=(FilesBB[3] or FilesBB[4] or FilesBB[5] or FilesBB[6]) and (RanksBB[2] or RanksBB[3] or RanksBB[4]);
+     SpaceBB[black]:=(FilesBB[3] or FilesBB[4] or FilesBB[5] or FilesBB[6]) and (RanksBB[5] or RanksBB[6] or RanksBB[7]);
      ABCBB:=(FilesBB[1] or FilesBB[2] or FilesBB[3]);
      FGHBB:=FilesBB[6] or FilesBB[7] or FilesBB[8];
      For i:=a1 to h8 do
