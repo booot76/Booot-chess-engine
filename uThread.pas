@@ -22,7 +22,6 @@ Type
               Tree     : TTree;
               SortUnit : TSortUnit;
               PVLine   : TPV;
-              PVchange : integer;
               OldPvMove: integer;
               StablePv : TPV;
               RootList : TMoveList;

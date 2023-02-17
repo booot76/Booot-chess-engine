@@ -15,7 +15,6 @@ Type
                  BKSq         : shortint;
                  WCastle      : byte;
                  BCastle      : byte;
-                 BPawn        : smallint;
                end;
 Const
   IsolatedClosedMid =12;
@@ -38,21 +37,26 @@ Const
   ConnectedBase : array[1..8] of integer =(0,2,6,6,20,32,64,128);
 
   Shelter         : array[0..3,1..8] of integer =(
-    (30,0, 5,15,20,25,25,25),
-    (40,0,15,30,35,40,40,40),
-    (35,0,10,25,30,35,35,35),
-    (40,0,15,30,35,40,40,40)
+    (30,5, 0,10,15,25,25,25),
+    (45,0, 5,25,35,45,45,45),
+    (35,0,15,20,30,35,35,35),
+    (35,5,10,20,30,35,35,35)
   );
 
   Storm          : array[0..3,1..8] of integer =(
-    ( 5,0,30,10,3,0,0,0),
-    ( 5,0,40,15,5,0,0,0),
-    ( 5,0,40,15,5,0,0,0),
-    ( 5,0,40,15,5,0,0,0)
+    ( 5,-80, 0,15,5,0,0,0),
+    ( 5,-10,80,10,0,0,0,0),
+    ( 5, 40,80,20,0,0,0,0),
+    ( 5, 25,50,15,5,0,0,0)
+  );
+  StormBlocked          : array[0..3,1..8] of integer =(
+    ( 0,0,35, 0,0,0,0,0),
+    ( 0,0,45, 0,0,0,0,0),
+    ( 0,0,35, 0,0,0,0,0),
+    ( 0,0,30, 0,0,0,0,0)
   );
 
   MaxShieldPenalty=255;
-  KingBlocked=-125;
   PasserBaseMid : array[1..8] of Integer = (0,2,2,12,30,65,100,0);
   PasserBaseEnd : array[1..8] of Integer = (0,3,6,15,30,65,100,0);
 
@@ -106,7 +110,6 @@ begin
       Threads[j].PawnTable[i].BKSq:=0;
       Threads[j].PawnTable[i].WCastle:=0;
       Threads[j].PawnTable[i].BCastle:=0;
-      Threads[j].PawnTable[i].BPawn:=0;
      end;
    end;
 end;
@@ -199,7 +202,7 @@ begin
 end;
 Function WKShield(king:integer;var Board:TBoard):integer; inline;
 var
-  Kx,Ky,mid,res,base,sq,i,d : integer;
+  Kx,Ky,mid,res,sq,i,d : integer;
   AllPawnsBB,MyPawnsBB,EnemyPawnsBB,temp : TBitBoard;
 begin
   // Считаем значение прикрытыя
@@ -227,10 +230,9 @@ begin
         then res:=res+Storm[d,1]  // Нет вражеской пешки - (полу)открытая линия на короля
         else begin
                sq:=BitScanForward(temp);
-               base:=Storm[d,Posy[sq]];
-               if (posy[sq]>3) and (Board.Pos[sq-8]=pawn) then base:=base div 2;     // Блокирована  нашей пешкой
-               If (posy[sq]<4) and (Board.Pos[sq-8]=king) and (d=0) then base:=KingBlocked;// Блокирована нашим королем
-               res:=res+base;
+               if (Board.Pos[sq-8]=pawn)
+                then  res:=res+StormBlocked[d,Posy[sq]]     // Блокирована  нашей пешкой
+                else  res:=res+Storm[d,Posy[sq]];           // не заблокирована
              end;
     end;
    if res>MaxShieldPenalty then res:=MaxShieldPenalty;
@@ -240,7 +242,7 @@ end;
 
 Function BKShield(king:integer;var Board:TBoard):integer; inline;
 var
-  Kx,Ky,mid,res,base,sq,i,d : integer;
+  Kx,Ky,mid,res,sq,i,d : integer;
   AllPawnsBB,MyPawnsBB,EnemyPawnsBB,temp : TBitBoard;
 begin
   // Считаем значение прикрытия
@@ -268,10 +270,9 @@ begin
         then res:=res+Storm[d,1]  // Нет вражеской пешки - (полу)открытая линия на короля
         else begin
                sq:=BitScanBackward(temp);
-               base:=Storm[d,9-Posy[sq]];
-               if (posy[sq]<6) and (Board.Pos[sq+8]=-pawn) then base:=base div 2;     // Блокирована  нашей пешкой
-               If (posy[sq]>5) and (Board.Pos[sq+8]=-king) and (d=0) then base:=KingBlocked;// Блокирована нашим королем
-               res:=res+base;
+               if (Board.Pos[sq+8]=-pawn)
+                 then res:=res+StormBlocked[d,9-Posy[sq]]    // Блокирована  нашей пешкой
+                 else res:=res+Storm[d,9-Posy[sq]]
              end;
     end;
   if res>MaxShieldPenalty then res:=MaxShieldPenalty;
@@ -281,14 +282,14 @@ end;
 Function EvaluatePawns(var Board:TBoard;ThreadId:integer):int64;inline;
 // Оценка пешек на доске. Возвращает индекс на ячейку с посчитанными и сохраненными значениями.
 var
-  ScoreMid,ScoreEnd,sq,x,y,sq1,y1,sq2,wlight,wdark,blight,bdark : integer;
+  ScoreMid,ScoreEnd,sq,x,y,sq1,y1,sq2 : integer;
   temp,PassersBB,WhitePawnsBB,BlackPawnsBB,AllPawnsBB,BB,SupportedBB,Stoppers,Neighbors : TBitBoard;
   isolated,doubled,opened,backward,passed,supported,phalanx,connected,lever,ssup : boolean;
 begin
   result:=Board.PawnKey and Threads[ThreadId].PawnTableMask;
   // Проверяем не считали ли мы это соотношение материала ранее?
   If  (Board.PawnKey=Threads[ThreadId].Pawntable[result].PawnKey) then exit;
-  ScoreMid:=0;ScoreEnd:=0; PassersBB:=0;wlight:=0;wdark:=0;blight:=0;bdark:=0;
+  ScoreMid:=0;ScoreEnd:=0; PassersBB:=0;
   AllPawnsBB:=Board.Pieses[pawn];
   WhitePawnsBB:=AllPawnsBB and Board.Occupancy[white];
   BlackPawnsBB:=AllPawnsBB and Board.Occupancy[black];
@@ -297,9 +298,6 @@ begin
   while temp<>0 do
     begin
       sq:=BitScanForward(temp);
-      if (Only[sq] and LightSquaresBB)<>0
-        then inc(wlight)
-        else inc(wdark);
       x:=posx[sq];y:=posy[sq];
       // Считаем статусы каждой пешки по очереди
       Neighbors:=(WhitePawnsBB and IsolatedBB[sq]);
@@ -381,9 +379,6 @@ begin
   while temp<>0 do
     begin
       sq:=BitScanForward(temp);
-      if (Only[sq] and LightSquaresBB)<>0
-        then inc(blight)
-        else inc(bdark);
       x:=posx[sq];y:=posy[sq];
       // Считаем статусы каждой пешки по очереди
       Neighbors:=(BlackPawnsBB and IsolatedBB[sq]);
@@ -469,7 +464,6 @@ begin
   Threads[ThreadId].PawnTable[result].BKSq:=NonSq;
   Threads[ThreadId].PawnTable[result].WCastle:=255;
   Threads[ThreadId].PawnTable[result].BCastle:=255;
-  Threads[ThreadId].PawnTable[result].BPawn:=wlight or (wdark shl 4) or (blight shl 8) or (bdark shl 12);
 end;
 
 Procedure EvaluatePassers(var PassMid:integer;var PassEnd:integer;PassersBB:TBitBoard;var Board:TBoard;WAtt:TBitBoard;BAtt:TBitBoard);inline;
