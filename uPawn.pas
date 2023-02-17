@@ -37,29 +37,29 @@ Const
   LeverMid   : array[1..8] of integer=(0,0,0,0,6,13,0,0);
   LeverEnd   : array[1..8] of integer=(0,0,0,0,6,13,0,0);
 
-  ConnectedBase : array[1..8] of integer =(0,1,2,4,16,32,64,128);
+  ConnectedBase : array[1..8] of integer =(0,2,4,6,20,32,64,128);
 
-  ShelterMiddle   : array[1..8] of integer=(55,0,15,40,50,55,55,55);
-  ShelterEdge     : array[1..8] of integer=(30,0, 5,15,20,25,25,25);
-  ShelterCenter   : array[1..8] of integer=(30,0,10,20,25,30,30,30);
+  ShelterMiddle   : array[1..8] of integer=(55,0,14,25,34,40,43,45);
+  ShelterEdge     : array[1..8] of integer=(27,0, 8,15,20,24,26,27);
+  ShelterCenter   : array[1..8] of integer=(36,0,11,20,27,32,35,36);
 
-  StormMiddle       : array[1..8] of integer=( 5,0,40,15,5,0,0,0);
-  StormCenter       : array[1..8] of integer=( 5,0,40,15,5,0,0,0);
+  StormMiddle       : array[1..8] of integer=(10,0,40,15,5,0,0,0);
+  StormCenter       : array[1..8] of integer=(10,0,40,15,5,0,0,0);
   StormEdge         : array[1..8] of integer=( 5,0,35,10,5,0,0,0);
 
   MaxShieldPenalty=255;
-
-  PasserBaseMid : array[1..8] of Integer = (0,0,0,13,36,85,125,0);
-  PasserBaseEnd : array[1..8] of Integer = (0,2,5,15,35,65, 90,0);
+  KingBlocked=-75;
+  PasserBaseMid : array[1..8] of Integer = (0,2,2,12,30,65,100,0);
+  PasserBaseEnd : array[1..8] of Integer = (0,3,6,15,30,65,100,0);
 
   PasserFreeWay : array[1..8] of Integer = (0,0,0,12,36,72,120,0);
   PasserFreePush: array[1..8] of Integer = (0,0,0, 6,18,36, 60,0);
-  PasserSuppWay : array[1..8] of Integer = (0,0,0, 6,18,36, 60,0);
+  PasserSuppWay : array[1..8] of Integer = (0,0,0, 5,15,30, 50,0);
   PasserSuppPush: array[1..8] of Integer = (0,0,0, 3, 9,18, 30,0);
   PasSelfBlocked: array[1..8] of Integer = (0,0,1, 2, 5, 8, 12,0);
   WeakKingDist     : array[1..8] of integer = (0,0,0,4,12,24,40,0);
-  StrongKingDist1  : array[1..8] of integer = (0,0,0,2, 5,10,20,0);
-  StrongKingDist2  : array[1..8] of integer = (0,0,0,1, 2, 5,10,0);
+  StrongKingDist1  : array[1..8] of integer = (0,0,0,2, 5,10,16,0);
+  StrongKingDist2  : array[1..8] of integer = (0,0,0,1, 2, 5, 8,0);
 
   UnStopable=10;
 var
@@ -238,7 +238,6 @@ begin
            sq:=BitScanForward(temp);
            base:=StormMiddle[Posy[sq]];
            if (posy[sq]>3) and (Board.Pos[sq-8]=pawn) then base:=(base*2) div 3;     // Блокирована нашей пешкой
-
            res:=res+base;
          end;
                   // крайняя
@@ -253,8 +252,8 @@ begin
     else begin
            sq:=BitScanForward(temp);
            base:=StormEdge[Posy[sq]];
-           if  (posy[sq]>3) and (Board.Pos[sq-8]=pawn) then base:=(base*2) div 3;     // Блокирована  нашей пешкой
-           If (posy[sq]=2) and ((posx[sq]=1) or (posx[sq]=8)) then base:=-50;
+           if (posy[sq]>3) and (Board.Pos[sq-8]=pawn) then base:=(base*2) div 3;     // Блокирована  нашей пешкой
+           If (posy[sq]<4) and (Board.Pos[sq-8]=king) and ((posx[sq]=1) or (posx[sq]=8)) then base:=KingBlocked;// Блокирована нашим королем
            res:=res+base;
          end;
                   // к центру доски
@@ -342,7 +341,7 @@ begin
            sq:=BitScanBackward(temp);
            base:=StormEdge[9-posy[sq]];
            if (posy[sq]<6) and (Board.Pos[sq+8]=-pawn) then base:=(base*2) div 3;     // Блокирована  нашей пешкой
-           If (posy[sq]=7) and ((posx[sq]=1) or (posx[sq]=8)) then base:=-50;
+           If (posy[sq]>5) and (Board.Pos[sq+8]=-king) and ((posx[sq]=1) or (posx[sq]=8)) then base:=KingBlocked;// Блокирована нашим королем
            res:=res+base;
          end;
                      // ближе к центру
@@ -414,7 +413,12 @@ begin
              else backward:=((RanksBB[y1] or RanksBB[y1+1]) and BB and BlackPawnsBB)<>0;
          end;
          // Оцениваем пешку:
-      if passed and (not doubled) then PassersBB:=PassersBB or Only[sq];   // Оценка проходных позже в отдельной функции
+      if passed and (not doubled) then
+       begin
+        PassersBB:=PassersBB or Only[sq];   // Оценка проходных позже в отдельной функции
+        ScoreMid:=ScoreMid+PasserBaseMid[y];
+        ScoreEnd:=ScoreEnd+PasserBaseEnd[y];
+       end;
       if doubled then
         begin
           sq2:=BitScanBackWard(WhitePawnsBB and ForwardBB[white,sq] and FilesBB[x]);
@@ -498,7 +502,12 @@ begin
              else backward:=((RanksBB[y1] or RanksBB[y1-1]) and BB and WhitePawnsBB)<>0;
          end;
          // Оцениваем пешку:
-      if passed and (not doubled) then PassersBB:=PassersBB or Only[sq];   // Оценка проходных позже в отдельной функции
+      if passed and (not doubled) then
+       begin
+        PassersBB:=PassersBB or Only[sq];   // Оценка проходных позже в отдельной функции
+        ScoreMid:=ScoreMid-PasserBaseMid[9-y];
+        ScoreEnd:=ScoreEnd-PasserBaseEnd[9-y];
+       end;
       if doubled then
         begin
           sq2:=BitScanForWard(BlackPawnsBB and ForwardBB[black,sq] and FilesBB[x]);
@@ -571,8 +580,6 @@ begin
     begin
       sq:=BitScanForward(temp);
       x:=Posx[sq];y:=posy[sq];
-      PassMid:=PassMid+PasserBaseMid[y];
-      PassEnd:=PassEnd+PasserBaseEnd[y];
       if (y>3) then  // Для продвинутых проходных дополнительная эндшпильная оценка
         begin
          // Удаленность королей от поля перед проходной
@@ -627,8 +634,6 @@ begin
     begin
       sq:=BitScanForward(temp);
       x:=Posx[sq];y:=posy[sq];
-      PassMid:=PassMid-PasserBaseMid[9-y];
-      PassEnd:=PassEnd-PasserBaseEnd[9-y];
       if (y<6) then  // Для продвинутых проходных дополнительная эндшпильная оценка
         begin
          // Удаленность королей от поля перед проходной
@@ -712,7 +717,7 @@ begin
       if (not open) then base:=base div 2;
       if prot then base:=base + (base div 2);
       ConnectedMid[y,open,phalanx,prot]:=base;
-      ConnectedEnd[y,open,phalanx,prot]:=(base*5) div 8;
+      ConnectedEnd[y,open,phalanx,prot]:=(base*(y-2)) div 4;
     end;
 end;
 initialization

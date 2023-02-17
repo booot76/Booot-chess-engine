@@ -87,8 +87,19 @@ begin
   InitPawnTable(size);
   InitMatTable(size);
 end;
-
+Procedure SetRemain;
+// ¬ зависимости от оставшегос€ времени определ€ем частоту его проверки:
+begin
+  If (game.time=64*3600*1000) then game.remain:=10000 else // ѕондеринг всегда в самом быстром режиме проверки
+  If (game.time=48*3600*1000) then game.remain:=1000000 else // –ежим анализа - всегда в самом медленном режиме проверки
+  If (game.time>5000) then game.remain:=1000000 else // ≈сли больше 5 секунд на ход  - проверка через каждый миллион позиций
+  If (game.time>1000) then game.remain:=200000  else // ≈сли больше 1 секунд на ход  - проверка через каждые 200к позиций
+  If (game.time>300)  then game.remain:=20000   else // ≈сли больше 0,3 секунд на ход  - проверка через каждые 20к позиций
+                           game.remain:=10000; // ≈сли меньше 0,3 секунд на ход  - проверка через каждые 10к позиций
+end;
 Procedure NewGame;
+var
+  i : integer;
 begin
   If game.Threads>1 then
     begin
@@ -97,21 +108,15 @@ begin
     end;
   SetBoard(StartPositionFen,Threads[1].Board);
   SetHash(game.hashsize);
+  game.time:=0;
+  SetRemain;
   game.HashAge:=0;
+  for i:=1 to game.Threads do
+   ClearHistory(Threads[i].Sortunit,Threads[i].Tree);
 end;
-Procedure SetRemain;
-// ¬ зависимости от оставшегос€ времени определ€ем частоту его проверки:
-begin
-  If (game.time=64*3600*1000) then game.remain:=10000 else // ѕондеринг всегда в самом быстром режиме проверки
-  If (game.time=48*3600*1000) then game.remain:=2000000 else // –ежим анализа - всегда в самом медленном режиме проверки
-  If (game.time>5000) then game.remain:=1000000 else // ≈сли больше 5 секунд на ход  - проверка через каждый миллион позиций
-  If (game.time>1000) then game.remain:=200000  else // ≈сли больше 1 секунд на ход  - проверка через каждые 200к позиций
-  If (game.time>300)  then game.remain:=20000   else // ≈сли больше 0,3 секунд на ход  - проверка через каждые 20к позиций
-                           game.remain:=10000; // ≈сли меньше 0,3 секунд на ход  - проверка через каждые 10к позиций
-end;
+
 Procedure NewSearch(ThreadId:integer);
 begin
-  ClearHistory(Threads[ThreadId].Sortunit);
   Threads[ThreadId].Board.Nodes:=0;
   Threads[ThreadId].AbortSearch:=false;
   If ThreadId=1 then
@@ -234,7 +239,7 @@ begin
   if s='' then exit;
   if s='eval' then
     begin
-      Lwrite('Score = '+InttoStr(Evaluate(Threads[1].Board,1)));                         // —татическа€ оценка позиции
+      Lwrite('Score = '+InttoStr(Evaluate(Threads[1].Board,1,-Inf,Inf)));                         // —татическа€ оценка позиции
       exit;
     end;
   if pos('perft ',s)=1 then                                                     // тест perft
@@ -284,13 +289,10 @@ begin
          begin
            val := StrToIntDef(sval,1);
            if val>MaxThreads then val:=MaxThreads;
-           game.Threads:=val;
-           // ќстанавливаем потоки которые могли быть запущены ранее
+            // ќстанавливаем потоки которые могли быть запущены ранее
            StopThreads;
-           // «апускаем потоки
-           If game.Threads>1 then Init_Threads(game.Threads);
-           // ѕосле изменени€ количества потоков перезапускаем хеш, чтобы пересчитатьт пам€ть под новое количество
-           SetHash(val);
+           game.Threads:=val;
+           NewGame;
          end;
        end;
      exit;
@@ -401,12 +403,13 @@ begin
   SetupChanels;
   game.uciPonder:=false;
   game.hashsize:=128;
-  game.Threads:=1;
+
   for i:=1 to MaxThreads do
     begin
       Threads[i].isRun:=false;
       Threads[i].idle:=true;
     end;
+  game.Threads:=1;
   NewGame;
   repeat
     n := CheckInput;
@@ -416,20 +419,20 @@ begin
         continue;
       end;
     s := ReadInput(n);
-  // ѕолучили команду на выход
+   // ѕолучили команду на выход
     if s='quit' then
       begin
         stopthreads;
         exit;
       end;
-  // –азбираем полученную команду
+   // –азбираем полученную команду
    Parser(s);
   until false;
 end;
 
 Procedure poll(var Board:Tboard);
 var
-   n:integer;
+   n,i:integer;
    s:ansistring;
    timetot:cardinal;
 begin
@@ -438,7 +441,14 @@ begin
   n := CheckInput;
   if n = 0 then exit;
   s := ReadInput(n);
-  if (s='stop') or (s='quit') then Threads[1].AbortSearch:=true;
+  if (s='stop') or (s='quit') then
+    begin
+     for i:=1 to game.Threads do
+       Threads[i].AbortSearch:=true;
+     game.time:=0;
+     SetRemain;
+     Board.remain:=0;
+    end;
   if (s='ponderhit') then
     begin
       game.time:=game.pondertime;

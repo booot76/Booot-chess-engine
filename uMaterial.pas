@@ -17,13 +17,14 @@ Const
    KnightValueMid=320; KnightValueEnd=310;
    BishopValueMid=325; BishopValueEnd=320;
    RookValueMid=500;   RookValueEnd=510;
-   QueenValueMid=975;  QueenValueEnd=975;
-   DoubleBishopMid=35; DoubleBishopEnd=50;
-   DoubleNoMinorMid=5; DoubleNoMinorEnd=10;
-   MinorBonusMid=25;   MinorBonusEnd=10;
-   KnightPawnMid=0;    KnightPawnEnd=5;
-   RookPawnMid=5;      RookPawnEnd=0;
-   DoubleRookMid=15;   DoubleRookEnd=30;
+   QueenValueMid=960;  QueenValueEnd=970;
+   DoubleBishopMid=40; DoubleBishopEnd=50;
+   DoubleNoMinorMid=10;DoubleNoMinorEnd=15;
+   MinorBonusMid=15;   MinorBonusEnd=30;
+   KnightPawnMid=5;    KnightPawnEnd=5;
+   RookPawnMid=10;     RookPawnEnd=10;
+   DoubleRookMid=16;   DoubleRookEnd=32;
+   ExtraMajorMid=8;    ExtraMajorEnd=16;
 
    PieseTypValue : array[Pawn..Queen] of integer = (0,KnightValueMid,BishopValueMid,RookValueMid,QueenValueMid); // Для обновления внутри make непешечного материала на доске. Поэтому ценность пешки =0
    ScalePawn=80;
@@ -40,6 +41,7 @@ Const
    PhaseQueen=6;
    MaxPhase=32;
    PhaseOpposit=2*PhaseMinor+2*PhaseQueen+2*PhaseRook;
+   PhaseSpace=2*PhaseQueen+4*PhaseRook+2*Phaseminor;
 
 Procedure InitMatTable(SizeMB:integer);
 Procedure CalcImbalance(var ScoreMid:integer;var ScoreEnd:integer;wp,bp,wn,bn,wb,bb,wr,br,wq,bq:integer);inline;
@@ -120,6 +122,16 @@ begin
     begin
       ScoreMid:=ScoreMid+DoubleRookMid;
       ScoreEnd:=ScoreEnd+DoubleRookEnd;
+    end;
+  if wr+wq>1 then
+    begin
+      ScoreMid:=ScoreMid-ExtraMajorMid;
+      ScoreEnd:=ScoreEnd-ExtraMajorEnd;
+    end;
+  if br+bq>1 then
+    begin
+      ScoreMid:=ScoreMid+ExtraMajorMid;
+      ScoreEnd:=ScoreEnd+ExtraMajorEnd;
     end;
 end;
 Function EvaluateMaterial(var Board:TBoard;ThreadID:integer):Cardinal; inline;

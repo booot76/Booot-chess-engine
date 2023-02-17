@@ -221,7 +221,7 @@ end;
 
 Procedure HashSave(index:int64;Key:int64;value:integer;depth:integer;typ:integer;move:integer);inline;
 begin
-  TT[index].move:=move;
+  If (move<>0) or (TT[index].Key<>Key) then  TT[index].move:=move;
   TT[index].value:=value;
   TT[index].depth:=depth;
   TT[index].typage:=game.HashAge or typ;
@@ -241,9 +241,8 @@ begin
         else repscore:=TT[rep].depth+val;
   for i:=0 to  EntrySize-1 do
     begin
-      if  (TT[index+i].Key=Key) then
+      if  (TT[index+i].Key=Key) or (TT[index+i].Key=0) then
         begin
-          if move=0 then move:=TT[index+i].move;
           HashSave((index+i),key,value,depth,typ,move);
           exit;
         end;

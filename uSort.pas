@@ -13,21 +13,22 @@ Const
   TryKiller1=3;
   tryChecks=4;
   TryKiller2=4;
-  TryKiller3=5;
-  TryKiller4=6;
-  GenerateOthers=7;
-  TryGoodMoves=8;
-  TryOthers=9;
-  TryBadCaptures=10;
-  GenerateEscapes=11;
-  tryEscapes=12;
+  TryCounterMove=5;
+  GenerateOthers=6;
+  TryGoodMoves=7;
+  TryOthers=8;
+  TryBadCaptures=9;
+  GenerateEscapes=10;
+  tryEscapes=11;
 
 Type
   Thistory = array[-King..King,a1..h8] of integer;
+  PHistory = ^THistory;
   TSortUnit = record
                 History      : THistory;
                 CounterMoves : THistory;
-                Killers      : array[1..MaxKillersply,0..1] of integer
+                Killers      : array[1..MaxKillersply+2,0..1] of integer;
+                HistorySats  : array[-King..King,a1..h8] of THistory;
               end;
 
 var
@@ -35,19 +36,23 @@ var
   DepthInc : array[0..128] of integer;
 
 
-Procedure ClearHistory(var SortUnit:TSortUnit);
+Procedure ClearHistory(var SortUnit:TSortUnit;var Tree:Ttree);
+Function GetStatBonus(depth:integer):integer;inline;
 Procedure FullSort(var MoveList:TMoveList;start:integer;stop:integer);inline;
+Function GetHistoryValue(var Sortunit:TSortUnit;var Tree:Ttree;ply:integer;piese:integer;dest:integer):integer;inline;
 Procedure UpdateList(move:integer;start:integer;stop:integer;var MoveList:TmoveList);
 Procedure UpdHistory(var SortUnit:TSortUnit;piese:integer;dest:integer;bonus:integer);inline;
-Function Next(var MoveList:TMoveList;var Board:TBoard;var SortUnit:TSortUnit;var tree:TTree;var hashmove:integer;var killer1:integer;var killer2:integer;var counter1:integer;var counter2:integer;ply:integer;prevmove:integer;depth:integer) :integer;inline;
+Procedure UPdHistoryStats(var Tree:TTree;ply:integer;piese:integer;dest:integer;bonus:integer);inline;
+Procedure UpdateStats(var SortUnit:TSortUnit;var Tree:TTree;ply:integer;piese:integer;dest:integer;bonus:integer);inline;
+Function Next(var MoveList:TMoveList;var Board:TBoard;var SortUnit:TSortUnit;var tree:TTree;var hashmove:integer;var killer1:integer;var killer2:integer;var countermove:integer;ply:integer;prevmove:integer;depth:integer;skip:boolean) :integer;inline;
 Function NextFV(var MoveList:TMoveList;var Board:TBoard;var SortUnit:TSortUnit;var tree:TTree;var CheckInfo:TCheckInfo;var hashmove:integer;ply:integer;depth:integer;prevmove:integer ):integer; inline;
-Procedure AddToHistory(move:integer;prevmove:integer;depth:integer;ply:integer;qsearched:integer;var OldMoves:TmoveList;var SortUnit:TSortUnit;var Board:TBoard);
+Procedure AddToHistory(move:integer;prevmove:integer;depth:integer;ply:integer;qsearched:integer;var OldMoves:TmoveList;var SortUnit:TSortUnit;var Board:TBoard;var Tree:Ttree);
 Function NextProbCut(var MoveList:TMoveList;var Board:TBoard;var tree:TTree;var hashmove:integer;ply:integer;margin:integer):integer; inline;
 
 implementation
-Procedure ClearHistory(var SortUnit:TSortUnit);
+Procedure ClearHistory(var SortUnit:TSortUnit;var Tree:Ttree);
 var
-  i,j : integer;
+  i,j,k,l : integer;
 begin
   for i:=-king to king do
   for j:=a1 to h8 do
@@ -55,20 +60,58 @@ begin
      SortUnit.History[i,j]:=0;
      SortUnit.CounterMoves[i,j]:=0;
    end;
-  for i:=1 to MaxKillersPly do
+  for i:=1 to MaxKillersPly+2 do
    begin
      SortUnit.Killers[i,0]:=0;
      SortUnit.Killers[i,1]:=0;
    end;
-
+  for i:=-king to king do
+  for j:=a1 to h8 do
+  for k:=-king to king do
+  for l:=a1 to h8 do
+    SortUnit.HistorySats[i,j][k,l]:=0;
+  For i:=-4 to 129 do
+    begin
+      Tree[i].Status:=0;
+      Tree[i].max:=0;
+      Tree[i].curr:=0;
+      Tree[i].badcap:=0;
+      Tree[i].value:=0;
+      Tree[i].key:=0;
+      Tree[i].StatEval:=0;
+      Tree[i].StatKey:=0;
+      Tree[i].CurrMove:=0;
+      Tree[i].CurrStat:=@SortUnit.HistorySats[0,a1];
+      Tree[i].CurrNum:=0;
+      Tree[i].HistVal:=0;
+    end;
+end;
+Function GetStatBonus(depth:integer):integer;inline;
+begin
+  result:=DepthInc[depth]+2*depth-2;
 end;
 Procedure UpdHistory(var SortUnit:TSortUnit;piese:integer;dest:integer;bonus:integer);inline;
 begin
-  if abs(bonus)>=512 then exit;
-  SortUnit.History[piese,dest]:=Sortunit.History[piese,dest]-((Sortunit.History[piese,dest]*abs(bonus)) div 512);
+  SortUnit.History[piese,dest]:=Sortunit.History[piese,dest]-((Sortunit.History[piese,dest]*abs(bonus)) div 324);
   SortUnit.History[piese,dest]:=Sortunit.History[piese,dest]+bonus*32;
 end;
-Procedure AddToHistory(move:integer;prevmove:integer;depth:integer;ply:integer;qsearched:integer;var OldMoves:TmoveList;var SortUnit:TSortUnit;var Board:TBoard);inline;
+Procedure UPdHistoryStats(var Tree:TTree;ply:integer;piese:integer;dest:integer;bonus:integer);inline;
+begin
+  Tree[ply].CurrStat^[piese,dest]:=Tree[ply].CurrStat^[piese,dest]-((Tree[ply].CurrStat^[piese,dest]*abs(bonus)) div 936);
+  Tree[ply].CurrStat^[piese,dest]:=Tree[ply].CurrStat^[piese,dest]+bonus*32;
+end;
+Procedure UpdateStats(var SortUnit:TSortUnit;var Tree:TTree;ply:integer;piese:integer;dest:integer;bonus:integer);inline;
+begin
+  If Tree[ply-1].CurrMove<>0 then UpdHistoryStats(Tree,ply-1,piese,dest,bonus);
+  If Tree[ply-2].CurrMove<>0 then UpdHistoryStats(Tree,ply-2,piese,dest,bonus);
+  If Tree[ply-4].CurrMove<>0 then UpdHistoryStats(Tree,ply-4,piese,dest,bonus);
+end;
+Function GetHistoryValue(var Sortunit:TSortUnit;var Tree:Ttree;ply:integer;piese:integer;dest:integer):integer;inline;
+begin
+  result:=SortUnit.History[piese,dest]+Tree[ply-1].CurrStat^[piese,dest]+Tree[ply-2].CurrStat^[piese,dest]+Tree[ply-4].CurrStat^[piese,dest];
+end;
+
+Procedure AddToHistory(move:integer;prevmove:integer;depth:integer;ply:integer;qsearched:integer;var OldMoves:TmoveList;var SortUnit:TSortUnit;var Board:TBoard;var Tree:Ttree);inline;
 var
    Piese,dest,i,bonus : integer;
 begin
@@ -78,11 +121,12 @@ begin
       SortUnit.Killers[ply,1]:=SortUnit.Killers[ply,0];
       SortUnit.Killers[ply,0]:=move;
     end;
-  bonus:=DepthInc[depth]+depth-1;
+  bonus:=GetStatBonus(depth);
   // Увеличиваем историю для успешного хода
   dest:=(move shr 6) and 63;
   Piese:=Board.Pos[move and 63]; // Фигура стоит на поле from
   UpdHistory(SortUnit,piese,dest,bonus);
+  UpdateStats(SortUnit,Tree,ply,piese,dest,bonus);
   // Уменьшаем историю для рассмотренных ранее тихих ходов которые не привели к успеху
   for i:=1 to qsearched do
    if OldMoves[i].move<>move then
@@ -90,6 +134,7 @@ begin
       Dest:=(OldMoves[i].move shr 6) and 63;
       Piese:=Board.Pos[OldMoves[i].move and 63];
       UpdHistory(SortUnit,piese,dest,-bonus);
+      UpdateStats(SortUnit,Tree,ply,piese,dest,-bonus);
     end;
   // Записываем ход как опровергающий
   if (prevmove<>0) then
@@ -165,13 +210,17 @@ begin
   For i:=start to stop do
     MoveList[i].value:=MVVLVA[Board.Pos[(MoveList[i].move shr 6) and 63],Board.Pos[MoveList[i].move and 63]];
 end;
-Procedure ScoreMoves(start:integer;stop:integer;var MoveList:TMoveList;var History:THistory;var Board:TBoard);inline;
+Procedure ScoreMoves(start:integer;stop:integer;ply:integer;var MoveList:TMoveList;var SortUnit:TSortUnit;var Board:TBoard;var Tree:Ttree);inline;
 // Оценка простых ходов - по истории
 var
-  i : integer;
+  i,piese,dest : integer;
 begin
   For i:=start to stop do
-    MoveList[i].value:=History[Board.Pos[MoveList[i].move and 63],(MoveList[i].move shr 6) and 63];
+    begin
+      dest:=(MoveList[i].move shr 6) and 63;
+      piese:=Board.Pos[MoveList[i].move and 63];// Фигура еще стоит на месте
+      MoveList[i].value:=GetHistoryValue(SortUnit,Tree,ply,piese,dest);
+    end;
 end;
 Procedure ScoreEvasions(start:integer;stop:integer;var Movelist:TMoveList;var History:THistory;var Board:TBoard);inline;
 var
@@ -186,7 +235,7 @@ begin
           else MoveList[i].value:=History[Board.Pos[MoveList[i].move and 63],(MoveList[i].move shr 6) and 63];
     end;
 end;
-Function Next(var MoveList:TMoveList;var Board:TBoard;var SortUnit:TSortUnit;var tree:TTree;var hashmove:integer;var killer1:integer;var killer2:integer;var counter1:integer;var counter2:integer;ply:integer;prevmove:integer;depth:integer) :integer;inline;
+Function Next(var MoveList:TMoveList;var Board:TBoard;var SortUnit:TSortUnit;var tree:TTree;var hashmove:integer;var killer1:integer;var killer2:integer;var countermove:integer;ply:integer;prevmove:integer;depth:integer;skip:boolean) :integer;inline;
 var
   move: integer;
 begin
@@ -254,25 +303,15 @@ begin
           exit;
         end else killer2:=0;
     end;
-  if tree[ply].Status=TryKiller3 then
+  if tree[ply].Status=TryCounterMove then
     begin
       // Смотрим  опровергающий  - до генерирования ходов
       inc(tree[ply].Status);
-      if (counter1<>0) and (counter1<>hashmove) and (counter1<>killer1) and  (counter1<>killer2) and (Board.Pos[(counter1 shr 6) and 63]=0) and (isPseudoCorrect(counter1,Board)) then
+      if (countermove<>0) and (countermove<>hashmove) and (countermove<>killer1) and  (countermove<>killer2) and (Board.Pos[(countermove shr 6) and 63]=0) and (isPseudoCorrect(countermove,Board)) then
             begin
-              result:=counter1;
+              result:=countermove;
               exit;
-            end else counter1:=0;
-    end;
-  if tree[ply].Status=TryKiller4 then
-    begin
-      // Предыдущий киллер
-      inc(tree[ply].Status);
-      if (counter2<>0) and (counter2<>hashmove) and (counter2<>killer1) and  (counter2<>killer2) and (counter2<>counter1) and (Board.Pos[(counter2 shr 6) and 63]=0) and (isPseudoCorrect(counter2,Board)) then
-            begin
-              result:=counter2;
-              exit;
-            end else counter2:=0;
+            end else countermove:=0;
     end;
   if tree[ply].Status=GenerateOthers  then
     begin
@@ -281,7 +320,7 @@ begin
       tree[ply].max:=GeneratePseudoMoves(0,(not Board.AllPieses),Board,MoveList);
       tree[ply].curr:=0;
       // Оцениваем тихие ходы
-      ScoreMoves(0,tree[ply].max-1,MoveList,SortUnit.History,Board);
+      ScoreMoves(0,tree[ply].max-1,ply,MoveList,SortUnit,Board,Tree);
       tree[ply].value:=1;
     end;
    if tree[ply].Status=TryGoodMoves then
@@ -292,7 +331,7 @@ begin
           move:=TakeBest(MOveList,tree[ply].curr,tree[ply].max-1);
           tree[ply].value:=MoveList[tree[ply].curr].value;
           inc(tree[ply].curr);
-          if (move=hashmove) or (move=killer1) or (move=killer2) or (move=counter1) or (move=counter2) then continue;       // Уже рассмотрены
+          if (move=hashmove) or (move=killer1) or (move=killer2) or (move=countermove) then continue;       // Уже рассмотрены
           Result:=move;
           exit;
         end;
@@ -303,11 +342,11 @@ begin
     // Здесь остались плохие тихие ходы. Сортировка тут только на больших глубинах
       while tree[ply].curr<=tree[ply].max-1 do
         begin
-          If depth>2
+          If (depth>2) and (not skip)
             then move:=TakeBest(MoveList,tree[ply].curr,tree[ply].max-1)
             else move:=MoveList[tree[ply].curr].move;
           inc(tree[ply].curr);
-          if (move=hashmove) or (move=killer1) or (move=killer2) or (move=counter1) or (move=counter2) then continue;    // Уже рассмотрены
+          if (move=hashmove) or (move=killer1) or (move=killer2) or (move=countermove)  then continue;    // Уже рассмотрены
           Result:=move;
           exit;
         end;
@@ -434,7 +473,7 @@ begin
       begin
         inc(tree[ply].Status);
         // Здесь пробуем хешход - пока ничего не генерируем
-        If (hashmove<>0) and ((hashmove and CaptureFlag)<>0) and (isPseudoCorrect(hashmove,Board)) and (See(hashmove,Board)>margin) then
+        If (hashmove<>0) and ((hashmove and CaptureFlag)<>0) and (isPseudoCorrect(hashmove,Board)) and (See(hashmove,Board)>=margin) then
          begin
           Result:=hashmove;
           exit;
@@ -458,8 +497,8 @@ begin
           // Выбираем лучший ход
           move:=TakeBest(MOveList,tree[ply].curr,tree[ply].max-1);
           inc(tree[ply].curr);
-          if (move=hashmove) or ((move and CaptureFlag)=0) then continue;       // Уже рассмотрен   или это не взятие
-          If See(move,Board)>margin then
+          if (move=hashmove)  then continue;       // Уже рассмотрен   или это не взятие
+          If See(move,Board)>=margin then
             begin
              Result:=move;
              exit;
