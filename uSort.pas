@@ -21,6 +21,8 @@ Const
   GenerateEscapes=10;
   tryEscapes=11;
 
+  DepthMargin=80;
+
 Type
   Thistory = array[-King..King,a1..h8] of integer;
   PHistory = ^THistory;
@@ -46,7 +48,7 @@ Procedure UPdHistoryStats(var Tree:TTree;ply:integer;piese:integer;dest:integer;
 Procedure UpdateStats(var SortUnit:TSortUnit;var Tree:TTree;ply:integer;piese:integer;dest:integer;bonus:integer);inline;
 Function Next(var MoveList:TMoveList;var Board:TBoard;var SortUnit:TSortUnit;var tree:TTree;var hashmove:integer;var killer1:integer;var killer2:integer;var countermove:integer;ply:integer;prevmove:integer;depth:integer;skip:boolean) :integer;inline;
 Function NextFV(var MoveList:TMoveList;var Board:TBoard;var SortUnit:TSortUnit;var tree:TTree;var CheckInfo:TCheckInfo;var hashmove:integer;ply:integer;depth:integer;prevmove:integer ):integer; inline;
-Procedure AddToHistory(move:integer;prevmove:integer;depth:integer;ply:integer;qsearched:integer;var OldMoves:TmoveList;var SortUnit:TSortUnit;var Board:TBoard;var Tree:Ttree);
+Procedure AddToHistory(move:integer;prevmove:integer;depth:integer;ply:integer;qsearched:integer;var OldMoves:TmoveList;var SortUnit:TSortUnit;var Board:TBoard;var Tree:Ttree;margin:integer);
 Function NextProbCut(var MoveList:TMoveList;var Board:TBoard;var tree:TTree;var hashmove:integer;ply:integer;margin:integer):integer; inline;
 
 implementation
@@ -88,7 +90,9 @@ begin
 end;
 Function GetStatBonus(depth:integer):integer;inline;
 begin
-  result:=DepthInc[depth]+2*depth-2;
+  If depth>17
+    then result:=0
+    else result:=DepthInc[depth]+2*depth-2;
 end;
 Procedure UpdHistory(var SortUnit:TSortUnit;piese:integer;dest:integer;bonus:integer);inline;
 begin
@@ -111,7 +115,7 @@ begin
   result:=SortUnit.History[piese,dest]+Tree[ply-1].CurrStat^[piese,dest]+Tree[ply-2].CurrStat^[piese,dest]+Tree[ply-4].CurrStat^[piese,dest];
 end;
 
-Procedure AddToHistory(move:integer;prevmove:integer;depth:integer;ply:integer;qsearched:integer;var OldMoves:TmoveList;var SortUnit:TSortUnit;var Board:TBoard;var Tree:Ttree);inline;
+Procedure AddToHistory(move:integer;prevmove:integer;depth:integer;ply:integer;qsearched:integer;var OldMoves:TmoveList;var SortUnit:TSortUnit;var Board:TBoard;var Tree:Ttree;margin:integer);inline;
 var
    Piese,dest,i,bonus : integer;
 begin
@@ -121,7 +125,9 @@ begin
       SortUnit.Killers[ply,1]:=SortUnit.Killers[ply,0];
       SortUnit.Killers[ply,0]:=move;
     end;
-  bonus:=GetStatBonus(depth);
+  If Margin>DepthMargin
+    then bonus:=GetStatBonus(depth+1)
+    else bonus:=GetStatBonus(depth);
   // Увеличиваем историю для успешного хода
   dest:=(move shr 6) and 63;
   Piese:=Board.Pos[move and 63]; // Фигура стоит на поле from
