@@ -31,29 +31,33 @@ Const
   DoubledMid = 7;
   DoubledEnd =15;
 
-  WeakMid=5;
-  WeakEnd=3;
 
   LeverMid   : array[1..8] of integer=(0,0,0,0,6,13,0,0);
   LeverEnd   : array[1..8] of integer=(0,0,0,0,6,13,0,0);
 
-  ConnectedBase : array[1..8] of integer =(0,2,4,6,20,32,64,128);
+  ConnectedBase : array[1..8] of integer =(0,2,6,6,20,32,64,128);
 
-  ShelterMiddle   : array[1..8] of integer=(55,0,14,25,34,40,43,45);
-  ShelterEdge     : array[1..8] of integer=(27,0, 8,15,20,24,26,27);
-  ShelterCenter   : array[1..8] of integer=(36,0,11,20,27,32,35,36);
+  Shelter         : array[0..3,1..8] of integer =(
+    (30,0, 5,15,20,25,25,25),
+    (40,0,15,30,35,40,40,40),
+    (35,0,10,25,30,35,35,35),
+    (40,0,15,30,35,40,40,40)
+  );
 
-  StormMiddle       : array[1..8] of integer=(10,0,40,15,5,0,0,0);
-  StormCenter       : array[1..8] of integer=(10,0,40,15,5,0,0,0);
-  StormEdge         : array[1..8] of integer=( 5,0,35,10,5,0,0,0);
+  Storm          : array[0..3,1..8] of integer =(
+    ( 5,0,30,10,3,0,0,0),
+    ( 5,0,40,15,5,0,0,0),
+    ( 5,0,40,15,5,0,0,0),
+    ( 5,0,40,15,5,0,0,0)
+  );
 
   MaxShieldPenalty=255;
-  KingBlocked=-75;
+  KingBlocked=-125;
   PasserBaseMid : array[1..8] of Integer = (0,2,2,12,30,65,100,0);
   PasserBaseEnd : array[1..8] of Integer = (0,3,6,15,30,65,100,0);
 
-  PasserFreeWay : array[1..8] of Integer = (0,0,0,12,36,72,120,0);
-  PasserFreePush: array[1..8] of Integer = (0,0,0, 6,18,36, 60,0);
+  PasserFreeWay : array[1..8] of Integer = (0,0,0,15,45,90,150,0);
+  PasserFreePush: array[1..8] of Integer = (0,0,0, 7,21,42, 70,0);
   PasserSuppWay : array[1..8] of Integer = (0,0,0, 5,15,30, 50,0);
   PasserSuppPush: array[1..8] of Integer = (0,0,0, 3, 9,18, 30,0);
   PasSelfBlocked: array[1..8] of Integer = (0,0,1, 2, 5, 8, 12,0);
@@ -66,9 +70,9 @@ var
    ConnectedMid,ConnectedEnd : array[2..7,False..True,False..True,False..True] of integer;
 
 Procedure InitPawnTable(SizeMB:integer);
-Function EvaluatePawns(var Board:TBoard;ThreadId:integer):cardinal;inline;
-Function WKingSafety(PawnIndex:Cardinal;var Board:TBoard;ThreadId:integer):integer;inline;
-Function BKingSafety(PawnIndex:Cardinal;var Board:TBoard;ThreadId:integer):integer;inline;
+Function EvaluatePawns(var Board:TBoard;ThreadId:integer):int64;inline;
+Function WKingSafety(PawnIndex:int64;var Board:TBoard;ThreadId:integer):integer;inline;
+Function BKingSafety(PawnIndex:int64;var Board:TBoard;ThreadId:integer):integer;inline;
 Function WKShield(king:integer;var Board:TBoard):integer; inline;
 Function BKShield(king:integer;var Board:TBoard):integer; inline;
 Procedure EvaluatePassers(var PassMid:integer;var PassEnd:integer;PassersBB:TBitBoard;var Board:TBoard;WAtt:TBitBoard;BAtt:TBitBoard);inline;
@@ -106,8 +110,12 @@ begin
      end;
    end;
 end;
-
-Function WKingSafety(PawnIndex:Cardinal;var Board:TBoard;ThreadId:integer):integer;inline;
+Function SqDist(king,sq:integer):integer;inline;
+begin
+  Result:=SquareDist[king,sq];
+  If Result>5 then Result:=5;
+end;
+Function WKingSafety(PawnIndex:int64;var Board:TBoard;ThreadId:integer):integer;inline;
 var
   isHash:boolean;
   new,curr,will:integer;
@@ -148,7 +156,7 @@ begin
      end;
 
 end;
-Function BKingSafety(PawnIndex:Cardinal;var Board:TBoard;ThreadId:integer):integer;inline;
+Function BKingSafety(PawnIndex:int64;var Board:TBoard;ThreadId:integer):integer;inline;
 var
   isHash:boolean;
   new,curr,will:integer;
@@ -191,7 +199,7 @@ begin
 end;
 Function WKShield(king:integer;var Board:TBoard):integer; inline;
 var
-  Kx,Ky,mid,cen,edg,res,base,sq : integer;
+  Kx,Ky,mid,res,base,sq,i,d : integer;
   AllPawnsBB,MyPawnsBB,EnemyPawnsBB,temp : TBitBoard;
 begin
   // Считаем значение прикрытыя
@@ -200,78 +208,31 @@ begin
   AllPawnsBB:=Board.Pieses[pawn] and (ForwardBB[white,King] or RanksBB[Ky]);
   MyPawnsBB   :=AllPawnsBB and Board.Occupancy[white];
   EnemyPawnsBB:=AllPawnsBB and Board.Occupancy[black];
-  if Kx=1 then
+  mid:=Kx;
+  If mid=1 then mid:=2 else
+  If mid=8 then mid:=7;
+  for i:=mid-1 to mid+1 do
     begin
-      mid:=2;
-      cen:=3;
-      edg:=1;
-    end else
-  if Kx=8 then
-    begin
-      mid:=7;
-      cen:=6;
-      edg:=8;
-    end else
-    begin
-      mid:=Kx;
-      if Mid>4 then
-        begin
-          edg:=mid+1;
-          cen:=mid-1;
-        end else
-        begin
-          edg:=mid-1;
-          cen:=mid+1;
-        end;
+      If i>4
+        then d:=8-i
+        else d:=i-1;
+      // Считаем дефекты пешечного щита перед королем
+      temp:=FilesBB[i] and MyPawnsBB;
+      if temp=0
+        then res:=res+Shelter[d,1]    // Нет нашей пешки
+        else res:=res+Shelter[d,Posy[BitScanForward(temp)]];
+      // Считаем пешечный шторм противника
+      temp:=FilesBB[i] and EnemyPawnsBB;
+      if temp=0
+        then res:=res+Storm[d,1]  // Нет вражеской пешки - (полу)открытая линия на короля
+        else begin
+               sq:=BitScanForward(temp);
+               base:=Storm[d,Posy[sq]];
+               if (posy[sq]>3) and (Board.Pos[sq-8]=pawn) then base:=base div 2;     // Блокирована  нашей пешкой
+               If (posy[sq]<4) and (Board.Pos[sq-8]=king) and (d=0) then base:=KingBlocked;// Блокирована нашим королем
+               res:=res+base;
+             end;
     end;
-                    //центр
-  // Считаем дефекты пешечного щита перед королем
-  temp:=FilesBB[mid] and MyPawnsBB;
-  if temp=0
-    then res:=res+ShelterMiddle[1]    // Нет нашей пешки
-    else res:=res+ShelterMiddle[Posy[BitScanForward(temp)]];
- // Считаем пешечный шторм противника
-  temp:=FilesBB[mid] and EnemyPawnsBB;
-  if temp=0
-    then res:=res+StormMiddle[1]  // Нет вражеской пешки - (полу)открытая линия на короля
-    else begin
-           sq:=BitScanForward(temp);
-           base:=StormMiddle[Posy[sq]];
-           if (posy[sq]>3) and (Board.Pos[sq-8]=pawn) then base:=(base*2) div 3;     // Блокирована нашей пешкой
-           res:=res+base;
-         end;
-                  // крайняя
-  temp:=FilesBB[edg] and MyPawnsBB;
-  if temp=0
-    then res:=res+ShelterEdge[1]    // Нет нашей пешки
-    else res:=res+ShelterEdge[Posy[BitScanForward(temp)]];
- // Считаем пешечный шторм противника
-  temp:=FilesBB[edg] and EnemyPawnsBB;
-  if temp=0
-    then res:=res+StormEdge[1]  // Нет вражеской пешки - (полу)открытая линия на короля
-    else begin
-           sq:=BitScanForward(temp);
-           base:=StormEdge[Posy[sq]];
-           if (posy[sq]>3) and (Board.Pos[sq-8]=pawn) then base:=(base*2) div 3;     // Блокирована  нашей пешкой
-           If (posy[sq]<4) and (Board.Pos[sq-8]=king) and ((posx[sq]=1) or (posx[sq]=8)) then base:=KingBlocked;// Блокирована нашим королем
-           res:=res+base;
-         end;
-                  // к центру доски
-  temp:=FilesBB[cen] and MyPawnsBB;
-  if temp=0
-    then res:=res+ShelterCenter[1]   // Нет нашей пешки
-    else res:=res+ShelterCenter[Posy[BitScanForward(temp)]];
-
- // Считаем пешечный шторм противника
-  temp:=FilesBB[cen] and EnemyPawnsBB;
-  if temp=0
-    then res:=res+StormCenter[1]  // Нет вражеской пешки - (полу)открытая линия на короля
-    else begin
-           sq:=BitScanForward(temp);
-           base:=StormCenter[Posy[sq]];
-           if  (posy[sq]>3) and (Board.Pos[sq-8]=pawn) then base:=(base*2) div 3;     // Блокирована  нашей пешкой
-           res:=res+base;
-         end;
    if res>MaxShieldPenalty then res:=MaxShieldPenalty;
    If res<0 then res:=0;
    Result:=res;
@@ -279,7 +240,7 @@ end;
 
 Function BKShield(king:integer;var Board:TBoard):integer; inline;
 var
-  Kx,Ky,mid,cen,edg,res,base,sq : integer;
+  Kx,Ky,mid,res,base,sq,i,d : integer;
   AllPawnsBB,MyPawnsBB,EnemyPawnsBB,temp : TBitBoard;
 begin
   // Считаем значение прикрытия
@@ -288,82 +249,36 @@ begin
   AllPawnsBB:=Board.Pieses[pawn] and (ForwardBB[black,King] or RanksBB[Ky]);
   MyPawnsBB   :=AllPawnsBB and Board.Occupancy[black];
   EnemyPawnsBB:=AllPawnsBB and Board.Occupancy[white];
-  if Kx=1 then
+  mid:=Kx;
+  If mid=1 then mid:=2 else
+  If mid=8 then mid:=7;
+  for i:=mid-1 to mid+1 do
     begin
-      mid:=2;
-      cen:=3;
-      edg:=1;
-    end else
-  if Kx=8 then
-    begin
-      mid:=7;
-      cen:=6;
-      edg:=8;
-    end else
-    begin
-      mid:=Kx;
-      if Mid>4 then
-        begin
-          edg:=mid+1;
-          cen:=mid-1;
-        end else
-        begin
-          edg:=mid-1;
-          cen:=mid+1;
-        end;
+      If i>4
+        then d:=8-i
+        else d:=i-1;
+      // Считаем дефекты пешечного щита перед королем
+      temp:=FilesBB[i] and MyPawnsBB;
+      if temp=0
+        then res:=res+Shelter[d,1]    // Нет нашей пешки
+        else res:=res+Shelter[d,9-Posy[BitScanBackward(temp)]];
+      // Считаем пешечный шторм противника
+      temp:=FilesBB[i] and EnemyPawnsBB;
+      if temp=0
+        then res:=res+Storm[d,1]  // Нет вражеской пешки - (полу)открытая линия на короля
+        else begin
+               sq:=BitScanBackward(temp);
+               base:=Storm[d,9-Posy[sq]];
+               if (posy[sq]<6) and (Board.Pos[sq+8]=-pawn) then base:=base div 2;     // Блокирована  нашей пешкой
+               If (posy[sq]>5) and (Board.Pos[sq+8]=-king) and (d=0) then base:=KingBlocked;// Блокирована нашим королем
+               res:=res+base;
+             end;
     end;
-                      // центр
-  // Считаем дефекты пешечного щита перед королем
-  temp:=FilesBB[mid] and MyPawnsBB;
-  if temp=0
-    then res:=res+ShelterMiddle[1]    // Нет нашей пешки
-    else res:=res+ShelterMiddle[9-Posy[BitScanBackward(temp)]];
- // Считаем пешечный шторм противника
-  temp:=FilesBB[mid] and EnemyPawnsBB;
-  if temp=0
-    then res:=res+StormMiddle[1]  // Нет вражеской пешки - (полу)открытая линия на короля
-    else begin
-           sq:=BitScanBackward(temp);
-           base:=StormMiddle[9-posy[sq]];
-           if (posy[sq]<6) and (Board.Pos[sq+8]=-pawn) then base:=(base*2) div 3;     // Блокирована нашей пешкой
-           res:=res+base;
-         end;
-                      // крайняя
-  temp:=FilesBB[edg] and MyPawnsBB;
-  if temp=0
-    then res:=res+ShelterEdge[1]    // Нет нашей пешки
-    else res:=res+ShelterEdge[9-Posy[BitScanBackward(temp)]];
- // Считаем пешечный шторм противника
-  temp:=FilesBB[edg] and EnemyPawnsBB;
-  if temp=0
-    then res:=res+StormEdge[1]  // Нет вражеской пешки - (полу)открытая линия на короля
-    else begin
-           sq:=BitScanBackward(temp);
-           base:=StormEdge[9-posy[sq]];
-           if (posy[sq]<6) and (Board.Pos[sq+8]=-pawn) then base:=(base*2) div 3;     // Блокирована  нашей пешкой
-           If (posy[sq]>5) and (Board.Pos[sq+8]=-king) and ((posx[sq]=1) or (posx[sq]=8)) then base:=KingBlocked;// Блокирована нашим королем
-           res:=res+base;
-         end;
-                     // ближе к центру
-  temp:=FilesBB[cen] and MyPawnsBB;
-  if temp=0
-    then res:=res+ShelterCenter[1]    // Нет нашей пешки
-    else res:=res+ShelterCenter[9-Posy[BitScanBackward(temp)]];
- // Считаем пешечный шторм противника
-  temp:=FilesBB[cen] and EnemyPawnsBB;
-  if temp=0
-    then res:=res+StormCenter[1]  // Нет вражеской пешки - (полу)открытая линия на короля
-    else begin
-           sq:=BitScanBackward(temp);
-           base:=StormCenter[9-posy[sq]];
-           if (posy[sq]<6) and (Board.Pos[sq+8]=-pawn) then base:=(base*2) div 3;     // Блокирована нашей пешкой
-           res:=res+base;
-         end;
-   if res>MaxShieldPenalty then res:=MaxShieldPenalty;
-   If res<0 then res:=0;
-   Result:=res;
+  if res>MaxShieldPenalty then res:=MaxShieldPenalty;
+  If res<0 then res:=0;
+  Result:=res;
 end;
-Function EvaluatePawns(var Board:TBoard;ThreadId:integer):cardinal;inline;
+Function EvaluatePawns(var Board:TBoard;ThreadId:integer):int64;inline;
 // Оценка пешек на доске. Возвращает индекс на ячейку с посчитанными и сохраненными значениями.
 var
   ScoreMid,ScoreEnd,sq,x,y,sq1,y1,sq2,wlight,wdark,blight,bdark : integer;
@@ -453,11 +368,6 @@ begin
               ScoreMid:=ScoreMid-BackWardClosedMid;
               ScoreEnd:=ScoreEnd-BackWardClosedEnd;
             end;
-        end else
-      if (not supported) then
-        begin
-          ScoreMid:=ScoreMid-WeakMid;
-          ScoreEnd:=ScoreEnd-WeakEnd;
         end;
       if Connected then
         begin
@@ -542,11 +452,6 @@ begin
               ScoreMid:=ScoreMid+BackWardClosedMid;
               ScoreEnd:=ScoreEnd+BackWardClosedEnd;
             end;
-        end else
-      if (not supported) then
-        begin
-          ScoreMid:=ScoreMid+WeakMid;
-          ScoreEnd:=ScoreEnd+WeakEnd;
         end;
       if Connected then
         begin
@@ -583,9 +488,9 @@ begin
       if (y>3) then  // Для продвинутых проходных дополнительная эндшпильная оценка
         begin
          // Удаленность королей от поля перед проходной
-         PassEnd:=PassEnd+SquareDist[sq+8,Board.KingSq[black]]*WeakKingDist[y];
-         PassEnd:=PassEnd-SquareDist[sq+8,Board.KingSq[white]]*StrongKingDist1[y];
-         if (y<7) then PassEnd:=PassEnd-SquareDist[sq+16,Board.KingSq[white]]*StrongKingDist2[y];
+         PassEnd:=PassEnd+SqDist(sq+8,Board.KingSq[black])*WeakKingDist[y];
+         PassEnd:=PassEnd-SqDist(sq+8,Board.KingSq[white])*StrongKingDist1[y];
+         if (y<7) then PassEnd:=PassEnd-SqDist(sq+16,Board.KingSq[white])*StrongKingDist2[y];
          // Поддержка проходной
          if Board.Pos[sq+8]=Empty then
            begin
@@ -637,9 +542,9 @@ begin
       if (y<6) then  // Для продвинутых проходных дополнительная эндшпильная оценка
         begin
          // Удаленность королей от поля перед проходной
-         PassEnd:=PassEnd-SquareDist[sq-8,Board.KingSq[white]]*WeakKingDist[9-y];
-         PassEnd:=PassEnd+SquareDist[sq-8,Board.KingSq[black]]*StrongKingDist1[9-y];
-         if (y>2) then PassEnd:=PassEnd+SquareDist[sq-16,Board.KingSq[black]]*StrongKingDist2[9-y];
+         PassEnd:=PassEnd-SqDist(sq-8,Board.KingSq[white])*WeakKingDist[9-y];
+         PassEnd:=PassEnd+SqDist(sq-8,Board.KingSq[black])*StrongKingDist1[9-y];
+         if (y>2) then PassEnd:=PassEnd+SqDist(sq-16,Board.KingSq[black])*StrongKingDist2[9-y];
          // Поддержка проходной
          if Board.Pos[sq-8]=Empty then
            begin

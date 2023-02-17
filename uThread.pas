@@ -3,7 +3,7 @@ unit uThread;
 interface
 uses Windows,SysUtils,uBoard,uSort,uMaterial,uPawn,uEval;
 Const
-  MaxThreads=16;
+  MaxThreads=64;
   MaxPV=130;
 Type
   TPv = array[0..MaxPV] of smallint;
@@ -16,10 +16,14 @@ Type
               AbortSearch : Boolean;
               FullDepth : integer;
               RootMoves: integer;
+              nullply  : integer;
+              nullclr  : integer;
               Board    : TBoard;
               Tree     : TTree;
               SortUnit : TSortUnit;
               PVLine   : TPV;
+              PVchange : integer;
+              OldPvMove: integer;
               StablePv : TPV;
               RootList : TMoveList;
               stableMove : integer;
@@ -28,8 +32,6 @@ Type
               MatTableMask : int64;
               PawnTable : array of TPawnEntry;
               PawnTableMask : int64;
-              EvalTable : array of TEvalEntry;
-              EvalTableMask: int64;
             end;
 
 var
@@ -44,9 +46,20 @@ Procedure Init_Threads(n:integer);
 Procedure StopThreads;
 Function isThreadidle:boolean;
 Procedure CopyThread(ThreadId:integer);
+Procedure ClearThreadMemory;
 implementation
   uses uUci,uSearch,UHash;
 
+Procedure ClearThreadMemory;
+var
+  i:integer;
+begin
+  for i:=1 to MaxThreads do
+    begin
+      SetLength(Threads[i].MatTable,0);
+      SetLength(Threads[i].PawnTable,0);
+    end;
+end;
 Procedure CopyThread(ThreadId:integer);
 var
   i: integer;

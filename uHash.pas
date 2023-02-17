@@ -9,6 +9,7 @@ Type
              value      : smallint;
              depth      : shortint;
              typage     : byte;      //2..7 - Age 0..1 - Typ
+             steval     : smallint;
             end;
  TPieseZobr = array[white..black,pawn..king,a1..h8] of int64;
  TEnnPassZobr = array[a1..h8] of int64;
@@ -86,7 +87,6 @@ Const
      1103617230475401395,-518654307628992377,-7515440095561311883),(3577306886352770625,-7601659721337396656,-3464873849686759132,8508238362164259870,8489015476793432688,6041389242480861025,4133035165768999622,6182714671198304190,7055557008050877870,5767727958263330686,8479394023423819027)));
 
   ZColor = 1300814577812659680;
-  ZExclude =-2471931864422293533;
 
 var
   TT              : array of TEntry;
@@ -97,7 +97,7 @@ Function CalcFullMatKey(var Board:TBoard):int64;
 Procedure InitTT(SizeMB:integer);
 Procedure ClearHash;
 Function HashProbe(var Board:TBoard;Key : int64):int64; inline;
-Procedure HashStore(Key:int64;var Board:TBoard;value:integer;depth:integer;typ:integer;move:integer); inline;
+Procedure HashStore(Key:int64;var Board:TBoard;value:integer;depth:integer;typ:integer;move:integer;steval:integer); inline;
 Function ValueToTT(value:integer;ply:integer):integer;inline;
 Function ValueFromTT(value:integer;ply:integer):integer;inline;
 Function FindPonder(RootMove:integer;var Board:TBoard):integer;
@@ -111,7 +111,7 @@ var
    TTSize : int64;
 begin
   TTSize:=SizeMb;
-  TTSize:=(TTSize * 1024 * 1024) div 16;//  Ячейка весит 14 байт, но принимаем ее за 16. Остается 2/16 для остальных хешей!
+  TTSize:=(TTSize * 1024 * 1024) div 16;//  Ячейка весит 16 байт
   TTMask:=(TTSize div EntrySize)-1;
   SetLength(TT,0);
   SetLength(TT,TTSize+1);
@@ -129,6 +129,7 @@ begin
       TT[i*EntrySize+j].value:=0;
       TT[i*EntrySize+j].depth:=0;
       TT[i*EntrySize+j].typage:=0;
+      TT[i*EntrySize+j].steval:=0;
     end;
 end;
 Function ValueToTT(value:integer;ply:integer):integer; inline;
@@ -219,16 +220,20 @@ begin
       end;
 end;
 
-Procedure HashSave(index:int64;Key:int64;value:integer;depth:integer;typ:integer;move:integer);inline;
+Procedure HashSave(index:int64;Key:int64;value:integer;depth:integer;typ:integer;move:integer;steval:integer);inline;
 begin
   If (move<>0) or (TT[index].Key<>Key) then  TT[index].move:=move;
-  TT[index].value:=value;
-  TT[index].depth:=depth;
-  TT[index].typage:=game.HashAge or typ;
-  TT[index].Key:=Key;
+  If (TT[index].Key<>Key) or (depth>TT[index].depth-4)  then
+    begin
+     TT[index].value:=value;
+     TT[index].depth:=depth;
+     TT[index].typage:=game.HashAge or typ;
+     TT[index].Key:=Key;
+     TT[index].steval:=steval;
+    end;
 end;
 
-Procedure HashStore(Key:int64;var Board:TBoard;value:integer;depth:integer;typ:integer;move:integer); inline;
+Procedure HashStore(Key:int64;var Board:TBoard;value:integer;depth:integer;typ:integer;move:integer;steval:integer); inline;
 var
    i,score,repscore,val:integer;
    rep,index:int64;
@@ -243,7 +248,7 @@ begin
     begin
       if  (TT[index+i].Key=Key) or (TT[index+i].Key=0) then
         begin
-          HashSave((index+i),key,value,depth,typ,move);
+          HashSave((index+i),key,value,depth,typ,move,steval);
           exit;
         end;
       if i=0 then continue;
@@ -260,7 +265,7 @@ begin
         end;
     end;
   // Найдена предпочтительная ячейка для замещения - записываем в нее информацию по текущей позиции
-  HashSave(rep,key,value,depth,typ,move);
+  HashSave(rep,key,value,depth,typ,move,steval);
 end;
 
 Function FindPonder(RootMove:integer;var Board:TBoard):integer;

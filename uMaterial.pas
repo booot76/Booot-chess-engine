@@ -45,7 +45,7 @@ Const
 
 Procedure InitMatTable(SizeMB:integer);
 Procedure CalcImbalance(var ScoreMid:integer;var ScoreEnd:integer;wp,bp,wn,bn,wb,bb,wr,br,wq,bq:integer);inline;
-Function EvaluateMaterial(var Board:TBoard;ThreadID:integer):Cardinal; inline;
+Function EvaluateMaterial(var Board:TBoard;ThreadID:integer):int64; inline;
 
 implementation
   uses uThread,uSearch;
@@ -134,7 +134,7 @@ begin
       ScoreEnd:=ScoreEnd+ExtraMajorEnd;
     end;
 end;
-Function EvaluateMaterial(var Board:TBoard;ThreadID:integer):Cardinal; inline;
+Function EvaluateMaterial(var Board:TBoard;ThreadID:integer):int64; inline;
 // Оценка материала на доске. Возвращает индекс на ячейку с посчитанными и сохраненными значениями.
 var
   ScoreMid,ScoreEnd,Wscale,BScale,NPW,NPB,phase,evalfun,scalefun : integer;

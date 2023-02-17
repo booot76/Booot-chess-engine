@@ -83,7 +83,6 @@ end;
 Procedure SetHash(size:integer);
 begin
   InitTT(size);
-  InitEvalTable(size);
   InitPawnTable(size);
   InitMatTable(size);
 end;
@@ -174,7 +173,7 @@ begin
   repeat
     v := pos(' ',mlist);
     smove:= trim(copy(mlist,1,v));
-    if smove<>'' then
+    if length(smove)>=4 then
       begin
         move:=StrTomove(smove,Board);
         SetUndo(Board,Undo);
@@ -214,12 +213,12 @@ end;
 Function TakeHashSize(val : integer):integer;
 // Выбирает ближайшее значение хеша, являющееся степенью 2
 const
-  HashSizes : array[1..10] of integer = (16,32,64,128,256,512,1024,2048,4096,8192);
+  HashSizes : array[1..13] of integer = (16,32,64,128,256,512,1024,2048,4096,8192,16384,32768,65536);
 var
   i : integer;
 begin
   i:=1;
-  while (i<=10) and (HashSizes[i]<val) do
+  while (i<=13) and (HashSizes[i]<val) do
     inc(i);
  {$IFDEF WIN64}
     i:=i;
@@ -237,7 +236,7 @@ var
    sval:string;
 begin
   if s='' then exit;
-  if s='eval' then
+  if (pos('eval',s)>0) then
     begin
       Lwrite('Score = '+InttoStr(Evaluate(Threads[1].Board,1,-Inf,Inf)));                         // Статическая оценка позиции
       exit;
@@ -250,18 +249,18 @@ begin
       Perft(true,now,Threads[1].Board,val);
       exit;
     end;
-  if s='uci' then                                                               //uci
+  if pos('uci',s) = 1  then                                                               //uci
     begin
      LWrite('id name ' + GetFullVersionName);
      LWrite('id author Alex Morozov (booot76@gmail.com)');
      // Тут вываливаем список параметров движка
-     LWrite('option name Hash type spin default 128 min 16 max 8192');
+     LWrite('option name Hash type spin default 128 min 16 max 65536');
      LWrite('option name Ponder type check default false');
      LWrite('option name Threads type spin default 1 min 1 max '+inttostr(MaxThreads));
      LWrite('uciok');
      exit;
     end;
-  if s = 'isready' then                                                         //isready
+  if (pos('isready',s)>0) then                                                         //isready
     begin
      LWrite('readyok');
      exit;
@@ -292,6 +291,7 @@ begin
             // Останавливаем потоки которые могли быть запущены ранее
            StopThreads;
            game.Threads:=val;
+           ClearThreadMemory;
            NewGame;
          end;
        end;
@@ -332,6 +332,7 @@ begin
        begin                                                                     // infinite
         game.time:=48*3600*1000;
         game.rezerv:=48*3600*1000;
+        game.chng:=48*3600*1000;
         game.oldtime:=game.time;
        end else
        begin
@@ -356,7 +357,7 @@ begin
             //Контроль времени
             game.time:=clock div (movestocontrol+1);
             If (clock>10000) and (movestoControl>2)
-              then  game.rezerv:=clock div 4
+              then  game.rezerv:=clock div 2
               else  game.rezerv:=game.time;
           end else
           begin
@@ -366,7 +367,7 @@ begin
                 // С добавлением
                 game.time:=(clock div 20)+(incr div 2);
                 If clock>10000
-                  then  game.rezerv:=clock div 4
+                  then  game.rezerv:=clock div 2
                   else  game.rezerv:=game.time;
               end else
               begin
@@ -382,12 +383,15 @@ begin
                   end;
               end;
           end;
+         game.chng:=(game.time+game.rezerv) div 2;
          if pos('ponder',s) > 0 then
            begin
              game.pondertime:=game.time;
              game.ponderrezerv:=game.rezerv;
+             game.ponderchng:=game.chng;
              game.time:=64*3600*1000;
              game.rezerv:=64*3600*1000;
+             game.chng:=64*3600*1000;
            end;
          game.oldtime:=game.time;
        end;
@@ -420,7 +424,7 @@ begin
       end;
     s := ReadInput(n);
    // Получили команду на выход
-    if s='quit' then
+    if (pos('quit',s)>0) then
       begin
         stopthreads;
         exit;
@@ -441,18 +445,22 @@ begin
   n := CheckInput;
   if n = 0 then exit;
   s := ReadInput(n);
-  if (s='stop') or (s='quit') then
+  if (pos('stop',s)>0)  or (pos('quit',s)>0) then
     begin
      for i:=1 to game.Threads do
        Threads[i].AbortSearch:=true;
-     game.time:=0;
+     game.time:=game.pondertime;
+     game.rezerv:=game.ponderrezerv;
+     game.chng:=game.ponderchng;
+     game.oldtime:=game.time;
      SetRemain;
      Board.remain:=0;
     end;
-  if (s='ponderhit') then
+  if pos('ponderhit',s)>0  then
     begin
       game.time:=game.pondertime;
       game.rezerv:=game.ponderrezerv;
+      game.chng:=game.ponderchng;
       game.oldtime:=game.time;
       SetRemain;
       Board.remain:=0;
@@ -466,9 +474,13 @@ begin
   while true  do
    begin
     n := CheckInput;
-    if n = 0 then continue;
+    if n = 0 then
+      begin
+       sleep(25);
+       continue;
+      end;
     s := ReadInput(n);
-    if (s='stop') or (s='quit') or (s='ponderhit')  then break;
+    if (pos('stop',s)>0) or (pos('quit',s)>0) or (pos('ponderhit',s)>0)  then break;
    end;
 end;
 
