@@ -202,10 +202,10 @@ var
    QueenMobMid,QueenMobEnd : array[0..27] of integer;
 
 Procedure CalcFullPst(var PstMid:integer;var PSTEnd:integer; var Board:TBoard);inline;
-Function Evaluate(var Board:TBoard;ThreadID:integer;alpha:integer;beta:integer):integer;inline;
-
+Function Evaluate(var Board:TBoard;ThreadID:integer;ply:integer):integer;inline;
+Function EvaluateHCE(var Board:TBoard;ThreadID:integer;ply:integer):integer;inline;
 implementation
-   uses uThread,uSearch;
+   uses uThread,uSearch,Unn;
 
 
 Function GetLogValue(Min:real;Max:real;i:integer;Total:integer):integer;
@@ -394,7 +394,49 @@ begin
 end;
 
 
-Function Evaluate(var Board:TBoard;ThreadID:integer;alpha:integer;beta:integer):integer; inline;
+Function Evaluate(var Board:TBoard;ThreadID:integer;ply:integer):integer; inline;
+var
+   evalfun,score,sf,wtm : integer;
+begin
+  // Быстро оцениваем специальные эндшпили на доске
+  evalfun:=EvalShort(Board,ThreadId);
+  If (evalfun=f_knnk) or (evalfun=f_kbnk) or (evalfun=f_kpk) then
+    begin
+      Result:=EvaluateSpecialEndgame(EvalFun,QueenValueMid,Board);
+      exit;
+    end;
+  score:=ForwardPass(Board.SideToMove,Threads[ThreadID].Pass[ply]);
+  if score>=0
+    then wtm:=Board.SideToMove
+    else wtm:=Board.SideToMove xor 1;
+  If evalfun=f_kbpskw then
+    begin
+      sf:=64;
+      KBPSKw(sf,Board);
+      if sf<>64 then
+        begin
+          if ((Board.SideToMove=white) and (score>0)) or ((Board.SideToMove=black) and (score<0)) then score:=(score*sf) div 64;
+        end;
+    end;
+  If evalfun=f_kbpskb then
+    begin
+      sf:=64;
+      KBPSKb(sf,Board);
+       if sf<>64 then
+        begin
+          if ((Board.SideToMove=black) and (score>0)) or ((Board.SideToMove=white) and (score<0)) then score:=(score*sf) div 64;
+        end;
+    end;
+   if ((Board.Pieses[pawn] and Board.Occupancy[wtm])=0) and (((Board.NonPawnMat[wtm]-Board.NonPawnMat[wtm xor 1])<=PieseTYpValue[bishop]) or (Board.NonPawnMat[wtm]=2*PiesetypValue[knight])) then
+    begin
+      if Board.NonPawnMat[wtm]<=PieseTYpValue[queen]
+        then score:=score div 4
+        else score:=score div 2;
+    end;
+  Result:=score;
+end;
+
+Function EvaluateHCE(var Board:TBoard;ThreadID:integer;ply:integer):integer; inline;
 var
   PawnIndex,MatIndex: int64;
   ScoreMid,ScoreEnd,score,WScale,BScale,Phase,PassMid,PassEnd,sq,ind,piesecol,x,Kx,Ky,binc,sf,strongside: integer;
@@ -403,7 +445,6 @@ var
   KingAttackCount,KingAttackWeight,KingAttackShoot,Shield,MobilityMid,MobilityEnd,ExtraMid,ExtraEnd,BishopNum:TColor;
   MobilityArea,KingZone,Pines,BlockedPawns,Attacked2,OutBB : TcolorZone;
 begin
-
   // Сначала считаем материальную оценку
      // Получаем индекс в таблице с посчитанными данными по материалу.
   MatIndex:=EvaluateMaterial(Board,ThreadID);

@@ -1,7 +1,7 @@
 unit uThread;
 
 interface
-uses Windows,SysUtils,uBoard,uSort,uMaterial,uPawn,uEval;
+uses Windows,SysUtils,uBoard,uSort,uMaterial,uPawn,uEval,Unn;
 Const
   MaxThreads=64;
   MaxPV=130;
@@ -14,6 +14,7 @@ Type
               idle     : boolean;  // Показывает простой потока
               haswork  : boolean;  // Флаг наличия задания у потока
               AbortSearch : Boolean;
+              RootDepth : integer;
               FullDepth : integer;
               RootMoves: integer;
               nullply  : integer;
@@ -31,6 +32,12 @@ Type
               MatTableMask : int64;
               PawnTable : array of TPawnEntry;
               PawnTableMask : int64;
+              Fenflag : boolean;
+              outname : shortstring;
+              outfile : textfile;
+              Pass:array[0..129] of TForwardPass;
+              bookposnum : integer;
+              savedblock : boolean;
             end;
 
 var
@@ -74,6 +81,7 @@ begin
   CopyBoard(Threads[1].Board,Threads[ThreadId].Board);
   NewSearch(ThreadId);
   Threads[ThreadId].FullDepth:=0;
+   Threads[ThreadId].RootDepth:=0;
   Threads[ThreadId].haswork:=true;
 end;
 
@@ -101,7 +109,9 @@ begin
     if Threads[threadid].haswork then
       begin
         Threads[threadid].idle:=false;
-        Iterate(ThreadId);                       ////////////////////////////// функция запуска потока  в перебор
+        If Threads[ThreadId].Fenflag
+          then SingleGenerator(ThreadID,threads[threadid].bookposnum)
+          else Iterate(ThreadId);                       ////////////////////////////// функция запуска потока
         Threads[threadid].haswork:=false;
         Threads[threadid].idle:=true;
       end;
@@ -130,6 +140,7 @@ begin
   for i:=2 to n do
       begin
         Threads[i].haswork:=false;
+        Threads[i].Fenflag:=false;   // По умолчанию запускаемся в нормальном режиме для перебора
         Threads[i].handle:=BeginThread(nil,0,addr(win_init),addr(i),0,tr);
         // Как только поток поднялся и сам проинициализировался - мы сразу из цикла выйдем
         while not Threads[i].isRun do;
@@ -141,7 +152,7 @@ var
   i:integer;
 begin
   for i:=2 to MaxThreads do
-    if (Threads[i].idle=true) then
+    if (Threads[i].idle=false) then
       begin
         result:=true;
         exit;
