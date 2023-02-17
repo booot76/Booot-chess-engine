@@ -143,7 +143,7 @@ Type
                  CurrNum  : integer;
                  HistVal  : integer;
                end;
-  Ttree = array [-4..129]  of TTreeEntry;
+  Ttree = array [-101..129]  of TTreeEntry;
   TCheckInfo = record
                  DiscoverCheckBB : TBitBoard;
                  DirectCheckBB : array [Pawn..King] of TBitBoard;

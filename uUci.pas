@@ -249,6 +249,11 @@ begin
       Perft(true,now,Threads[1].Board,val);
       exit;
     end;
+  if pos('ucinewgame',s) >0 then
+    begin                                                                       // ucinewgame
+      NewGame;
+      exit;
+    end;
   if pos('uci',s) = 1  then                                                               //uci
     begin
      LWrite('id name ' + GetFullVersionName);
@@ -297,11 +302,7 @@ begin
        end;
      exit;
     end;
-  if pos('ucinewgame',s) >0 then
-    begin                                                                       // ucinewgame
-      NewGame;
-      exit;
-    end;
+
   if pos('position',s) = 1 then
     begin                                                                        //Position
      fen:=StartPositionFen;
@@ -332,7 +333,6 @@ begin
        begin                                                                     // infinite
         game.time:=48*3600*1000;
         game.rezerv:=48*3600*1000;
-        game.chng:=48*3600*1000;
         game.oldtime:=game.time;
        end else
        begin
@@ -357,7 +357,7 @@ begin
             //Контроль времени
             game.time:=clock div (movestocontrol+1);
             If (clock>10000) and (movestoControl>2)
-              then  game.rezerv:=clock div 2
+              then  game.rezerv:=clock div 4
               else  game.rezerv:=game.time;
           end else
           begin
@@ -367,7 +367,7 @@ begin
                 // С добавлением
                 game.time:=(clock div 20)+(incr div 2);
                 If clock>10000
-                  then  game.rezerv:=clock div 2
+                  then  game.rezerv:=clock div 4
                   else  game.rezerv:=game.time;
               end else
               begin
@@ -383,15 +383,13 @@ begin
                   end;
               end;
           end;
-         game.chng:=(game.time+game.rezerv) div 2;
+         If game.rezerv<game.time then game.rezerv:=game.time;
          if pos('ponder',s) > 0 then
            begin
              game.pondertime:=game.time;
              game.ponderrezerv:=game.rezerv;
-             game.ponderchng:=game.chng;
              game.time:=64*3600*1000;
              game.rezerv:=64*3600*1000;
-             game.chng:=64*3600*1000;
            end;
          game.oldtime:=game.time;
        end;
@@ -451,7 +449,6 @@ begin
        Threads[i].AbortSearch:=true;
      game.time:=game.pondertime;
      game.rezerv:=game.ponderrezerv;
-     game.chng:=game.ponderchng;
      game.oldtime:=game.time;
      SetRemain;
      Board.remain:=0;
@@ -460,7 +457,6 @@ begin
     begin
       game.time:=game.pondertime;
       game.rezerv:=game.ponderrezerv;
-      game.chng:=game.ponderchng;
       game.oldtime:=game.time;
       SetRemain;
       Board.remain:=0;

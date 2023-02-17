@@ -90,19 +90,17 @@ begin
 end;
 Function GetStatBonus(depth:integer):integer;inline;
 begin
-  If depth>17
-    then result:=0
-    else result:=DepthInc[depth]+2*depth-2;
+  result:=DepthInc[depth];
 end;
 Procedure UpdHistory(var SortUnit:TSortUnit;piese:integer;dest:integer;bonus:integer);inline;
 begin
-  SortUnit.History[piese,dest]:=Sortunit.History[piese,dest]-((Sortunit.History[piese,dest]*abs(bonus)) div 324);
-  SortUnit.History[piese,dest]:=Sortunit.History[piese,dest]+bonus*32;
+  SortUnit.History[piese,dest]:=Sortunit.History[piese,dest]-((Sortunit.History[piese,dest]*abs(bonus)) div 10692);
+  SortUnit.History[piese,dest]:=Sortunit.History[piese,dest]+bonus;
 end;
 Procedure UPdHistoryStats(var Tree:TTree;ply:integer;piese:integer;dest:integer;bonus:integer);inline;
 begin
-  Tree[ply].CurrStat^[piese,dest]:=Tree[ply].CurrStat^[piese,dest]-((Tree[ply].CurrStat^[piese,dest]*abs(bonus)) div 936);
-  Tree[ply].CurrStat^[piese,dest]:=Tree[ply].CurrStat^[piese,dest]+bonus*32;
+  Tree[ply].CurrStat^[piese,dest]:=Tree[ply].CurrStat^[piese,dest]-((Tree[ply].CurrStat^[piese,dest]*abs(bonus)) div 29952);
+  Tree[ply].CurrStat^[piese,dest]:=Tree[ply].CurrStat^[piese,dest]+bonus;
 end;
 Procedure UpdateStats(var SortUnit:TSortUnit;var Tree:TTree;ply:integer;piese:integer;dest:integer;bonus:integer);inline;
 begin
@@ -332,7 +330,7 @@ begin
    if tree[ply].Status=TryGoodMoves then
     begin
      // выбираем лучшие тихие ходы (хорошие = с оценкой истории больше 0)
-      while (tree[ply].value>0) and (tree[ply].curr<=tree[ply].max-1) do
+      while (tree[ply].value>-4000*depth) and (not skip) and (tree[ply].curr<=tree[ply].max-1) do
         begin
           move:=TakeBest(MOveList,tree[ply].curr,tree[ply].max-1);
           tree[ply].value:=MoveList[tree[ply].curr].value;
@@ -346,11 +344,9 @@ begin
   if tree[ply].Status=tryOthers then
     begin
     // Здесь остались плохие тихие ходы. Сортировка тут только на больших глубинах
-      while tree[ply].curr<=tree[ply].max-1 do
+      while (tree[ply].curr<=tree[ply].max-1) and (not skip) do
         begin
-          If (depth>2) and (not skip)
-            then move:=TakeBest(MoveList,tree[ply].curr,tree[ply].max-1)
-            else move:=MoveList[tree[ply].curr].move;
+          move:=MoveList[tree[ply].curr].move;
           inc(tree[ply].curr);
           if (move=hashmove) or (move=killer1) or (move=killer2) or (move=countermove)  then continue;    // Уже рассмотрены
           Result:=move;
@@ -398,7 +394,7 @@ begin
         inc(tree[ply].Status);
         if Board.CheckersBB<>0 then tree[ply].Status:=GenerateEscapes;
         // Здесь пробуем хешход - пока ничего не генерируем
-        If (hashmove<>0) and (isPseudoCorrect(hashmove,Board)) then
+        If (hashmove<>0) and (isPseudoCorrect(hashmove,Board)) and ((depth>-5) or (((hashmove shr 6) and 63)=((prevmove shr 6) and 63)))   then
          begin
           Result:=hashmove;
           exit;
@@ -527,7 +523,11 @@ begin
         MVVLVA[i,j]:=Mvv*16-lva;
       end;
   for i:=0 to 128 do
-    DepthInc[i]:=i*i;
+    if i<16
+     then DepthInc[i]:=19*i*i+155*i-134
+     else DepthInc[i]:=-8;
+
+
 end;
 
 initialization
