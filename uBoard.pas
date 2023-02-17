@@ -126,6 +126,8 @@ Type
            PstMid       : integer;
            PstEnd       : integer;
            nullcnt      : integer;
+           WFrame       : integer;
+           BFrame       : integer;
           end;
   Thistory = array[-King..King,a1..h8] of integer;
   PHistory = ^THistory;
@@ -141,6 +143,7 @@ Type
                  CurrMove : integer;
                  CurrStat : PHistory;
                  CurrNum  : integer;
+                 dblext   : integer;
                end;
   Ttree = array [-101..129]  of TTreeEntry;
   TCheckInfo = record
@@ -157,6 +160,7 @@ Type
 
 
 Procedure SetBoard(FEN : ansistring; var Board:TBoard);
+Function PackFEN(var Board:Tboard):ansistring;
 procedure PrintBoard(Board : TBoard);
 Function StringMove(move:integer):shortstring;
 Function CalcNonPawnMat(color:integer;var Board:TBoard):integer;
@@ -175,7 +179,7 @@ Function Perft(Root:boolean;t1:TDateTime;var Board:TBoard;depth:integer):int64;
 Procedure MakeNullMove(var Board:TBoard);inline;
 Procedure UnMakeNullMove(var Board:TBoard;var Undo:TUndo);inline;
 implementation
-uses uAttacks,DateUtils,uHash,uMaterial,uPawn,uEval,uEndGame,uUci,uThread,uSort;
+uses uAttacks,DateUtils,uHash,uMaterial,uPawn,uEval,uEndGame,uUci,uThread,uSort,uNN;
 
 Procedure ClearBoard(var Board:TBoard);
 var
@@ -207,7 +211,60 @@ begin
   Board.PstEnd:=0;
   Board.nullcnt:=0;
 end;
-
+Function PackFEN(var Board:Tboard):ansistring;
+var
+   i,cnt : integer;
+   res : ansistring;
+begin
+  res:='';
+  i:=a1;
+  while i<=h8 do
+    begin
+      case Board.Pos[i] of
+         Pawn    : res:=res+'P';
+         -Pawn   : res:=res+'p';
+         Knight  : res:=res+'N';
+         -Knight : res:=res+'n';
+         Bishop  : res:=res+'B';
+         -Bishop : res:=res+'b';
+         Rook    : res:=res+'R';
+         -Rook   : res:=res+'r';
+         Queen   : res:=res+'Q';
+         -Queen  : res:=res+'q';
+         King    : begin
+                     case (Board.CastleRights and 3) of
+                         0 : res:=res + 'K';
+                         1 : res:=res + 'S';
+                         2 : res:=res + 'L';
+                         3 : res:=res + 'W';
+                        end;
+                   end;
+         -King   : begin
+                     case (Board.CastleRights and 12) of
+                         0 : res:=res + 'k';
+                         4 : res:=res + 's';
+                         8 : res:=res + 'l';
+                        12 : res:=res + 'w';
+                        end;
+                   end;
+          Empty  : begin
+                     cnt:=0;
+                     while (i<=h8) and (Board.Pos[i]=Empty) do
+                        begin
+                          inc(cnt);
+                          inc(i);
+                        end;
+                     res:=res+inttostr(cnt);
+                     dec(i);
+                   end;
+        end;
+      inc(i);
+    end;
+  If Board.SideToMove=white
+    then res:=res+' w'
+    else res:=res+' b';
+  Result:=res;
+end;
 Procedure SetBoard(FEN : ansistring; var Board:TBoard);
 // Устанавливает доску по FEN
 var
@@ -263,6 +320,7 @@ begin
                Board.Pos[sq]:=-Queen;
              end;
        'r' : begin
+
                Board.Pieses[Rook]:=Board.Pieses[Rook] or Only[sq];
                Board.Occupancy[black]:=Board.Occupancy[black] or Only[sq];
                Board.Pos[sq]:=-Rook;
@@ -340,7 +398,7 @@ begin
     end;
   inc(i,2); // После пробела
   // 5. Счетчик полуходов
-  if i<=length(FEN) then
+  if i<length(FEN) then
    begin
     str:='';
     while FEN[i]<>' ' do
@@ -349,10 +407,10 @@ begin
       inc(i);
      end;
     Board.Rule50:=strtoint(string(trim(str)));
-   end;
+   end else Board.Rule50:=0;
     inc(i); // После пробела
   //6. Счетчик целых ходов
-  if i<=length(FEN) then
+  if i<length(FEN) then
    begin
     str:='';
     for j:=i to length(FEN) do
@@ -361,14 +419,14 @@ begin
       inc(i);
      end;
      Board.MoveNum:=StrToInt(trim(str));
-   end;
+   end else Board.MoveNum:=0;
   Board.Key:=CalcFullKey(Board);
   Board.PawnKey:=CalcFullPawnKey(Board);
   Board.MatKey:=CalcFullMatKey(Board);
   Board.NonPawnMat[white]:=CalcNonPawnMat(white,Board);
   Board.NonPawnMat[black]:=CalcNonPawnMat(black,Board);
   CalcFullPST(Board.PstMid,Board.PstEnd,Board);
-  Threads[1].Board.nullcnt:=Threads[1].Board.Rule50;
+  Board.nullcnt:=Board.Rule50;
 end;
 
 procedure PrintBoard(Board : TBoard);
@@ -1112,6 +1170,8 @@ begin
   Undo.PstMid:=Board.PstMid;
   undo.PstEnd:=Board.PstEnd;
   undo.nullcnt:=Board.nullcnt;
+  undo.Wframe:=GetWhiteFrameIndex(Net.model,Board);
+  undo.Bframe:=GetBlackFrameIndex(Net.model,Board);
 end;
 Procedure MakeMove(move : integer;var Board:TBoard;var Undo:TUndo;isCheck:boolean);  inline;
 // Процедура делает ход на доске

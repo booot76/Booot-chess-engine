@@ -44,7 +44,7 @@ Const
 Procedure InitMatTable(SizeMB:integer);
 Procedure CalcImbalance(var ScoreMid:integer;var ScoreEnd:integer;wp,bp,wn,bn,wb,bb,wr,br,wq,bq:integer);inline;
 Function EvaluateMaterial(var Board:TBoard;ThreadID:integer):int64; inline;
-
+Function EvalShort(var Board:TBoard;ThreadID:integer):integer;
 implementation
   uses uThread,uSearch;
 Procedure InitMatTable(SizeMB:integer);
@@ -211,4 +211,33 @@ begin
   Threads[ThreadId].MatTable[result].ScaleFunc:=scalefun;
   Threads[ThreadId].MatTable[result].phase:=phase;
 end;
+Function EvalShort(var Board:TBoard;ThreadID:integer):integer;
+// Быстрая оценка материала и специальных случаев на доске
+var
+  NPW,NPB,evalfun: integer;
+  wp,bp: integer;
+begin
+  evalfun:=0;
+  wp:=BitCount(Board.Pieses[Pawn]   and Board.Occupancy[white]);
+  bp:=BitCount(Board.Pieses[Pawn]   and Board.Occupancy[black]);
+  NPW:=Board.NonPawnMat[white];
+  NPB:=Board.NonPawnMat[black];
+  // Ищем возможные внешние функции оценки и масштабирования
+  if wp+bp=0 then  // беспешечные эндшпили
+    begin
+     If ((Board.NonPawnMat[white]=0) and (Board.NonPawnMat[black]=(PieseTypValue[knight]+PieseTypValue[knight]))) or ((Board.NonPawnMat[black]=0) and (Board.NonPawnMat[white]=(PieseTypValue[knight]+PieseTypValue[knight]))) then evalfun:=f_knnk else   //KNNK
+     If ((Board.NonPawnMat[white]=0) and (Board.NonPawnMat[black]=(PieseTypValue[knight]+PieseTypValue[bishop]))) or ((Board.NonPawnMat[black]=0) and (Board.NonPawnMat[white]=(PieseTypValue[knight]+PieseTypValue[bishop]))) then evalfun:=f_kbnk else   //KBNK
+     If (Board.NonPawnMat[white]<PieseTypValue[rook]) and (Board.NonPawnMat[black]<PieseTypValue[rook]) then evalfun:=f_knnk;
+    end;
+  if (NPW=0) and (NPB=0) then // Пешечный эндшпиль
+    begin
+     if (wp+bp)=1 then evalfun:=f_KPK ;
+    end;
+  if (NPW=PieseTypValue[bishop])  and (wp>0) then evalfun:=F_KBPSKW;
+  if (NPB=PieseTypValue[bishop])  and (bp>0) then evalfun:=F_KBPSKB;
+  Result:=evalfun;
+end;
+
 end.
+
+

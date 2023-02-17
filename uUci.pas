@@ -16,9 +16,13 @@ Procedure poll(var Board:Tboard);
 Procedure NewSearch(ThreadId:integer);
 Function StrToMove(smove:ansistring;var Board:Tboard):integer;
 Procedure WaitPonderhit;
+Procedure SetHash(size:integer);
+Procedure NewGame;
+Procedure SetRemain;
+Procedure SetupChanels;
 
 implementation
-   uses uThread;
+   uses uThread,UNN;
 
 Procedure SetupChanels;
 var mode: cardinal;
@@ -83,8 +87,8 @@ end;
 Procedure SetHash(size:integer);
 begin
   InitTT(size);
-  InitPawnTable(size);
-  InitMatTable(size);
+  InitPawnTable(1);
+  InitMatTable(1);
 end;
 Procedure SetRemain;
 // В зависимости от оставшегося времени определяем частоту его проверки:
@@ -110,6 +114,7 @@ begin
   game.time:=0;
   SetRemain;
   game.HashAge:=0;
+  game.showtext:=true;
   for i:=1 to game.Threads do
    ClearHistory(Threads[i].Sortunit,Threads[i].Tree);
 end;
@@ -238,7 +243,9 @@ begin
   if s='' then exit;
   if (pos('eval',s)>0) then
     begin
-      Lwrite('Score = '+InttoStr(Evaluate(Threads[1].Board,1,-Inf,Inf)));                         // Статическая оценка позиции
+      FillWhiteAcc16(Net.model,Threads[1].Board,Threads[1].Pass[1]);
+      FillBlackAcc16(Net.model,Threads[1].Board,Threads[1].Pass[1]);
+      Lwrite(' Score = '+InttoStr(Evaluate(Threads[1].Board,1,1)));                         // Статическая оценка позиции
       exit;
     end;
   if pos('perft ',s)=1 then                                                     // тест perft
@@ -256,7 +263,7 @@ begin
     end;
   if pos('uci',s) = 1  then                                                               //uci
     begin
-     LWrite('id name ' + GetFullVersionName);
+     LWrite('id name ' + GetFullVersionName(Net.model));
      LWrite('id author Alex Morozov (booot76@gmail.com)');
      // Тут вываливаем список параметров движка
      LWrite('option name Hash type spin default 128 min 16 max 65536');
@@ -402,10 +409,11 @@ var
   n,i:integer;
   s:ansistring;
 begin
-  SetupChanels;
   game.uciPonder:=false;
   game.hashsize:=128;
-
+  game.doIIR:=True;
+  game.doLMP:=True;
+  game.saveENNPass:=True;
   for i:=1 to MaxThreads do
     begin
       Threads[i].isRun:=false;
