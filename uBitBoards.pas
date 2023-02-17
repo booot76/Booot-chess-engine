@@ -2,7 +2,6 @@ unit uBitBoards;
 
  // Все что связано с работой битбордов - тут.
 
-{$Define POPCNT}   // Удалить или заккоментировать если процессор не поддерживает  64-битную инструкцию popcnt! В
 
 interface
 
@@ -12,7 +11,7 @@ interface
   T256 = array[0..255] of integer;
 
  Const
-  VersionName='Booot 6.5';                    // Номер версии движка
+  VersionName='Booot 7.0';                    // Номер версии движка
 
   BitCountTable8 :T256 =                // Количество установленных в единицу битов в единичном байте от 0 до 255. Используется в системах где нет ассемблерной команды подсчета
    (0,1,1,2,1,2,2,3,1,2,2,3,2,3,3,4,
@@ -150,7 +149,7 @@ $0002000000000000,$0005000000000000,$000A000000000000,$0014000000000000,$0028000
  function BitCount(BB:TBitBoard): Integer;
  function BitScanForward(BB:TBitBoard): Integer;
  function BitScanBackward(BB:TBitBoard): Integer;
- function GetFullVersionName :ansistring;
+ function GetFullVersionName(modelnum:integer) :ansistring;
  procedure PrintBitboard(BB : TBitboard);
 
 implementation
@@ -159,33 +158,10 @@ implementation
 function BitCount(BB:TBitBoard): Integer;
   // Функция подсчета "1"- битов в битборде.
   // На входе - битбоард, на выходе - число битов, установленных в "1"
-  {$IFDEF WIN64}
-   {$IFDEF POPCNT}
-     asm
-      popcnt rax, qword ptr bb;    // Быстрая 64-битная ассемблерная функция
-     end;
-   {$ELSE POPCNT}
-     begin                         //Используется медленный метод для машин где нет ассемблерной команды подсчета единичного бита в 64-битном битборде
-      // writeln('not boootfastest - 64');
-      Result:=BitCountTable16[BB and 65535]+BitCountTable16[(BB shr 16) and 65535]+BitCountTable16[(BB shr 32) and 65535]+BitCountTable16[(BB shr 48) and 65535];
-     end;
-    {$ENDIF POPCNT}
-  {$ELSE WIN64}
-   {$IFDEF POPCNT}
-     asm
-       popcnt eax,dword ptr BB          // Быстрый ассемблерный метод для 32-битной системы состоящий из суммы двух 32-битный половинок битборда
-       popcnt edx,dword ptr BB+04h
-       add eax,edx
-     end;
-   {$ELSE POPCNT}
-                                        //Используется медленный метод для машин где нет ассемблерной команды подсчета единичного бита в 64-битном битборде
-     begin
-      // writeln('not boootfastest -32 ');
-      Result:=BitCountTable16[BB and 65535]+BitCountTable16[(BB shr 16) and 65535]+BitCountTable16[(BB shr 32) and 65535]+BitCountTable16[(BB shr 48) and 65535];
-     end;
-   {$ENDIF POPCNT}
- {$ENDIF WIN64}
-
+  asm
+   .noframe
+   popcnt rax, qword ptr bb;    // Быстрая 64-битная ассемблерная функция
+  end;
 
  function BitScanForward(BB:TBitBoard): Integer;
   // Ассемблерная процедура поиска единичного бита в битборде.
@@ -193,22 +169,11 @@ function BitCount(BB:TBitBoard): Integer;
   // На входе- битбоард (ненулевой!), на выходе - номер первого найденого "1"-бита.
   // Если подать нулевой битбоард - на выходе 0 (возможна ошибка!!!)
 
- {$IFDEF WIN64}
-
    asm
+    .noframe
     bsf rax,qword ptr bb                  // 64 версия
    end;
 
- {$ELSE}
-   asm
-          bsf eax, dword ptr BB
-          jnz @@2                         //32 версия
-     @@0: bsf eax, dword ptr BB+04h
-          add eax, 20h
-     @@2:
-   end;
-
- {$ENDIF}
 
  function BitScanBackward(BB:TBitBoard): Integer;
   // Ассемблерная процедура поиска единичного бита в битборде
@@ -216,38 +181,15 @@ function BitCount(BB:TBitBoard): Integer;
   //На входе - битбоард(ненулевой!), на выходе - номер первого найденого "1"-бита.
   // Если подать нулевой битбоард - на выходе 0 (возможна ошибка!!!)
 
-  {$IFDEF WIN64}
-
     asm
+     .noframe
      bsr rax,qword ptr bb                 // 64 версия
     end;
 
-  {$ELSE}
-    asm
-          bsr eax, dword ptr BB+04h
-          jz @@0
-          add eax, 20h
-          jnz @@2                         // 32 версия
-     @@0: bsr eax, dword ptr BB
-     @@2:
-    end;
-
-  {$ENDIF}
- function GetFullVersionName :ansistring;
+ function GetFullVersionName(modelnum:integer) :ansistring;
    begin
-     {$IFDEF WIN32}
-      {$IFDEF POPCNT}
-         Result:=VersionName+'_x32_popcnt';
-      {$ELSE POPCNT}
-         Result:=VersionName+'_x32';
-      {$ENDIF POPCNT}
-     {$ELSE WIN32}
-       {$IFDEF POPCNT}
-         Result:=VersionName+'_x64_popcnt';
-      {$ELSE POPCNT}
-         Result:=VersionName+'_x64';
-      {$ENDIF POPCNT}
-     {$ENDIF WIN32}
+     if modelnum=0
+      then Result:=VersionName+'_zeroblock_AVX2';
    end;
 
  procedure PrintBitboard(BB : TBitboard);

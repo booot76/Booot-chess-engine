@@ -4,9 +4,8 @@ interface
 uses uBitBoards,uMagic,uBoard;
 
 Const
-  SeeValues  : array[Empty..King] of integer =(0,100,300,300,500,900,0);
+  SeeValues  : array[Empty..King] of integer =(0,100,300,300,500,900,10000);
   PieseColor : array[-King..King] of integer=(black,black,black,black,black,black,white,white,white,white,white,white,white);
-  PositiveSee=10000;
 
 Function KnightAttacksBB(sq:integer):TBitBoard;inline;
 Function KingAttacksBB(sq:integer):TBitBoard;inline;
@@ -20,9 +19,7 @@ Function FindPinners(color:integer;KingColor:integer;var Board:TBoard):TBitBoard
 Function isMoveCheck(move:integer;var CheckInfo:TCheckInfo;var Board:TBoard):boolean;inline;
 Function isLegal(move:integer;Pinned:TBitBoard; var Board:TBoard):boolean; inline;
 Function isPseudoCorrect(move:integer;var Board:TBoard):boolean;inline;
-Function See(move:integer;var Board:TBoard):integer; inline;
-Function QuickSee(move:integer;var Board:TBoard):integer;inline;
-
+Function GoodSee(move:integer;var Board:TBoard;margin:integer):boolean;inline;
 implementation
 
 Function KnightAttacksBB(sq:integer):TBitBoard;inline;
@@ -298,111 +295,86 @@ begin
   CheckInfo.DirectCheckBB[Queen]:=CheckInfo.DirectCheckBB[Bishop] or CheckInfo.DirectCheckBB[Rook];
   CheckInfo.DirectCheckBB[King]:=0;
 end;
-Function FindMinAttacker(Square:integer;MyAttackers:TBitBoard;var Occupied:TBitBoard;var Attackers:TBitBoard;var Board:TBoard):integer;inline;
-// Ищем самую малоценную фигуру атакующую поле и потом за ней рентгены
+Function GoodSee(move:integer;var Board:TBoard;margin:integer):boolean;inline;
 var
-  Temp : TBitBoard;
-  sq,piese : integer;
-begin
-  if (Board.Pieses[Pawn]   and MyAttackers)<>0 then
-    begin
-      temp:=Board.Pieses[Pawn] and MyAttackers;
-      Piese:=Pawn;
-    end else
-  if (Board.Pieses[knight] and MyAttackers)<>0 then
-    begin
-      temp:=Board.Pieses[knight] and MyAttackers;
-      Piese:=Knight;
-    end else
-  if (Board.Pieses[bishop] and MyAttackers)<>0 then
-    begin
-      temp:=Board.Pieses[bishop] and MyAttackers;
-      Piese:=bishop;
-    end else
-  if (Board.Pieses[rook]   and MyAttackers)<>0 then
-    begin
-      temp:=Board.Pieses[rook]   and MyAttackers;
-      Piese:=rook;
-    end else
-  if (Board.Pieses[queen]  and MyAttackers)<>0 then
-    begin
-      temp:=Board.Pieses[queen]  and MyAttackers;
-      piese:=queen;
-    end else
-    begin
-      Result:=king;
-      exit;
-    end;
-  sq:=BitScanForward(Temp);
-  Occupied:=Occupied xor Only[sq];
-  if (piese=pawn) or (piese=bishop) or (piese=queen) then Attackers:=Attackers or (BishopAttacksBB(square,occupied) and (Board.Pieses[bishop] or Board.Pieses[queen]));
-  if (piese=rook) or (piese=queen) then Attackers:=Attackers or (RookAttacksBB(square,occupied) and (Board.Pieses[rook] or Board.Pieses[queen]));
-  Attackers:=Attackers and Occupied;
-  Result:=Piese;
-end;
-Function See(move:integer;var Board:TBoard):integer;inline;
-var
-  FromSq,DestSq,captured,MyColor,Piese,index:integer;
-  Occupied,Attackers,MyAttackers : TBitBoard;
-  Swap : array[0..31] of integer;
+  FromSq,DestSq,MyColor,Piese,curr,sq:integer;
+  Occupied,Attackers,MyAttackers,DiagBB,LineBB : TBitBoard;
+  Swap : integer;
+  EnnPass : boolean;
 begin
   // Инициализация
   FromSq:=move and 63;
   DestSq:=(move shr 6) and 63;
   Piese:=Board.Pos[FromSq];
-  // Если рокировка , то вываливаемся сразу
+  EnnPass:=(((move and CaptureFlag)<>0) and (Board.Pos[DestSq]=Empty));
+  // Если рокировка , то вываливаемся сразу выдавая результат тихого хода
   If (TypOfPiese[Piese]=King) and ((FromSq-DestSQ=2) or (FromSq-DestSq=-2)) then
     begin
-      Result:=0;
+      Result:=(0>=margin);
       exit;
     end;
-  MyColor:=PieseColor[Piese];
-  Swap[0]:=SeeValues[TypOfPiese[Board.Pos[DestSq]]];
-  Occupied:=Board.AllPieses and (not  Only[FromSq]);
-  // Если взятие на проходе, то вносим небольшие изменения
-  if ((move and CaptureFlag)<>0) and (Board.Pos[DestSq]=Empty) then
+  // Цена хода (величина побитой фигуры или 0 для тихого хода) с поправкой на желаемый уровень margin
+  if EnnPass
+   then Swap:=SeeValues[Pawn]-margin
+   else Swap:=SeeValues[TypOfPiese[Board.Pos[DestSq]]]-margin;
+  // Если мы заведомо не можем достигнуть своим ходом нужный нам уровень - выходим. Ход "плохой"
+  if swap<0 then
     begin
-      Occupied:=Occupied xor Only[DestSq-PawnPush[MyColor]];
-      Swap[0]:=SeeValues[pawn];
+      Result:=false;
+      exit;
     end;
-  // Ищем все возможные взятия
+  // Смотрим теперь худший вариант (ходящую фигуру побьют в ответ бесплатно)
+  Swap:=Swap-SeeValues[TypOfPiese[Piese]];
+  // Если даже после этого мы достигаем нужный уровень - выходим. Ход "хороший"
+  if swap>=0 then
+    begin
+      Result:=true;
+      exit;
+    end;
+  // Очередь хода за противником
+  MyColor:=PieseColor[piese] xor 1;
+  // Ставим ход на доске
+  Occupied:=(Board.AllPieses xor Only[FromSq]) or (Only[DestSq]);
+  If EnnPass then Occupied:=Occupied xor Only[DestSq-PawnPush[MyColor xor 1]];
+  // Ищем все возможные взятия на поле "куда"
   Attackers:=SquareAttackedBB(DestSq,Occupied,Board);
-  // Если у противника нет взятий то выходим
-  MyColor:=MyColor xor 1;
-  MyAttackers:=Attackers and Board.Occupancy[MyColor];
-  if MyAttackers=0 then
-    begin
-      Result:=Swap[0];
-      exit;
-    end;
-  captured:=TypOfPiese[Board.Pos[FromSq]];
-  index:=0;
-  // Крутим алгоритм поиска минимальных взятий и строим цепочку
-  Repeat
-    inc(index);
-    Swap[index]:=-Swap[index-1]+SeeValues[captured];
-   // writeln(index,' ',swap[index]);
-    captured:=FindMinAttacker(DestSq,MyAttackers,Occupied,Attackers,Board);
-    MyColor:=MyColor xor 1;
+  // Константы для поиска рентгенов
+  DiagBB:=Board.Pieses[bishop] or Board.Pieses[queen];
+  LineBB:=Board.Pieses[rook] or Board.Pieses[queen];
+  // Крутим алгоритм поиска минимальных взятий за каждую из сторон по очереди
+  While True do
+   begin
+    // Обновляем битборд фигур, которые атакуют поле "куда" за оба цвета
+    Attackers:=Attackers and Occupied;
+    // Есть ли среди них фигуры нужного цвета?
     MyAttackers:=Attackers and Board.Occupancy[MyColor];
-  Until (MyAttackers=0) or (captured=king);
-  if (captured=king) and (MyAttackers<>0) then dec(index);
-  while index>0 do
-    begin
-      if -Swap[index]<Swap[index-1]
-        then Swap[index-1]:=-Swap[index];
-      //writeln(swap[index-1]);
-      dec(index);
-    end;
-  Result:=Swap[0];
-end;
-Function QuickSee(move:integer;var Board:TBoard):integer;inline;
-begin
-  if (SeeValues[TypOfPiese[Board.Pos[(move and 63)]]]<=SeeValues[TypOfPiese[Board.Pos[(move shr 6) and 63]]]) then
-    begin
-      Result:=PositiveSee;
-      exit;
-    end;
-  Result:=See(move,Board);
+    // Если нет - сдаемся. Сторона, чья сейчас очередь хода "проиграла"
+    If MyAttackers=0 then break;
+    // Ищем нашу фигуру самой меньшей ценности , которая сейчас атакует поле "куда"
+    curr:=Pawn;
+    while curr<King do
+     begin
+      if ((Board.Pieses[curr] and MyAttackers)<>0) then break;
+      curr:=curr+1;
+     end;
+    // Если только что побили королем, но у противоположной стороны есть еще удары - то мы проиграли - король бить не может а меньших фигур уже нет
+    if (curr=king) and ((Attackers and Board.Occupancy[Mycolor xor 1])<>0) then break;
+    // Нашли взятие - меняем очередь хода для следующей итерации
+    MyColor:=MyColor xor 1;
+    // Обновляем текущий материальный баланс, включая в него только что найденную фигуру (предполагаем худший вариант - что ее могут побить следующим ходом бесплатно)
+    swap:=-swap-1-SeeValues[curr];
+    // Если мы даже  в худшем случае превышаем уровень - выходим. мы выиграли
+    If swap>=0 then  break;
+    // Убираем только что найденную фигуру с доски
+    if curr=king
+      then sq:=Board.KingSq[MyColor xor 1]
+      else sq:=BitScanForward(MyAttackers and Board.Pieses[curr]);
+    Occupied:=Occupied and (not Only[sq]);
+    // Теперь добавляем возможные "рентгены" после того как фигура ушла с доски
+    if (curr=pawn) or (curr=bishop) or (curr=queen) then Attackers:=Attackers or (BishopAttacksBB(DestSq,occupied) and DiagBB);
+    if (curr=rook) or (curr=queen) then Attackers:=Attackers or (RookAttacksBB(DestSQ,occupied) and LineBB);
+   end;
+  // На выходе из цикла - очередь хода стороны, которая "проиграла"
+  Result:=(PieseColor[piese]<>MyColor);
 end;
 end.

@@ -16,7 +16,7 @@ Type
  TCastleZobr = array[0..15] of int64;
  TMatZobr = array[white..black,pawn..queen,0..10] of int64;
 Const
-  EntrySize=4;
+  EntrySize=2;
   HashLower=1;
   HashUpper=2;
   HashExact=3;
@@ -126,22 +126,22 @@ begin
     begin
       TT[i*EntrySize+j].Key:=0;
       TT[i*EntrySize+j].move:=0;
-      TT[i*EntrySize+j].value:=0;
-      TT[i*EntrySize+j].depth:=0;
+      TT[i*EntrySize+j].value:=-inf;
+      TT[i*EntrySize+j].depth:=-5;
       TT[i*EntrySize+j].typage:=0;
-      TT[i*EntrySize+j].steval:=0;
+      TT[i*EntrySize+j].steval:=-inf;
     end;
 end;
 Function ValueToTT(value:integer;ply:integer):integer; inline;
 begin
   if value>=Mate-MaxPly  then result:=value+ply else
-  if value<=-Mate+MaxPly then result:=value-ply else
+  if (value<>-inf) and (value<=-Mate+MaxPly) then result:=value-ply else
    result:=value;
 end;
 Function ValueFromTT(value:integer;ply:integer):integer; inline;
 begin
   if value>=Mate-MaxPly  then result:=value-ply else
-  if value<=-Mate+MaxPly then result:=value+ply else
+  if (value<>-inf) and (value<=-Mate+MaxPly) then result:=value+ply else
    result:=value;
 end;
 
@@ -219,11 +219,17 @@ begin
         exit;
       end;
 end;
-
+Function isMoveEnnPass(var Board:TBoard;move:integer):boolean;inline;
+var
+   dest : integer;
+begin
+  dest:=(move shr 6) and 63;
+  Result:=((move and CaptureFlag)<>0) and (Board.Pos[dest]=Empty);
+end;
 Procedure HashSave(index:int64;Key:int64;value:integer;depth:integer;typ:integer;move:integer;steval:integer);inline;
 begin
   If (move<>0) or (TT[index].Key<>Key) then  TT[index].move:=move;
-  If (TT[index].Key<>Key) or (depth>TT[index].depth-4) or (typ=HashExact)  then
+  If (typ=HashExact) or (TT[index].Key<>Key) or (depth>TT[index].depth div 2)   then
     begin
      TT[index].value:=value;
      TT[index].depth:=depth;
@@ -233,17 +239,14 @@ begin
     end;
 end;
 
-Procedure HashStore(Key:int64;var Board:TBoard;value:integer;depth:integer;typ:integer;move:integer;steval:integer); inline;
+Procedure HashStore(Key:int64;var Board:TBoard;value:integer;depth:integer;typ:integer;move:integer;steval:integer);inline;
 var
-   i,score,repscore,val:integer;
+   i,score,repscore:integer;
    rep,index:int64;
 begin
+  if (isMoveEnnPass(Board,move)) and (not game.saveENNPass) then move:=0;
   index:=(Key and TTMask) * EntrySize;
   rep:=index;
-  val:=((game.HashAge and 252)-(TT[rep].typage and 252))*2;
-  If val>=0
-        then repscore:=TT[rep].depth-val
-        else repscore:=TT[rep].depth+val;
   for i:=0 to  EntrySize-1 do
     begin
       if  (TT[index+i].Key=Key) or (TT[index+i].Key=0) then
@@ -251,18 +254,11 @@ begin
           HashSave((index+i),key,value,depth,typ,move,steval);
           exit;
         end;
-      if i=0 then continue;
       // Вычисляем "оценку" имеющихся ячеек для схемы замещения.
-      val:=((game.HashAge and 252)-(TT[index+i].typage and 252))*2;
-      If val>=0
-        then score:=TT[index+i].depth-val
-        else score:=TT[index+i].depth+val;
+      repscore:=TT[rep].depth-abs(((game.HashAge and 252)-(TT[rep].typage and 252)));
+      score:=TT[index+i].depth-abs(((game.HashAge and 252)-(TT[index+i].typage and 252)));
       // Ищем наименее ценную
-      if score<repscore then
-        begin
-          repscore:=score;
-          rep:=index+i;
-        end;
+      if score<repscore then rep:=index+i;
     end;
   // Найдена предпочтительная ячейка для замещения - записываем в нее информацию по текущей позиции
   HashSave(rep,key,value,depth,typ,move,steval);

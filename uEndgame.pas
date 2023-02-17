@@ -50,6 +50,8 @@ F_KRKBPW=13;
 F_KRKBPB=14;
 F_RPPRPW=15;
 F_RPPRPB=16;
+F_WKXK=17;
+F_BKXK=18;
 
 Function KXK(score:integer;var Board:TBoard):integer;inline;
 Function KNNK:integer;inline;
@@ -160,14 +162,15 @@ begin
     begin
       if (Board.Pieses[bishop] and DarkSquaresBB)<>0
         then result:=score+BN_Dark[Board.KingSq[black]]+KingDistBonus[SquareDist[Board.KingSq[white],Board.KingSq[black]]]  // Чернопольный слон
-        else result:=score+BN_Light[Board.KingSq[black]]+KingDistBonus[SquareDist[Board.KingSq[white],Board.KingSq[black]]]  // Белопольный слон
+        else result:=score+BN_Light[Board.KingSq[black]]+KingDistBonus[SquareDist[Board.KingSq[white],Board.KingSq[black]]];  // Белопольный слон
+      if Board.SideToMove=black then result:=-result;
     end                           else   // Черные ставят мат
     begin
       if (Board.Pieses[bishop] and DarkSquaresBB)<>0
         then result:=score-BN_Dark[Board.KingSq[white]]-KingDistBonus[SquareDist[Board.KingSq[white],Board.KingSq[black]]]  // Чернопольный слон
-        else result:=score-BN_Light[Board.KingSq[white]]-KingDistBonus[SquareDist[Board.KingSq[white],Board.KingSq[black]]]  // Белопольный слон
+        else result:=score-BN_Light[Board.KingSq[white]]-KingDistBonus[SquareDist[Board.KingSq[white],Board.KingSq[black]]];  // Белопольный слон
+       if Board.SideToMove=white then result:=-result;
     end;
-  if Board.SideToMove=black then result:=-result;
 end;
 
 Function KQKR(score:integer;var Board:TBoard):integer;inline;
