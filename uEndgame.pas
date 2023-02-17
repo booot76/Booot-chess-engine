@@ -59,7 +59,6 @@ Procedure KPSKw(var WScale:integer;var Board:TBoard);inline;
 Procedure KPSKb(var BScale:integer;var Board:TBoard);inline;
 Procedure KBPSKw(var WScale:integer;var Board:TBoard);inline;
 Procedure KBPSKb(var BScale:integer;var Board:TBoard);inline;
-Procedure OppositeBishops(var WScale:integer;var BScale:integer; var Board:TBoard);inline;
 Function EvaluateSpecialEndgame(funcnum:integer;score:integer;var Board :TBoard):integer;inline;
 Procedure GetSpecialScales(scalenum:integer;var WScale:integer;var BScale:integer;var Board:TBoard);inline;
 Function KPK(var Board:TBoard):integer;inline;
@@ -241,73 +240,6 @@ begin
   If ((Board.Pieses[pawn] and (Board.Pieses[pawn]-1))=0) and (Board.NonPawnMat[white]=PieseTypValue[knight]) then KBPKNB(Ksq,BScale,Board);
 end;
 
-Procedure OppositeBishops(var WScale:integer;var BScale:integer; var Board:TBoard);inline;
-var
-  WBB,BBB,path : TBitBoard;
-  pn,bs : integer;
-begin
-  WBB:=Board.Pieses[bishop] and Board.Occupancy[white];
-  BBB:=Board.Pieses[bishop] and Board.Occupancy[black];
-  if (((WBB and DarkSquaresBB)<>0) and ((BBB and LightSquaresBB)<>0)) or (((WBB and LightSquaresBB)<>0) and ((BBB and DarkSquaresBB)<>0))  then
-    begin
-      if (Board.NonPawnMat[white]=PieseTypValue[bishop]) and (Board.NonPawnMat[black]=PieseTypValue[bishop]) then
-        begin
-          // KBPKB  при разноцвете
-          if (Board.Pieses[pawn]<>0) and ((Board.Pieses[pawn] and (Board.Pieses[pawn]-1))=0) then
-            begin
-              If WScale>ScaleHardWin then WScale:=ScaleHardWin;
-              If BScale>ScaleHardWin then BScale:=ScaleHardWin;
-              pn:=BitScanForward(Board.Pieses[pawn]);
-              If (Only[pn] and Board.Occupancy[white])<>0 then
-                begin
-                  If (posy[pn]<=5) then WScale:=ScaleDraw else
-                    begin
-                      path:=ForwardBB[white,pn] and FilesBB[Posx[pn]];
-                      If (Only[Board.KingSq[black]] and path)<>0 then WScale:=ScaleDraw else
-                        begin
-                          bs:=BitScanForward(BBB);
-                          If (SquareDist[bs,pn]>2) and ((BishopAttacksBB(bs,Board.AllPieses) and path)<>0) then WScale:=ScaleDraw;
-                        end;
-                    end;
-                end else
-                begin
-                  If (posy[pn]>=4) then BScale:=ScaleDraw else
-                    begin
-                      path:=ForwardBB[black,pn] and FilesBB[Posx[pn]];
-                      If (Only[Board.KingSq[white]] and path)<>0 then BScale:=ScaleDraw else
-                        begin
-                          bs:=BitScanForward(WBB);
-                          If (SquareDist[bs,pn]>2) and ((BishopAttacksBB(bs,Board.AllPieses) and path)<>0) then BScale:=ScaleDraw;
-                        end;
-                    end;
-                end;
-            end else
-          // Просто разноцветные слоны
-            begin
-              If WScale>ScaleOpposit then WScale:=ScaleOpposit;
-              If BScale>ScaleOpposit then BScale:=ScaleOpposit;
-            end;
-        end else
-        begin
-          WScale:=(WScale*ScaleOnePawn) div ScaleNormal;
-          BScale:=(BScale*ScaleOnePawn) div ScaleNormal;
-        end;
-    end else  if (Board.NonPawnMat[white]=PieseTypValue[bishop]) and (Board.NonPawnMat[black]=PieseTypValue[bishop]) and (Board.Pieses[pawn]<>0) and ((Board.Pieses[pawn] and (Board.Pieses[pawn]-1))=0) then
-    begin
-     // KBPKB
-      pn:=BitScanForward(Board.Pieses[pawn]);
-      If (Only[pn] and Board.Occupancy[white])<>0 then
-        begin
-          bs:=BitScanForward(Board.Pieses[bishop] and Board.Occupancy[white]);
-          If (posx[pn]=posx[Board.KingSq[black]]) and (Posy[Board.KingSq[black]]>posy[pn]) and ((posy[Board.KingSq[black]]<=6) or (isOppositColor(bs,Board.KingSq[black]))) then WScale:=ScaleDraw;
-        end else
-        begin
-          bs:=BitScanForward(Board.Pieses[bishop] and Board.Occupancy[black]);
-          If (posx[pn]=posx[Board.KingSq[white]]) and (Posy[Board.KingSq[white]]<posy[pn]) and ((posy[Board.KingSq[black]]>=3) or (isOppositColor(bs,Board.KingSq[white]))) then BScale:=ScaleDraw;
-        end;
-    end;
-
-end;
 
 Function KRKP(var Board:TBoard):integer;inline;
 var

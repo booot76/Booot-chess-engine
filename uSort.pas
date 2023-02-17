@@ -5,7 +5,7 @@ uses uBoard,uAttacks,uBitBoards,uMagic;
 Const
   HistoryMax=1024*1024;
   MaxKillersPly=127;
-
+  HistDiv=512*32;
   TryHashMove=0;
   GenerateCaptures=1;
   TryGoodCaptures=2;
@@ -85,7 +85,6 @@ begin
       Tree[i].CurrMove:=0;
       Tree[i].CurrStat:=@SortUnit.HistorySats[0,a1];
       Tree[i].CurrNum:=0;
-      Tree[i].HistVal:=0;
     end;
 end;
 Function GetStatBonus(depth:integer):integer;inline;
@@ -94,12 +93,12 @@ begin
 end;
 Procedure UpdHistory(var SortUnit:TSortUnit;piese:integer;dest:integer;bonus:integer);inline;
 begin
-  SortUnit.History[piese,dest]:=Sortunit.History[piese,dest]-((Sortunit.History[piese,dest]*abs(bonus)) div 10692);
+  SortUnit.History[piese,dest]:=Sortunit.History[piese,dest]-((Sortunit.History[piese,dest]*abs(bonus)) div HistDiv);
   SortUnit.History[piese,dest]:=Sortunit.History[piese,dest]+bonus;
 end;
 Procedure UPdHistoryStats(var Tree:TTree;ply:integer;piese:integer;dest:integer;bonus:integer);inline;
 begin
-  Tree[ply].CurrStat^[piese,dest]:=Tree[ply].CurrStat^[piese,dest]-((Tree[ply].CurrStat^[piese,dest]*abs(bonus)) div 29952);
+  Tree[ply].CurrStat^[piese,dest]:=Tree[ply].CurrStat^[piese,dest]-((Tree[ply].CurrStat^[piese,dest]*abs(bonus)) div (3*HistDiv));
   Tree[ply].CurrStat^[piese,dest]:=Tree[ply].CurrStat^[piese,dest]+bonus;
 end;
 Procedure UpdateStats(var SortUnit:TSortUnit;var Tree:TTree;ply:integer;piese:integer;dest:integer;bonus:integer);inline;
@@ -394,7 +393,7 @@ begin
         inc(tree[ply].Status);
         if Board.CheckersBB<>0 then tree[ply].Status:=GenerateEscapes;
         // Здесь пробуем хешход - пока ничего не генерируем
-        If (hashmove<>0) and (isPseudoCorrect(hashmove,Board)) and ((depth>-5) or (((hashmove shr 6) and 63)=((prevmove shr 6) and 63)))   then
+        If (hashmove<>0) and (isPseudoCorrect(hashmove,Board)) and ( (Board.CheckersBB<>0) or (depth>-5) or (((hashmove shr 6) and 63)=((prevmove shr 6) and 63)))   then
          begin
           Result:=hashmove;
           exit;
@@ -523,9 +522,9 @@ begin
         MVVLVA[i,j]:=Mvv*16-lva;
       end;
   for i:=0 to 128 do
-    if i<16
-     then DepthInc[i]:=19*i*i+155*i-134
-     else DepthInc[i]:=-8;
+    if i<20
+     then DepthInc[i]:=32*i*i
+     else DepthInc[i]:=32*20*20;
 
 
 end;
