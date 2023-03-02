@@ -1,7 +1,10 @@
-unit uBitBoards;
+п»їunit uBitBoards;
 
- // Все что связано с работой битбордов - тут.
+{$IFDEF FPC}
+  {$MODE Delphi}
+{$ENDIF}
 
+ // Р’СЃРµ С‡С‚Рѕ СЃРІСЏР·Р°РЅРѕ СЃ СЂР°Р±РѕС‚РѕР№ Р±РёС‚Р±РѕСЂРґРѕРІ - С‚СѓС‚.
 
 interface
 
@@ -11,9 +14,9 @@ interface
   T256 = array[0..255] of integer;
 
  Const
-  VersionName='Booot 7.0';                    // Номер версии движка
+  VersionName='Booot 7.1';                    // РќРѕРјРµСЂ РІРµСЂСЃРёРё РґРІРёР¶РєР°
 
-  BitCountTable8 :T256 =                // Количество установленных в единицу битов в единичном байте от 0 до 255. Используется в системах где нет ассемблерной команды подсчета
+  BitCountTable8 :T256 =                // РљРѕР»РёС‡РµСЃС‚РІРѕ СѓСЃС‚Р°РЅРѕРІР»РµРЅРЅС‹С… РІ РµРґРёРЅРёС†Сѓ Р±РёС‚РѕРІ РІ РµРґРёРЅРёС‡РЅРѕРј Р±Р°Р№С‚Рµ РѕС‚ 0 РґРѕ 255. РСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ РІ СЃРёСЃС‚РµРјР°С… РіРґРµ РЅРµС‚ Р°СЃСЃРµРјР±Р»РµСЂРЅРѕР№ РєРѕРјР°РЅРґС‹ РїРѕРґСЃС‡РµС‚Р°
    (0,1,1,2,1,2,2,3,1,2,2,3,2,3,3,4,
     1,2,2,3,2,3,3,4,2,3,3,4,3,4,4,5,
     1,2,2,3,2,3,3,4,2,3,3,4,3,4,4,5,
@@ -33,7 +36,7 @@ interface
 
    white=0;
    black=1;
-  // Кодируем поля
+  // РљРѕРґРёСЂСѓРµРј РїРѕР»СЏ
   a1= 0;b1= 1;c1= 2;d1= 3;e1= 4;f1= 5;g1= 6;h1= 7;
   a2= 8;b2= 9;c2=10;d2=11;e2=12;f2=13;g2=14;h2=15;
   a3=16;b3=17;c3=18;d3=19;e3=20;f3=21;g3=22;h3=23;
@@ -42,7 +45,7 @@ interface
   a6=40;b6=41;c6=42;d6=43;e6=44;f6=45;g6=46;h6=47;
   a7=48;b7=49;c7=50;d7=51;e7=52;f7=53;g7=54;h7=55;
   a8=56;b8=57;c8=58;d8=59;e8=60;f8=61;g8=62;h8=63;
-  // Декодируем поля
+  // Р”РµРєРѕРґРёСЂСѓРµРј РїРѕР»СЏ
   DecodeSQ : array[a1..h8] of shortstring =
   ('a1','b1','c1','d1','e1','f1','g1','h1',
    'a2','b2','c2','d2','e2','f2','g2','h2',
@@ -137,7 +140,6 @@ $0000020000000000,$0000050000000000,$00000A0000000000,$0000140000000000,$0000280
 $0002000000000000,$0005000000000000,$000A000000000000,$0014000000000000,$0028000000000000,$0050000000000000,$00A0000000000000,$0040000000000000));
 
  var
-  BitCountTable16 : array[0..65535] of integer; // Количество установленных в единицу битов в 16-битном слове от 0 до 65535. Массив заполняется при инициализации юнита.
   pboard : array[0..99] of integer;
   W00Sq,W000SQ,B00SQ,B000SQ,DarkSquaresBB,LightSquaresBB,ABCDBB,EFGHBB,CenterBB : TBitBoard;
   InterSect,FullLine: array[a1..h8,a1..h8] of TBitBoard;
@@ -146,56 +148,71 @@ $0002000000000000,$0005000000000000,$000A000000000000,$0014000000000000,$0028000
   IsolatedBB : array[a1..h8] of TBitBoard;
   OutPostBB,SpaceBB,BishopBLockedBB : array[white..black] of TBitBoard;
 
+ function pext(BB:TBitBoard;mask : TBitBoard):integer;
  function BitCount(BB:TBitBoard): Integer;
  function BitScanForward(BB:TBitBoard): Integer;
  function BitScanBackward(BB:TBitBoard): Integer;
- function GetFullVersionName(modelnum:integer) :ansistring;
  procedure PrintBitboard(BB : TBitboard);
 
 implementation
  uses uMagic,uBoard,uHash,uKPK;
 
-function BitCount(BB:TBitBoard): Integer;
-  // Функция подсчета "1"- битов в битборде.
-  // На входе - битбоард, на выходе - число битов, установленных в "1"
+function pext(BB:TBitBoard;mask : TBitBoard):integer;{$IFDEF FPC} nostackframe assembler;{$ENDIF}
+//               rcx (rdi)           rdx(rsi)
+asm
+ {$IFNDEF FPC}
+  .noframe
+ {$ENDIF}
+
+ {$IFDEF UNIX}
+  db 0c4h,0e2h,0c2h,0f5h,0c6h             // pext rax,rdi,rsi
+ {$ELSE UNIX}
+  db 0c4h,0e2h,0f2h,0f5h,0c2h             // pext rax,rcx,rdx
+ {$ENDIF UNIX}
+end;
+function BitCount(BB:TBitBoard): Integer;{$IFDEF FPC} nostackframe assembler;{$ENDIF}
+  // Р¤СѓРЅРєС†РёСЏ РїРѕРґСЃС‡РµС‚Р° "1"- Р±РёС‚РѕРІ РІ Р±РёС‚Р±РѕСЂРґРµ.
+  // РќР° РІС…РѕРґРµ - Р±РёС‚Р±РѕР°СЂРґ, РЅР° РІС‹С…РѕРґРµ - С‡РёСЃР»Рѕ Р±РёС‚РѕРІ, СѓСЃС‚Р°РЅРѕРІР»РµРЅРЅС‹С… РІ "1"
   asm
-   .noframe
-   popcnt rax, qword ptr bb;    // Быстрая 64-битная ассемблерная функция
+   {$IFNDEF FPC}
+  .noframe
+  {$ENDIF}
+   popcnt rax, qword ptr bb;    // Р‘С‹СЃС‚СЂР°СЏ 64-Р±РёС‚РЅР°СЏ Р°СЃСЃРµРјР±Р»РµСЂРЅР°СЏ С„СѓРЅРєС†РёСЏ
   end;
 
- function BitScanForward(BB:TBitBoard): Integer;
-  // Ассемблерная процедура поиска единичного бита в битборде.
-  // поиск осуществляется "вперед",т.е от 0 до 63 бита
-  // На входе- битбоард (ненулевой!), на выходе - номер первого найденого "1"-бита.
-  // Если подать нулевой битбоард - на выходе 0 (возможна ошибка!!!)
+ function BitScanForward(BB:TBitBoard): Integer;{$IFDEF FPC} nostackframe assembler;{$ENDIF}
+  // РђСЃСЃРµРјР±Р»РµСЂРЅР°СЏ РїСЂРѕС†РµРґСѓСЂР° РїРѕРёСЃРєР° РµРґРёРЅРёС‡РЅРѕРіРѕ Р±РёС‚Р° РІ Р±РёС‚Р±РѕСЂРґРµ.
+  // РїРѕРёСЃРє РѕСЃСѓС‰РµСЃС‚РІР»СЏРµС‚СЃСЏ "РІРїРµСЂРµРґ",С‚.Рµ РѕС‚ 0 РґРѕ 63 Р±РёС‚Р°
+  // РќР° РІС…РѕРґРµ- Р±РёС‚Р±РѕР°СЂРґ (РЅРµРЅСѓР»РµРІРѕР№!), РЅР° РІС‹С…РѕРґРµ - РЅРѕРјРµСЂ РїРµСЂРІРѕРіРѕ РЅР°Р№РґРµРЅРѕРіРѕ "1"-Р±РёС‚Р°.
+  // Р•СЃР»Рё РїРѕРґР°С‚СЊ РЅСѓР»РµРІРѕР№ Р±РёС‚Р±РѕР°СЂРґ - РЅР° РІС‹С…РѕРґРµ 0 (РІРѕР·РјРѕР¶РЅР° РѕС€РёР±РєР°!!!)
 
    asm
-    .noframe
-    bsf rax,qword ptr bb                  // 64 версия
+  {$IFNDEF FPC}
+  .noframe
+  {$ENDIF}
+    bsf rax,qword ptr bb                  // 64 РІРµСЂСЃРёСЏ
    end;
 
 
- function BitScanBackward(BB:TBitBoard): Integer;
-  // Ассемблерная процедура поиска единичного бита в битборде
-  // поиск осуществляется "назад",т.е от 63 до 1 бита
-  //На входе - битбоард(ненулевой!), на выходе - номер первого найденого "1"-бита.
-  // Если подать нулевой битбоард - на выходе 0 (возможна ошибка!!!)
+ function BitScanBackward(BB:TBitBoard): Integer;{$IFDEF FPC} nostackframe assembler;{$ENDIF}
+  // РђСЃСЃРµРјР±Р»РµСЂРЅР°СЏ РїСЂРѕС†РµРґСѓСЂР° РїРѕРёСЃРєР° РµРґРёРЅРёС‡РЅРѕРіРѕ Р±РёС‚Р° РІ Р±РёС‚Р±РѕСЂРґРµ
+  // РїРѕРёСЃРє РѕСЃСѓС‰РµСЃС‚РІР»СЏРµС‚СЃСЏ "РЅР°Р·Р°Рґ",С‚.Рµ РѕС‚ 63 РґРѕ 1 Р±РёС‚Р°
+  //РќР° РІС…РѕРґРµ - Р±РёС‚Р±РѕР°СЂРґ(РЅРµРЅСѓР»РµРІРѕР№!), РЅР° РІС‹С…РѕРґРµ - РЅРѕРјРµСЂ РїРµСЂРІРѕРіРѕ РЅР°Р№РґРµРЅРѕРіРѕ "1"-Р±РёС‚Р°.
+  // Р•СЃР»Рё РїРѕРґР°С‚СЊ РЅСѓР»РµРІРѕР№ Р±РёС‚Р±РѕР°СЂРґ - РЅР° РІС‹С…РѕРґРµ 0 (РІРѕР·РјРѕР¶РЅР° РѕС€РёР±РєР°!!!)
 
     asm
-     .noframe
-     bsr rax,qword ptr bb                 // 64 версия
+  {$IFNDEF FPC}
+  .noframe
+  {$ENDIF}
+     bsr rax,qword ptr bb                 // 64 РІРµСЂСЃРёСЏ
     end;
 
- function GetFullVersionName(modelnum:integer) :ansistring;
-   begin
-     if modelnum=0
-      then Result:=VersionName+'_zeroblock_AVX2';
-   end;
+
 
  procedure PrintBitboard(BB : TBitboard);
-  // Процедура печати битборда на экран в символьном виде в виде доски
+  // РџСЂРѕС†РµРґСѓСЂР° РїРµС‡Р°С‚Рё Р±РёС‚Р±РѕСЂРґР° РЅР° СЌРєСЂР°РЅ РІ СЃРёРјРІРѕР»СЊРЅРѕРј РІРёРґРµ РІ РІРёРґРµ РґРѕСЃРєРё
   var
-    BitMassiv : array[1..64] of char; // Массив символов для печати битборда
+    BitMassiv : array[1..64] of char; // РњР°СЃСЃРёРІ СЃРёРјРІРѕР»РѕРІ РґР»СЏ РїРµС‡Р°С‚Рё Р±РёС‚Р±РѕСЂРґР°
     i,j: byte;
   begin
     for i:=a1 to h8 do
@@ -203,32 +220,29 @@ function BitCount(BB:TBitBoard): Integer;
        if (Only[i] and BB) = 0
                         then BitMassiv[i+1]:='.'
                         else BitMassiv[i+1]:='X';
-       // Заполняем следующую ячейку массива соответствующим символом
+       // Р—Р°РїРѕР»РЅСЏРµРј СЃР»РµРґСѓСЋС‰СѓСЋ СЏС‡РµР№РєСѓ РјР°СЃСЃРёРІР° СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‰РёРј СЃРёРјРІРѕР»РѕРј
       end;
-    // Печатаем соответствующий массив в виде доски
+    // РџРµС‡Р°С‚Р°РµРј СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‰РёР№ РјР°СЃСЃРёРІ РІ РІРёРґРµ РґРѕСЃРєРё
     for j:=7 downto 0 do
       begin
-        write(j+1,'  '); // Подписываем горизонтали
+        write(j+1,'  '); // РџРѕРґРїРёСЃС‹РІР°РµРј РіРѕСЂРёР·РѕРЅС‚Р°Р»Рё
         for i:=1 to 8 do
           write(BitMassiv[j*8+i]);
         writeln;
       end;
-    //И подписываем вертикали
+    //Р РїРѕРґРїРёСЃС‹РІР°РµРј РІРµСЂС‚РёРєР°Р»Рё
     writeln('   abcdefgh');
   end;
 
 
  Procedure BitBoards_Init;
-  // Инициализация констант для битбордов
+  // РРЅРёС†РёР°Р»РёР·Р°С†РёСЏ РєРѕРЅСЃС‚Р°РЅС‚ РґР»СЏ Р±РёС‚Р±РѕСЂРґРѕРІ
   var
    i,j,n,k,sq,x1,y1,x2,y2:integer;
    temp : TBitBoard;
    begin
     Randomize;
-    // Заполнение таблицы для програмного popcnt
-     for i:=0 to 65535 do
-       BitCounttable16[i]:=BitCounttable8[i and 255]+BitCounttable8[(i shr 8) and 255]+BitCounttable8[(i shr 16) and 255]+BitCounttable8[(i shr 24) and 255];
-    // Заполняем массив растояний полей друг от друга
+    // Р—Р°РїРѕР»РЅСЏРµРј РјР°СЃСЃРёРІ СЂР°СЃС‚РѕСЏРЅРёР№ РїРѕР»РµР№ РґСЂСѓРі РѕС‚ РґСЂСѓРіР°
     for i:=a1 to h8 do
     for j:=a1 to h8 do
       begin
@@ -243,7 +257,7 @@ function BitCount(BB:TBitBoard): Integer;
           else SquareDist[i,j]:=k;
         FileDist[i,j]:=abs(x1-x2);
       end;
-    // заполняем проверочную доску
+    // Р·Р°РїРѕР»РЅСЏРµРј РїСЂРѕРІРµСЂРѕС‡РЅСѓСЋ РґРѕСЃРєСѓ
      for i:=0 to 99 do
       pboard[i]:=-1;
      n:=0;
@@ -282,14 +296,14 @@ function BitCount(BB:TBitBoard): Integer;
         if (i<>j) and ((KingAttacks[i] and Only[j])=0) and ((QueenFullAttacks[i] and Only[j])<>0) then
          begin
            temp:=0;
-           if (i-j) in [2,3,4,5,6,7] then n:=-1 else
-           if (j-i) in [2,3,4,5,6,7] then n:=1 else
-           if (i-j) in [16,24,32,40,48,56] then n:=-8 else
-           if (j-i) in [16,24,32,40,48,56] then n:=8 else
-           if (i-j) in [18,27,36,45,54,63] then n:=-9 else
-           if (j-i) in [18,27,36,45,54,63] then n:=9 else
-           if (i-j) in [14,21,28,35,42,49] then n:=-7 else
-           if (j-i) in [14,21,28,35,42,49] then n:=7;
+           if int8(i-j) in [2,3,4,5,6,7] then n:=-1 else
+           if int8(j-i) in [2,3,4,5,6,7] then n:=1 else
+           if int8(i-j) in [16,24,32,40,48,56] then n:=-8 else
+           if int8(j-i) in [16,24,32,40,48,56] then n:=8 else
+           if int8(i-j) in [18,27,36,45,54,63] then n:=-9 else
+           if int8(j-i) in [18,27,36,45,54,63] then n:=9 else
+           if int8(i-j) in [14,21,28,35,42,49] then n:=-7 else
+           if int8(j-i) in [14,21,28,35,42,49] then n:=7;
            sq:=i+n;
            while sq<>j do
              begin

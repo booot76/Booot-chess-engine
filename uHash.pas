@@ -1,22 +1,39 @@
-unit uHash;
+п»їunit uHash;
+
+{$IFDEF FPC}
+  {$MODE Delphi}
+{$ENDIF}
 
 interface
-uses uBoard,uBitBoards,uAttacks,uMagic,Ansistrings;
+uses uBoard,uBitBoards,SysUtils,DateUtils;
 Type
-  TEntry = record
-             Key        : int64;
-             move       : smallint;
+  TEntry = packed record
+             Key32      : cardinal;
+             crc32      : cardinal;
+             move       : word;
              value      : smallint;
              depth      : shortint;
              typage     : byte;      //2..7 - Age 0..1 - Typ
              steval     : smallint;
             end;
+ Pentry = ^TEntry;
+ TTable = packed record
+            data        : array of TEntry;
+            size        : int64;
+            Mask        : int64;
+            Age         : byte;
+          end;
  TPieseZobr = array[white..black,pawn..king,a1..h8] of int64;
  TEnnPassZobr = array[a1..h8] of int64;
  TCastleZobr = array[0..15] of int64;
- TMatZobr = array[white..black,pawn..queen,0..10] of int64;
+
 Const
-  EntrySize=2;
+  AgeInc=4;
+  AgeMask=255 and (not (AgeInc-1));
+  FlagMask=AgeInc-1;
+
+  EntrySize=4;
+
   HashLower=1;
   HashUpper=2;
   HashExact=3;
@@ -77,76 +94,116 @@ Const
      24373065950141731,666694536371371672,7669445717411401225,4402647314970062921,-8118389272752521067,-8275394823453407343,8560778197057812609,-5743533667202600758,8517119577512441257,267472117411884083,3886787591723911054,-544649794867369617,507121452161986773,-3397997805831326971,-8605542253557802297,-5901923644207699488);
   CastleZobr : TCastleZobr =
     (-7118538147542722352,-1317712728219774770,-5715480252538913790,-2951786757321480189,5571164115614971537,-7440952713580390251,108283423676665687,-7615510769587277825,-7694739096645720752,402825833641978785,-8106032890858962147,-2578263574059658180,865176943957525122,950136959318387064,-2275161975432921110,1606877746442509664);
-  MatZobr : TMatZobr =
-    (((-7259977634860148586,-2353617413953668525,-9154169821747664544,-6158777764293690649,4049781695585942071,-5808517995841392581,6598627180876638521,6655525334713595085,-5709858124425634779,-8377704075171526017,9080362760214586338),(4691680519632700954,3434472382036881399,-5265544295739766073,5593309115215319570,-4903766522919840362,
-     -4547906170460925564,6971945733016901881,7566962314884910784,-772611466110080952,119294299697510114,6216015727168107325),(6343858368984303396,-8446470944350711433,-3425760228377812888,-5639212156406325767,4309280690259028660,4566523461096792746,-214212068862130001,-8449679614636157996,9127197912797420326,-6109263961855124569,
-     -552495107616680820),(-6482601650478664266,-8918693786143368077,-1460057077923784073,-8890938460034022634,2715774142625921733,6438457148934292689,6023809589531790175,7303126219949219238,4106265104955007081,7215184416784624824,1925186832264780008),(1100556666746677201,-3712976064429368760,1436308661705285341,1027566423850654679,
-     6366471534912999278,4174531756002656841,-7973016039505934279,4658938156920818484,2870105635803028629,-546314479209084780,7944657028657588225)),((-5075931483111445434,2751653383299883421,5492230004803756943,6178469963404722094,2730511037069132436,7864436998368537373,-657024755541491743,-4887593404848602378,-8659298003463929883,
-     4012814690905649131,-1787389678826737550),(-8132257832949168176,-1817586230481144768,-7922615512018222818,-1643153965587177880,-1908607323813497229,-42234341393433109,699636485106055695,6210966775962925355,-5808428774455690922,-889932685293192849,6729788499904983123),(-4271941906600712607,7359576254482541873,-385017171993103983,
-     3249137213890323394,-5147394451857378831,-4875297996466253574,1214779739421495129,-6195129861844029838,5964952643646569987,5611435928923895271,-6347422016678524402),(5092747505445713083,119209002952831741,5752448096385003377,6250208832715822903,7406345303010481459,3511501172124561287,4652863419682997070,-8537719103825716581,
-     1103617230475401395,-518654307628992377,-7515440095561311883),(3577306886352770625,-7601659721337396656,-3464873849686759132,8508238362164259870,8489015476793432688,6041389242480861025,4133035165768999622,6182714671198304190,7055557008050877870,5767727958263330686,8479394023423819027)));
+
 
   ZColor = 1300814577812659680;
 
 var
-  TT              : array of TEntry;
-  TTMask          : int64;
+  TTGlobal              : TTable;   // Р“Р»РѕР±Р°Р»СЊРЅС‹Р№ С…РµС€ РґРІРёР¶РєР°
+
+Function ValueToTT(value:integer;ply:integer):integer;
+Function ValueFromTT(value:integer;ply:integer):integer;
 Function CalcFullKey(var Board:TBoard):int64;
-Function CalcFullPawnKey(var Board:TBoard):int64;
-Function CalcFullMatKey(var Board:TBoard):int64;
-Procedure InitTT(SizeMB:integer);
-Procedure ClearHash;
-Function HashProbe(var Board:TBoard;Key : int64):int64; inline;
-Procedure HashStore(Key:int64;var Board:TBoard;value:integer;depth:integer;typ:integer;move:integer;steval:integer); inline;
-Function ValueToTT(value:integer;ply:integer):integer;inline;
-Function ValueFromTT(value:integer;ply:integer):integer;inline;
-Function FindPonder(RootMove:integer;var Board:TBoard):integer;
+Procedure InitTT(var TT:TTable;SizeMB:integer);
+Procedure ClearHash(var TT:TTable;cpus:integer);
+Function HashProbe(var TT:TTable;Key : int64):int64;
+Procedure HashStore(var TT:TTable;Key:int64;value:integer;depth:integer;typ:integer;move:integer;steval:integer);
+Function FindPonder(var TT:TTable;RootMove:integer;var Board:TBoard):integer;
+Procedure multiclear(ThreadID:integer);
 
 implementation
-uses usearch,uUci,Windows,uThread;
+uses uSearch,uAttacks,uThread;
 
-Procedure InitTT(SizeMB:integer);
-// На входе - ОБЩЕЕ количество мегабайт кеша, полученного от оболочки
-var
-   TTSize : int64;
+Procedure HashSave(var TT:TTable;index:int64;Key32:cardinal;value:integer;depth:integer;typ:integer;move:integer;steval:integer);inline;
 begin
-  TTSize:=SizeMb;
-  TTSize:=(TTSize * 1024 * 1024) div 16;//  Ячейка весит 16 байт
-  TTMask:=(TTSize div EntrySize)-1;
-  SetLength(TT,0);
-  SetLength(TT,TTSize+1);
-  ClearHash;
-end;
-Procedure ClearHash;
-var
-  i,j : int64;
-begin
-  for i:=0 to TTMask do
-   for j:=0 to EntrySize-1 do
+  If (TT.data[index].Key32<>(Key32 xor TT.data[index].crc32)) then TT.data[index].move:=move else
+  If (move<>0) and ((TT.data[index].move=0) or (depth>=TT.data[index].depth))  then TT.data[index].move:=move;
+  If (typ=HashExact) or (TT.data[index].Key32<>(Key32 xor TT.data[index].crc32)) or (depth>TT.data[index].depth - 4)   then
     begin
-      TT[i*EntrySize+j].Key:=0;
-      TT[i*EntrySize+j].move:=0;
-      TT[i*EntrySize+j].value:=-inf;
-      TT[i*EntrySize+j].depth:=-5;
-      TT[i*EntrySize+j].typage:=0;
-      TT[i*EntrySize+j].steval:=-inf;
+     TT.data[index].value:=value;
+     TT.data[index].steval:=steval;
+     TT.data[index].depth:=depth;
+     TT.data[index].typage:=TT.Age or typ;
+     TT.data[index].crc32:=((steval+32768) shl 16) or ((value+32768) xor (depth+2));
+     TT.data[index].Key32:=Key32  xor TT.data[index].crc32;
     end;
 end;
-Function ValueToTT(value:integer;ply:integer):integer; inline;
+Function ValueToTT(value:integer;ply:integer):integer;
 begin
   if value>=Mate-MaxPly  then result:=value+ply else
   if (value<>-inf) and (value<=-Mate+MaxPly) then result:=value-ply else
    result:=value;
 end;
-Function ValueFromTT(value:integer;ply:integer):integer; inline;
+Function ValueFromTT(value:integer;ply:integer):integer;
 begin
   if value>=Mate-MaxPly  then result:=value-ply else
   if (value<>-inf) and (value<=-Mate+MaxPly) then result:=value+ply else
    result:=value;
 end;
+Function ScoreEntry(Age:integer;typage:integer;depth:integer):integer;inline;
+var
+  res : integer;
+begin
+  res:=Age-(typage and AgeMask);
+  if res<0 then res:=res+256; // Р•СЃР»Рё РїРµСЂРµС€Р»Рё С‡РµСЂРµР· 0
+  result:=depth-res;
+end;
+
+Procedure InitTT(var TT:TTable;SizeMB:integer);
+// РќР° РІС…РѕРґРµ - РћР‘Р©Р•Р• РєРѕР»РёС‡РµСЃС‚РІРѕ РјРµРіР°Р±Р°Р№С‚ РєРµС€Р°, РїРѕР»СѓС‡РµРЅРЅРѕРіРѕ РѕС‚ РѕР±РѕР»РѕС‡РєРё
+begin
+  TT.Size:=SizeMb;
+  TT.Size:=(TT.Size * 1024 * 1024) div 16;//  РЇС‡РµР№РєР° РІРµСЃРёС‚ 16 Р±Р°Р№С‚
+  TT.Mask:=(TT.Size div EntrySize)-1;
+  SetLength(TT.data,0);
+  SetLength(TT.data,TT.Size);
+end;
+
+Procedure multiclear(ThreadID:integer);
+var
+  i : int64;
+  ind:PEntry;
+begin
+  ind:=Threads[threadid].hashstart;
+  for i:=0 to Threads[threadid].hashcnt-1 do
+    begin
+      ind^.key32:=0;
+      ind^.crc32:=0;
+      ind^.move:=0;
+      ind^.value:=0;
+      ind^.depth:=0;
+      ind^.typage:=0;
+      ind^.steval:=0;
+      inc(ind,1);
+    end;
+end;
+Procedure ClearHash(var TT:TTable;cpus:integer);
+var
+  i : integer;
+  part : int64;
+begin
+// game.starttime:=now;
+ part:=TT.size div cpus;
+ for i:=1 to cpus do
+    begin
+      Threads[i].hashstart:=@TT.data[(i-1)*part];
+      Threads[i].clrflag:=true;
+      Threads[i].hashcnt:=part;
+      Threads[i].haswork:=true;
+    end;
+ Threads[1].idle:=false;  // РњР°СЂРєРµСЂ СЂР°Р±РѕС‚С‹ 1-РіРѕ РїРѕС‚РѕРєР°
+ IdleEvent.SetEvent;
+ while not  Threads[1].idle do; // РЈР±РµР¶РґР°РµРјСЃСЏ С‡С‚Рѕ РѕСЃС‚Р°РЅРѕРІРёР»СЃСЏ РїРµСЂРІС‹Р№
+ if cpus>1 then
+   While isThreadIdle do;    // РЈР±РµР¶РґР°РµРјСЃСЏ С‡С‚Рѕ РѕСЃС‚Р°РЅРѕРІРёР»РёСЃСЊ РѕСЃС‚Р°Р»СЊРЅС‹Рµ
+ TT.Age:=0;
+// writeln(millisecondsbetween(game.StartTime,now));
+ IdleEvent.ReSetEvent;
+end;
+
 
 Function CalcFullKey(var Board:TBoard):int64;
-// Вычисляет 64-битный хеш позиции. Медленная функция используется при начальной  установке доски и для дебага.
+// Р’С‹С‡РёСЃР»СЏРµС‚ 64-Р±РёС‚РЅС‹Р№ С…РµС€ РїРѕР·РёС†РёРё. РњРµРґР»РµРЅРЅР°СЏ С„СѓРЅРєС†РёСЏ РёСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ РїСЂРё РЅР°С‡Р°Р»СЊРЅРѕР№  СѓСЃС‚Р°РЅРѕРІРєРµ РґРѕСЃРєРё Рё РґР»СЏ РґРµР±Р°РіР°.
 var
   Res,temp:int64;
   sq,piese,piesetyp,color : integer;
@@ -168,103 +225,52 @@ begin
  Result:=res;
 end;
 
-Function CalcFullPawnKey(var Board:TBoard):int64;
-// Функция вычисляет 32 битный пешечный хеш. Используется при установке позиции и для дебага
-var
-  temp:int64;
-  sq,piese,color : integer;
-  Res:int64;
-begin
- res:=0;
- temp:=Board.Pieses[Pawn];
- while temp<>0 do
-   begin
-     sq:=BitScanForward(temp);
-     piese:=Board.Pos[sq];
-     color:=PieseColor[piese];
-     res:=res xor PieseZobr[color,pawn,sq];
-     temp:=temp and (temp-1);
-   end;
- Result:=res;
-end;
 
-Function CalcFullMatKey(var Board:TBoard):int64;
-var
-  i,j,cnt:integer;
-  res:int64;
-begin
-  res:=0;
-  for i:=white to black do
-   for j:=pawn to Queen do
-     begin
-       cnt:=BitCount(Board.Pieses[j] and Board.Occupancy[i]);
-       res:=res xor MatZobr[i,j,cnt];
-     end;
- Result:=res;
-end;
-
-Function HashProbe(var Board:TBoard;Key : int64):int64; inline;
+Function HashProbe(var TT:TTable;Key : int64):int64;
 var
   Index : int64;
   i : integer;
+  Key32 : cardinal;
 begin
   Result:=-1;
-  Index:=(Key and TTMask) * EntrySize;
+  Index:=(Key and TT.Mask) * EntrySize;
+  Key32:=(Key shr 32);
   for i:=0 to EntrySize-1 do
-    if (TT[index+i].Key=Key) then
+    if (TT.data[index+i].Key32=(Key32 xor TT.data[index+i].crc32)) then
       begin
         Result:=index+i;
-        // Обновляем свежесть  хеша
-        TT[result].typage:=game.HashAge or (TT[result].typage and 3);
+        // РћР±РЅРѕРІР»СЏРµРј СЃРІРµР¶РµСЃС‚СЊ  С…РµС€Р°
+        TT.data[index+i].typage:=TT.Age or (TT.data[index+i].typage and FlagMask);
         exit;
       end;
 end;
-Function isMoveEnnPass(var Board:TBoard;move:integer):boolean;inline;
-var
-   dest : integer;
-begin
-  dest:=(move shr 6) and 63;
-  Result:=((move and CaptureFlag)<>0) and (Board.Pos[dest]=Empty);
-end;
-Procedure HashSave(index:int64;Key:int64;value:integer;depth:integer;typ:integer;move:integer;steval:integer);inline;
-begin
-  If (move<>0) or (TT[index].Key<>Key) then  TT[index].move:=move;
-  If (typ=HashExact) or (TT[index].Key<>Key) or (depth>TT[index].depth div 2)   then
-    begin
-     TT[index].value:=value;
-     TT[index].depth:=depth;
-     TT[index].typage:=game.HashAge or typ;
-     TT[index].Key:=Key;
-     TT[index].steval:=steval;
-    end;
-end;
 
-Procedure HashStore(Key:int64;var Board:TBoard;value:integer;depth:integer;typ:integer;move:integer;steval:integer);inline;
+
+
+Procedure HashStore(var TT:TTable;Key:int64;value:integer;depth:integer;typ:integer;move:integer;steval:integer);
 var
-   i,score,repscore:integer;
+   i:integer;
    rep,index:int64;
+   Key32 : cardinal;
 begin
-  if (isMoveEnnPass(Board,move)) and (not game.saveENNPass) then move:=0;
-  index:=(Key and TTMask) * EntrySize;
+  index:=(Key and TT.Mask) * EntrySize;
   rep:=index;
+  Key32:=(Key shr 32);
   for i:=0 to  EntrySize-1 do
     begin
-      if  (TT[index+i].Key=Key) or (TT[index+i].Key=0) then
+      if  (TT.data[index+i].Key32=(Key32 xor TT.data[index+i].crc32)) or (TT.data[index+i].Key32=0) then
         begin
-          HashSave((index+i),key,value,depth,typ,move,steval);
+          HashSave(TT,(index+i),key32,value,depth,typ,move,steval);
           exit;
         end;
-      // Вычисляем "оценку" имеющихся ячеек для схемы замещения.
-      repscore:=TT[rep].depth-abs(((game.HashAge and 252)-(TT[rep].typage and 252)));
-      score:=TT[index+i].depth-abs(((game.HashAge and 252)-(TT[index+i].typage and 252)));
-      // Ищем наименее ценную
-      if score<repscore then rep:=index+i;
+      // РС‰РµРј РЅР°РёРјРµРЅРµРµ С†РµРЅРЅСѓСЋ СЏС‡РµР№РєСѓ РІ Р±СѓРєРµС‚Рµ РґР»СЏ Р·Р°РјРµС‰РµРЅРёСЏ
+      if (i>0) and (ScoreEntry(TT.Age,TT.data[rep].typage,TT.data[rep].depth)>ScoreEntry(TT.Age,TT.data[index+i].typage,TT.data[index+i].depth)) then rep:=index+i;
     end;
-  // Найдена предпочтительная ячейка для замещения - записываем в нее информацию по текущей позиции
-  HashSave(rep,key,value,depth,typ,move,steval);
+  // РќР°Р№РґРµРЅР° РїСЂРµРґРїРѕС‡С‚РёС‚РµР»СЊРЅР°СЏ СЏС‡РµР№РєР° РґР»СЏ Р·Р°РјРµС‰РµРЅРёСЏ - Р·Р°РїРёСЃС‹РІР°РµРј РІ РЅРµРµ РёРЅС„РѕСЂРјР°С†РёСЋ РїРѕ С‚РµРєСѓС‰РµР№ РїРѕР·РёС†РёРё
+  HashSave(TT,rep,key32,value,depth,typ,move,steval);
 end;
 
-Function FindPonder(RootMove:integer;var Board:TBoard):integer;
+Function FindPonder(var TT:TTable;RootMove:integer;var Board:TBoard):integer;
 var
   CheckInfo,CheckInfo1 :TCheckInfo;
   isCheck         : boolean;
@@ -277,10 +283,10 @@ begin
   SetUndo(Board,Undo);
   isCheck:=isMoveCheck(Rootmove,CheckInfo,Board);
   MakeMove(Rootmove,Board,Undo,isCheck);
-  HashIndex:=HAshProbe(Board,Board.Key);
+  HashIndex:=HAshProbe(TT,Board.Key);
   If HashIndex>=0 then
     begin
-      Ponder:=TT[HashIndex].move;
+      Ponder:=TT.data[HashIndex].move;
       If Ponder<>0 then
         begin
          FillCheckInfo(CheckInfo1,Board);

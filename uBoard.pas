@@ -1,7 +1,11 @@
-unit uBoard;
+п»їunit uBoard;
+
+{$IFDEF FPC}
+  {$MODE Delphi}
+{$ENDIF}
 
 interface
-uses ubitboards,uMagic,SysUtils;
+uses uBitBoards,SysUtils;
 
 Const
   White=0;
@@ -15,15 +19,22 @@ Const
   Pawn=1;
   Empty=0;
   All=0;
+  PawnValueMid=80;    PawnValueEnd=100;
+  KnightValueMid=370; KnightValueEnd=360;
+  BishopValueMid=380; BishopValueEnd=370;
+  RookValueMid=560;   RookValueEnd=600;
+  QueenValueMid=1150; QueenValueEnd=1150;
+
 
   TypOfPiese : array[-king..King] of integer=(king,queen,rook,bishop,knight,pawn,Empty,pawn,knight,bishop,rook,queen,king);
-
+  PieseTypValue : array[Pawn..Queen] of integer = (0,KnightValueMid,BishopValueMid,RookValueMid,QueenValueMid); // Р”Р»СЏ РѕР±РЅРѕРІР»РµРЅРёСЏ РІРЅСѓС‚СЂРё make РЅРµРїРµС€РµС‡РЅРѕРіРѕ РјР°С‚РµСЂРёР°Р»Р° РЅР° РґРѕСЃРєРµ. РџРѕСЌС‚РѕРјСѓ С†РµРЅРЅРѕСЃС‚СЊ РїРµС€РєРё =0
   NonSq=-1;
 
   WhiteShortCastleMask=1;
   WhiteLongCastleMask=2;
   BlackShortCastleMask=4;
   BlackLongCastleMask=8;
+
 
   CastleRightsSq : array[a1..h8] of integer =
    (253,255,255,255,252,255,255,254,
@@ -101,15 +112,15 @@ Type
            CheckersBB   : TBitBoard;
            CapturedPiese: integer;
            Key          : int64;
-           PawnKey      : int64;
-           MatKey       : int64;
            NonPawnMat   : array[white..black] of integer;
-           PstMid       : integer;
-           PstEnd       : integer;
            Nodes        : int64;
            remain       : integer;
            nullcnt      : integer;
          end;
+   Trepetition = record
+                  keys : array[0..100] of int64;
+                  cnt  : integer;
+                end;
   TUndo = record
            isCapture    : boolean;
            isCastle     : boolean;
@@ -120,11 +131,7 @@ Type
            CheckersBB   : TBitBoard;
            CapturedPiese: integer;
            Key          : int64;
-           PawnKey      : int64;
-           MatKey       : int64;
            NonPawnMat   : array[white..black] of integer;
-           PstMid       : integer;
-           PstEnd       : integer;
            nullcnt      : integer;
            WFrame       : integer;
            BFrame       : integer;
@@ -169,23 +176,26 @@ Function GeneratePseudoCaptures(beg:integer;Target:TBitBoard;var Board:TBoard;va
 Function GeneratePseudoEscapes(beg:integer;var Board:TBoard;var MList:TMoveList):integer;
 Function GeneratePseudoChecks(beg:integer; Target:TBitBoard; var Board:TBoard; var CheckInfo:TCheckInfo; var MList:TmoveList):integer;
 Function GenerateLegals(beg:integer;var Board:TBoard;var MList:TMoveList):integer;
-Procedure SetUndo(var Board:TBoard;var Undo:TUndo);inline;
-Procedure MakeMove(move : integer;var Board:TBoard;var Undo:TUndo;isCheck:boolean); inline;
-Procedure UnMakeMove(move : integer;var Board:TBoard; var Undo:TUndo); inline;
+Procedure SetUndo(var Board:TBoard;var Undo:TUndo);
+Procedure MakeMove(move : integer;var Board:TBoard;var Undo:TUndo;isCheck:boolean);
+Procedure UnMakeMove(move : integer;var Board:TBoard; var Undo:TUndo);
 Procedure CopyBoard (var Board:TBoard; var NewBoard:TBoard );
 Function CompareBoards(var Board:TBoard; var NewBoard:TBoard):boolean;
 Procedure ReflectBoard(var Board:TBoard;var NewBoard:TBoard);
 Function Perft(Root:boolean;t1:TDateTime;var Board:TBoard;depth:integer):int64;
-Procedure MakeNullMove(var Board:TBoard);inline;
-Procedure UnMakeNullMove(var Board:TBoard;var Undo:TUndo);inline;
+Procedure MakeNullMove(var Board:TBoard);
+Procedure UnMakeNullMove(var Board:TBoard;var Undo:TUndo);
+
+var
+   rep:Trepetition;
 implementation
-uses uAttacks,DateUtils,uHash,uMaterial,uPawn,uEval,uEndGame,uUci,uThread,uSort,uNN;
+uses uAttacks,DateUtils,uHash,uThread,uSort,Unn,uMagic;
 
 Procedure ClearBoard(var Board:TBoard);
 var
   i:integer;
 begin
-  // Чистим доску
+  // Р§РёСЃС‚РёРј РґРѕСЃРєСѓ
   for i:=Pawn to Queen do
     Board.Pieses[i]:=0;
   for i:=a1 to h8 do
@@ -203,12 +213,8 @@ begin
   Board.CheckersBB:=0;
   Board.CapturedPiese:=0;
   Board.Key:=0;
-  Board.PawnKey:=0;
-  Board.MatKey:=0;
   Board.NonPawnMat[white]:=0;
   Board.NonPawnMat[black]:=0;
-  Board.PstMid:=0;
-  Board.PstEnd:=0;
   Board.nullcnt:=0;
 end;
 Function PackFEN(var Board:Tboard):ansistring;
@@ -266,13 +272,13 @@ begin
   Result:=res;
 end;
 Procedure SetBoard(FEN : ansistring; var Board:TBoard);
-// Устанавливает доску по FEN
+// РЈСЃС‚Р°РЅР°РІР»РёРІР°РµС‚ РґРѕСЃРєСѓ РїРѕ FEN
 var
   x,y,i,sq,j : integer;
   str : ansistring;
 begin
   ClearBoard(Board);
-  //1 . Устанавливаем фигуры
+  //1 . РЈСЃС‚Р°РЅР°РІР»РёРІР°РµРј С„РёРіСѓСЂС‹
   x:=1;y:=8;i:=1;
   while FEN[i]<>' ' do
    begin
@@ -359,8 +365,8 @@ begin
     inc(i);
    end; //while
    Board.AllPieses:=Board.Occupancy[white] or Board.Occupancy[black];
-   inc(i); // После пробела
-  // 2. Очередь хода
+   inc(i); // РџРѕСЃР»Рµ РїСЂРѕР±РµР»Р°
+  // 2. РћС‡РµСЂРµРґСЊ С…РѕРґР°
   if FEN[i]='w' then
     begin
      Board.SideToMove:=white;
@@ -371,8 +377,8 @@ begin
       Board.SideToMove:=black;
       Board.CheckersBB:=SquareAttackedBB(Board.KingSq[black],Board.AllPieses,Board) and Board.Occupancy[white];
     end;
-  inc(i,2); // После пробела
-  // 3. Рокировки
+  inc(i,2); // РџРѕСЃР»Рµ РїСЂРѕР±РµР»Р°
+  // 3. Р РѕРєРёСЂРѕРІРєРё
   while FEN[i]<>' ' do
     begin
       case FEN[i] of
@@ -384,8 +390,8 @@ begin
       end;
       inc(i);
     end;
-  inc(i); // После пробела
-  // 4. Взятие на проходе
+  inc(i); // РџРѕСЃР»Рµ РїСЂРѕР±РµР»Р°
+  // 4. Р’Р·СЏС‚РёРµ РЅР° РїСЂРѕС…РѕРґРµ
   if FEN[i]<>'-' then
     begin
      for j:=a1 to h8 do
@@ -394,10 +400,10 @@ begin
            Board.EnPassSq:=j;
            break;
          end;
-     inc(i); // переходим на второй символ двухсимвольного поля
+     inc(i); // РїРµСЂРµС…РѕРґРёРј РЅР° РІС‚РѕСЂРѕР№ СЃРёРјРІРѕР» РґРІСѓС…СЃРёРјРІРѕР»СЊРЅРѕРіРѕ РїРѕР»СЏ
     end;
-  inc(i,2); // После пробела
-  // 5. Счетчик полуходов
+  inc(i,2); // РџРѕСЃР»Рµ РїСЂРѕР±РµР»Р°
+  // 5. РЎС‡РµС‚С‡РёРє РїРѕР»СѓС…РѕРґРѕРІ
   if i<length(FEN) then
    begin
     str:='';
@@ -408,8 +414,8 @@ begin
      end;
     Board.Rule50:=strtoint(string(trim(str)));
    end else Board.Rule50:=0;
-    inc(i); // После пробела
-  //6. Счетчик целых ходов
+    inc(i); // РџРѕСЃР»Рµ РїСЂРѕР±РµР»Р°
+  //6. РЎС‡РµС‚С‡РёРє С†РµР»С‹С… С…РѕРґРѕРІ
   if i<length(FEN) then
    begin
     str:='';
@@ -421,24 +427,28 @@ begin
      Board.MoveNum:=StrToInt(trim(str));
    end else Board.MoveNum:=0;
   Board.Key:=CalcFullKey(Board);
-  Board.PawnKey:=CalcFullPawnKey(Board);
-  Board.MatKey:=CalcFullMatKey(Board);
   Board.NonPawnMat[white]:=CalcNonPawnMat(white,Board);
   Board.NonPawnMat[black]:=CalcNonPawnMat(black,Board);
-  CalcFullPST(Board.PstMid,Board.PstEnd,Board);
   Board.nullcnt:=Board.Rule50;
+    // РѕС‡РёС‰Р°РµРј СЃС‚СЂСѓРєС‚СѓСЂСѓ С…СЂР°РЅРµРЅРёСЏ РїРѕР·РёС†РёР№ "РґРѕ РєРѕСЂРЅСЏ"
+  for i:=0 to 100 do
+   rep.keys[i]:=0;
+  // Р Р°Р±РѕС‚Р°РµС‚ РІ РїР°СЂС‚РёРё, РєРѕРіРґР° СѓСЃС‚Р°РЅР°РІР»РёРІР°РµС‚СЃСЏ РґРѕСЃРєР° С‚РѕР»СЊРєРѕ  РїРµСЂРІРѕРіРѕ РїРѕС‚РѕРєР°. Р’ РіРµРЅРµСЂР°С‚РѕСЂРµ РѕС‚СЂР°Р±Р°С‚С‹РІР°РµС‚ РЅРµРєРѕСЂСЂРµРєС‚РЅРѕ (РїРѕС‚РѕРєРё РјРѕРіСѓС‚ РїРёСЃР°С‚СЊ РѕРґРЅРѕРІСЂРµРјРµРЅРЅРѕ) Рё РїРѕСЌС‚РѕРјСѓ РЅРµ РёСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ.
+  rep.cnt:=Board.Rule50;
+  rep.keys[rep.cnt]:=Board.Key;
 end;
 
 procedure PrintBoard(Board : TBoard);
-  // Процедура печати доски на экран в символьном виде
+  // РџСЂРѕС†РµРґСѓСЂР° РїРµС‡Р°С‚Рё РґРѕСЃРєРё РЅР° СЌРєСЂР°РЅ РІ СЃРёРјРІРѕР»СЊРЅРѕРј РІРёРґРµ
   var
-    BitMassiv : array[1..64] of char; // Массив символов для печати доски
+    BitMassiv : array[1..64] of char; // РњР°СЃСЃРёРІ СЃРёРјРІРѕР»РѕРІ РґР»СЏ РїРµС‡Р°С‚Рё РґРѕСЃРєРё
     i,j: byte;
     s: ansistring;
   begin
-    for i:=a1 to h8 do
+  BitMassiv[1]:=' ';
+  for i:=a1 to h8 do
       begin
-       // Заполняем следующую ячейку массива соответствующим символом
+       // Р—Р°РїРѕР»РЅСЏРµРј СЃР»РµРґСѓСЋС‰СѓСЋ СЏС‡РµР№РєСѓ РјР°СЃСЃРёРІР° СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‰РёРј СЃРёРјРІРѕР»РѕРј
         case Board.Pos[i] of
           King        : BitMassiv[i+1]:='K';
           Queen       : BitMassiv[i+1]:='Q';
@@ -455,17 +465,17 @@ procedure PrintBoard(Board : TBoard);
           -Pawn       : BitMassiv[i+1]:='p';
         end;
       end;
-    // Печатаем соответствующий массив в виде доски
+    // РџРµС‡Р°С‚Р°РµРј СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‰РёР№ РјР°СЃСЃРёРІ РІ РІРёРґРµ РґРѕСЃРєРё
     for j:=7 downto 0 do
       begin
-        write(j+1,'  '); // Подписываем горизонтали
+        write(j+1,'  '); // РџРѕРґРїРёСЃС‹РІР°РµРј РіРѕСЂРёР·РѕРЅС‚Р°Р»Рё
         for i:=1 to 8 do
           write(BitMassiv[j*8+i]);
         writeln;
       end;
-    //И подписываем вертикали
+    //Р РїРѕРґРїРёСЃС‹РІР°РµРј РІРµСЂС‚РёРєР°Р»Рё
     writeln('   abcdefgh');
-   // Печатаем другую информацию:
+   // РџРµС‡Р°С‚Р°РµРј РґСЂСѓРіСѓСЋ РёРЅС„РѕСЂРјР°С†РёСЋ:
    if Board.SideToMove=white
      then s:='White move '
      else s:='Black move ';
@@ -492,7 +502,7 @@ begin
     end;
 end;
 Function StringMove(move:integer):shortstring;
-// Текст хода
+// РўРµРєСЃС‚ С…РѕРґР°
 var
   s:ansistring;
 begin
@@ -509,7 +519,7 @@ begin
 end;
 
 Procedure AddPawnPseudoMoves(delta:integer;BB:TBitBoard;var cnt:integer;var MList:TmoveList);inline;
-// Процедура заполняет список ходов по ранее сгенерированному битборду ходов пешек.  НЕ Ставит флаг взятия. Не работает с превращениями
+// РџСЂРѕС†РµРґСѓСЂР° Р·Р°РїРѕР»РЅСЏРµС‚ СЃРїРёСЃРѕРє С…РѕРґРѕРІ РїРѕ СЂР°РЅРµРµ СЃРіРµРЅРµСЂРёСЂРѕРІР°РЅРЅРѕРјСѓ Р±РёС‚Р±РѕСЂРґСѓ С…РѕРґРѕРІ РїРµС€РµРє.  РќР• РЎС‚Р°РІРёС‚ С„Р»Р°Рі РІР·СЏС‚РёСЏ. РќРµ СЂР°Р±РѕС‚Р°РµС‚ СЃ РїСЂРµРІСЂР°С‰РµРЅРёСЏРјРё
 var
   sq:integer;
 begin
@@ -524,7 +534,7 @@ end;
 
 
 Procedure AddPawnPseudoCaptures(delta:integer;BB:TBitBoard;var cnt:integer;var MList:TmoveList);inline;
-// Процедура заполняет список взятий по ранее сгенерированному битборду . Ставит флаг взятия. Не работает с превращениями
+// РџСЂРѕС†РµРґСѓСЂР° Р·Р°РїРѕР»РЅСЏРµС‚ СЃРїРёСЃРѕРє РІР·СЏС‚РёР№ РїРѕ СЂР°РЅРµРµ СЃРіРµРЅРµСЂРёСЂРѕРІР°РЅРЅРѕРјСѓ Р±РёС‚Р±РѕСЂРґСѓ . РЎС‚Р°РІРёС‚ С„Р»Р°Рі РІР·СЏС‚РёСЏ. РќРµ СЂР°Р±РѕС‚Р°РµС‚ СЃ РїСЂРµРІСЂР°С‰РµРЅРёСЏРјРё
 var
   sq:integer;
 begin
@@ -537,7 +547,7 @@ begin
     end;
 end;
 Procedure AddPawnPseudoPromos(delta:integer;typ:integer;BB:TBitBoard;var cnt:integer;var MList:TmoveList);inline;
-// Процедура заполняет список ходов по ранее сгенерированному битборду ходов пешек-превращений.  НЕ Ставит флаг взятия.
+// РџСЂРѕС†РµРґСѓСЂР° Р·Р°РїРѕР»РЅСЏРµС‚ СЃРїРёСЃРѕРє С…РѕРґРѕРІ РїРѕ СЂР°РЅРµРµ СЃРіРµРЅРµСЂРёСЂРѕРІР°РЅРЅРѕРјСѓ Р±РёС‚Р±РѕСЂРґСѓ С…РѕРґРѕРІ РїРµС€РµРє-РїСЂРµРІСЂР°С‰РµРЅРёР№.  РќР• РЎС‚Р°РІРёС‚ С„Р»Р°Рі РІР·СЏС‚РёСЏ.
 var
   sq,promo:integer;
 begin
@@ -547,7 +557,7 @@ begin
       promo:=(sq shl 6) or (sq+delta);
       if typ=AllPromos then
         begin
-          // Все превращения
+          // Р’СЃРµ РїСЂРµРІСЂР°С‰РµРЅРёСЏ
           MList[cnt].move:=promo or (Queen shl 12);
           inc(cnt);
           MList[cnt].move:=promo or (Knight shl 12);
@@ -559,12 +569,12 @@ begin
         end else
       if typ=StrongPromo then
         begin
-          // Только ферзь
+          // РўРѕР»СЊРєРѕ С„РµСЂР·СЊ
           MList[cnt].move:=promo or (Queen shl 12);
           inc(cnt);
         end else
         begin
-          // Слабые превращения
+          // РЎР»Р°Р±С‹Рµ РїСЂРµРІСЂР°С‰РµРЅРёСЏ
           MList[cnt].move:=promo or (Knight shl 12);
           inc(cnt);
           MList[cnt].move:=promo or (Rook shl 12);
@@ -576,7 +586,7 @@ begin
     end;
 end;
 Procedure AddPawnPseudoCapPromos(delta:integer;typ:integer;BB:TBitBoard;var cnt:integer;var MList:TmoveList);inline;
-// Процедура заполняет список ходов по ранее сгенерированному битборду взятий пешек-превращений.Ставит флаг взятия.
+// РџСЂРѕС†РµРґСѓСЂР° Р·Р°РїРѕР»РЅСЏРµС‚ СЃРїРёСЃРѕРє С…РѕРґРѕРІ РїРѕ СЂР°РЅРµРµ СЃРіРµРЅРµСЂРёСЂРѕРІР°РЅРЅРѕРјСѓ Р±РёС‚Р±РѕСЂРґСѓ РІР·СЏС‚РёР№ РїРµС€РµРє-РїСЂРµРІСЂР°С‰РµРЅРёР№.РЎС‚Р°РІРёС‚ С„Р»Р°Рі РІР·СЏС‚РёСЏ.
 var
   sq,promo:integer;
 begin
@@ -586,7 +596,7 @@ begin
       promo:=CaptureFlag or (sq shl 6) or (sq+delta);
       if typ=AllPromos then
         begin
-          // Все превращения
+          // Р’СЃРµ РїСЂРµРІСЂР°С‰РµРЅРёСЏ
           MList[cnt].move:=promo or (Queen shl 12);
           inc(cnt);
           MList[cnt].move:=promo or (Knight shl 12);
@@ -598,12 +608,12 @@ begin
         end else
       if typ=StrongPromo then
         begin
-          // Только ферзь
+          // РўРѕР»СЊРєРѕ С„РµСЂР·СЊ
           MList[cnt].move:=promo or (Queen shl 12);
           inc(cnt);
         end else
         begin
-          // Слабые превращения
+          // РЎР»Р°Р±С‹Рµ РїСЂРµРІСЂР°С‰РµРЅРёСЏ
           MList[cnt].move:=promo or (Knight shl 12);
           inc(cnt);
           MList[cnt].move:=promo or (Rook shl 12);
@@ -615,7 +625,7 @@ begin
     end;
 end;
 Procedure AddPseudoMoves(from:integer;BB:TBitBoard;var cnt:integer;var MList:TmoveList);inline;
-// Процедура заполняет список ходов по ранее сгенерированному битборду ходов фигур.  НЕ Ставит флаг взятия. Не работает с пешками (превращениями)
+// РџСЂРѕС†РµРґСѓСЂР° Р·Р°РїРѕР»РЅСЏРµС‚ СЃРїРёСЃРѕРє С…РѕРґРѕРІ РїРѕ СЂР°РЅРµРµ СЃРіРµРЅРµСЂРёСЂРѕРІР°РЅРЅРѕРјСѓ Р±РёС‚Р±РѕСЂРґСѓ С…РѕРґРѕРІ С„РёРіСѓСЂ.  РќР• РЎС‚Р°РІРёС‚ С„Р»Р°Рі РІР·СЏС‚РёСЏ. РќРµ СЂР°Р±РѕС‚Р°РµС‚ СЃ РїРµС€РєР°РјРё (РїСЂРµРІСЂР°С‰РµРЅРёСЏРјРё)
 var
   sq:integer;
 begin
@@ -628,8 +638,8 @@ begin
     end;
 end;
 
-Procedure AddPseudoCaptures(from:integer;BB:TBitBoard;var cnt:integer;var Board:TBoard;var MList:TmoveList);inline;
-// Процедура заполняет список взятий по ранее сгенерированному битборду ходов фигур.Ставит флаг взятия. Не работает с пешками (превращениями)
+Procedure AddPseudoCaptures(from:integer;BB:TBitBoard;var cnt:integer;var MList:TmoveList);inline;
+// РџСЂРѕС†РµРґСѓСЂР° Р·Р°РїРѕР»РЅСЏРµС‚ СЃРїРёСЃРѕРє РІР·СЏС‚РёР№ РїРѕ СЂР°РЅРµРµ СЃРіРµРЅРµСЂРёСЂРѕРІР°РЅРЅРѕРјСѓ Р±РёС‚Р±РѕСЂРґСѓ С…РѕРґРѕРІ С„РёРіСѓСЂ.РЎС‚Р°РІРёС‚ С„Р»Р°Рі РІР·СЏС‚РёСЏ. РќРµ СЂР°Р±РѕС‚Р°РµС‚ СЃ РїРµС€РєР°РјРё (РїСЂРµРІСЂР°С‰РµРЅРёСЏРјРё)
 var
   sq:integer;
 begin
@@ -642,7 +652,7 @@ begin
     end;
 end;
 Procedure AddPseudoAll(from:integer;BB:TBitBoard;AllPieses:TBitBoard;var cnt:integer;var MList:TmoveList);inline;
-// Процедура заполняет список ходов по ранее сгенерированному битборду ходов фигур.Ставит флаг взятия если надо. Не работает с пешками (превращениями)
+// РџСЂРѕС†РµРґСѓСЂР° Р·Р°РїРѕР»РЅСЏРµС‚ СЃРїРёСЃРѕРє С…РѕРґРѕРІ РїРѕ СЂР°РЅРµРµ СЃРіРµРЅРµСЂРёСЂРѕРІР°РЅРЅРѕРјСѓ Р±РёС‚Р±РѕСЂРґСѓ С…РѕРґРѕРІ С„РёРіСѓСЂ.РЎС‚Р°РІРёС‚ С„Р»Р°Рі РІР·СЏС‚РёСЏ РµСЃР»Рё РЅР°РґРѕ. РќРµ СЂР°Р±РѕС‚Р°РµС‚ СЃ РїРµС€РєР°РјРё (РїСЂРµРІСЂР°С‰РµРЅРёСЏРјРё)
 var
   sq:integer;
 begin
@@ -657,7 +667,7 @@ begin
 end;
 
 Function GeneratePseudoMoves(beg:integer;Target:TBitBoard;var Board:TBoard;var MList:TMoveList):integer;
-// Генерирует  тихие псевдоходы за сторону чья очередь хода на поля, указанные в Target; Возвращает число записанных в список ходов
+// Р“РµРЅРµСЂРёСЂСѓРµС‚  С‚РёС…РёРµ РїСЃРµРІРґРѕС…РѕРґС‹ Р·Р° СЃС‚РѕСЂРѕРЅСѓ С‡СЊСЏ РѕС‡РµСЂРµРґСЊ С…РѕРґР° РЅР° РїРѕР»СЏ, СѓРєР°Р·Р°РЅРЅС‹Рµ РІ Target; Р’РѕР·РІСЂР°С‰Р°РµС‚ С‡РёСЃР»Рѕ Р·Р°РїРёСЃР°РЅРЅС‹С… РІ СЃРїРёСЃРѕРє С…РѕРґРѕРІ
 var
  from:integer;
  temp,PawnSingle,PawnDouble,PawnOn7,PawnNon7 : TBitBoard;
@@ -695,7 +705,7 @@ begin
   AddPseudoMoves(Board.KingSq[Board.SideToMove],(KingAttacksBB(Board.KingSq[Board.SideToMove]) and Target),cnt,Mlist);
   if Board.SideToMove=White then
    begin
-     // Рокировки
+     // Р РѕРєРёСЂРѕРІРєРё
      if ((Board.CastleRights and WhiteShortCastleMask)<>0) and ((Board.AllPieses and W00SQ)=0) and ((SquareAttackedBB(f1,Board.AllPieses,Board) and Board.Occupancy[black])=0)  then
        begin
         MList[cnt].move:=(g1 shl 6) or e1;
@@ -706,20 +716,20 @@ begin
         MList[cnt].move:=(c1 shl 6) or e1;
         inc(cnt);
        end;
-     // Пешки
+     // РџРµС€РєРё
      PawnNon7:=Board.Pieses[Pawn] and Board.Occupancy[white] and (not RanksBB[7]);
-     // Простые ходы
+     // РџСЂРѕСЃС‚С‹Рµ С…РѕРґС‹
      PawnSingle:=(PawnNon7 shl 8) and Target;
      AddPawnPseudoMoves(-8,PawnSingle,cnt,Mlist);
-     // Двойные ходы
+     // Р”РІРѕР№РЅС‹Рµ С…РѕРґС‹
      PawnDouble:=((PawnSingle and RanksBB[3]) shl 8) and Target;
      AddPawnPseudoMoves(-16,PawnDouble,cnt,Mlist);
-     //превращения
+     //РїСЂРµРІСЂР°С‰РµРЅРёСЏ
      PawnOn7:=Board.Pieses[Pawn] and Board.Occupancy[white] and RanksBB[7];
      AddPawnPseudoPromos(-8,WeakPromos,((PawnOn7 shl 8) and Target),cnt,Mlist);
    end else
    begin
-      // Рокировки
+      // Р РѕРєРёСЂРѕРІРєРё
      if ((Board.CastleRights and BlackShortCastleMask)<>0) and ((Board.AllPieses and B00SQ)=0) and ((SquareAttackedBB(f8,Board.AllPieses,Board) and Board.Occupancy[white])=0)  then
        begin
         MList[cnt].move:=(g8 shl 6) or e8;
@@ -730,15 +740,15 @@ begin
         MList[cnt].move:=(c8 shl 6) or e8;
         inc(cnt);
        end;
-      // Пешки
+      // РџРµС€РєРё
      PawnNon7:=Board.Pieses[Pawn] and Board.Occupancy[black] and (not RanksBB[2]);
-     // Простые ходы
+     // РџСЂРѕСЃС‚С‹Рµ С…РѕРґС‹
      PawnSingle:=(PawnNon7 shr 8) and Target;
      AddPawnPseudoMoves(8,PawnSingle,cnt,Mlist);
-     // Двойные ходы
+     // Р”РІРѕР№РЅС‹Рµ С…РѕРґС‹
      PawnDouble:=((PawnSingle and RanksBB[6]) shr 8) and Target;
      AddPawnPseudoMoves(16,PawnDouble,cnt,Mlist);
-     //превращения
+     //РїСЂРµРІСЂР°С‰РµРЅРёСЏ
      PawnOn7:=Board.Pieses[Pawn] and Board.Occupancy[black] and RanksBB[2];
      AddPawnPseudoPromos(8,WeakPromos,((PawnOn7 shr 8) and Target),cnt,Mlist);
    end;
@@ -746,7 +756,7 @@ begin
 end;
 
 Function GeneratePseudoCaptures(beg:integer;Target:TBitBoard;var Board:TBoard;var MList:TMoveList):integer;
-// Генерирует псевдовзятия за сторону чья очередь хода на поля, указанные в Target; Возвращает число записанных в список взятий
+// Р“РµРЅРµСЂРёСЂСѓРµС‚ РїСЃРµРІРґРѕРІР·СЏС‚РёСЏ Р·Р° СЃС‚РѕСЂРѕРЅСѓ С‡СЊСЏ РѕС‡РµСЂРµРґСЊ С…РѕРґР° РЅР° РїРѕР»СЏ, СѓРєР°Р·Р°РЅРЅС‹Рµ РІ Target; Р’РѕР·РІСЂР°С‰Р°РµС‚ С‡РёСЃР»Рѕ Р·Р°РїРёСЃР°РЅРЅС‹С… РІ СЃРїРёСЃРѕРє РІР·СЏС‚РёР№
 var
  from:integer;
  temp,PawnOn7,PawnNon7,PawnCaps : TBitBoard;
@@ -757,98 +767,98 @@ begin
   while temp<>0 do
    begin
     from:=BitScanForward(temp);
-    AddPseudoCaptures(from,(KnightAttacksBB(from) and Target),cnt,Board,Mlist);
+    AddPseudoCaptures(from,(KnightAttacksBB(from) and Target),cnt,Mlist);
     temp:=temp and (temp-1);
    end;
   temp:=Board.Pieses[Bishop] and Board.Occupancy[Board.SideToMove];
   while temp<>0 do
    begin
     from:=BitScanForward(temp);
-    AddPseudoCaptures(from,(BishopAttacksBB(from,Board.AllPieses) and Target),cnt,Board,Mlist);
+    AddPseudoCaptures(from,(BishopAttacksBB(from,Board.AllPieses) and Target),cnt,Mlist);
     temp:=temp and (temp-1);
    end;
   temp:=Board.Pieses[Rook] and Board.Occupancy[Board.SideToMove];
   while temp<>0 do
    begin
     from:=BitScanForward(temp);
-    AddPseudoCaptures(from,(RookAttacksBB(from,Board.AllPieses) and Target),cnt,Board,Mlist);
+    AddPseudoCaptures(from,(RookAttacksBB(from,Board.AllPieses) and Target),cnt,Mlist);
     temp:=temp and (temp-1);
    end;
   temp:=Board.Pieses[Queen] and Board.Occupancy[Board.SideToMove];
   while temp<>0 do
    begin
     from:=BitScanForward(temp);
-    AddPseudoCaptures(from,(QueenAttacksBB(from,Board.AllPieses) and Target),cnt,Board,Mlist);
+    AddPseudoCaptures(from,(QueenAttacksBB(from,Board.AllPieses) and Target),cnt,Mlist);
     temp:=temp and (temp-1);
    end;
-  AddPseudoCaptures(Board.KingSq[Board.SideToMove],(KingAttacksBB(Board.KingSq[Board.SideToMove]) and Target),cnt,Board,Mlist);
+  AddPseudoCaptures(Board.KingSq[Board.SideToMove],(KingAttacksBB(Board.KingSq[Board.SideToMove]) and Target),cnt,Mlist);
   if Board.SideToMove=White then
    begin
-      // Взятия пешками без превращения (в том числе на проходе)
+      // Р’Р·СЏС‚РёСЏ РїРµС€РєР°РјРё Р±РµР· РїСЂРµРІСЂР°С‰РµРЅРёСЏ (РІ С‚РѕРј С‡РёСЃР»Рµ РЅР° РїСЂРѕС…РѕРґРµ)
       PawnNon7:=Board.Pieses[Pawn] and Board.Occupancy[white] and (not RanksBB[7]);
       PawnCaps:=((PawnNon7 and (not FilesBB[1])) shl 7) and (Target or Only[Board.EnPassSq]);
       AddPawnPseudoCaptures(-7,PawnCaps,cnt,Mlist);
       PawnCaps:=((PawnNon7 and (not FilesBB[8])) shl 9) and (Target or Only[Board.EnPassSq]);
       AddPawnPseudoCaptures(-9,PawnCaps,cnt,Mlist);
-      // Превращения со взятием
+      // РџСЂРµРІСЂР°С‰РµРЅРёСЏ СЃРѕ РІР·СЏС‚РёРµРј
       PawnOn7:=Board.Pieses[Pawn] and Board.Occupancy[white] and RanksBB[7];
       PawnCaps:=((PawnOn7 and (not FilesBB[1])) shl 7) and Target;
       AddPawnPseudoCapPromos(-7,AllPromos,PawnCaps,cnt,MList);
       PawnCaps:=((PawnOn7 and (not FilesBB[8])) shl 9) and Target;
       AddPawnPseudoCapPromos(-9,AllPromos,PawnCaps,cnt,MList);
-      // Превращения без взятия
+      // РџСЂРµРІСЂР°С‰РµРЅРёСЏ Р±РµР· РІР·СЏС‚РёСЏ
       AddPawnPseudoPromos(-8,StrongPromo,((PawnOn7 shl 8) and (not Board.AllPieses)),cnt,Mlist);
    end else
    begin
-      // Взятия пешками без превращения (в том числе на проходе)
+      // Р’Р·СЏС‚РёСЏ РїРµС€РєР°РјРё Р±РµР· РїСЂРµРІСЂР°С‰РµРЅРёСЏ (РІ С‚РѕРј С‡РёСЃР»Рµ РЅР° РїСЂРѕС…РѕРґРµ)
       PawnNon7:=Board.Pieses[Pawn] and Board.Occupancy[black] and (not RanksBB[2]);
       PawnCaps:=((PawnNon7 and (not FilesBB[1])) shr 9) and (Target or Only[Board.EnPassSq]);
       AddPawnPseudoCaptures(9,PawnCaps,cnt,Mlist);
       PawnCaps:=((PawnNon7 and (not FilesBB[8])) shr 7) and (Target or Only[Board.EnPassSq]);
       AddPawnPseudoCaptures(7,PawnCaps,cnt,Mlist);
-      // Превращения со взятием
+      // РџСЂРµРІСЂР°С‰РµРЅРёСЏ СЃРѕ РІР·СЏС‚РёРµРј
       PawnOn7:=Board.Pieses[Pawn] and Board.Occupancy[black] and RanksBB[2];
       PawnCaps:=((PawnOn7 and (not FilesBB[1])) shr 9) and Target;
       AddPawnPseudoCapPromos(9,AllPromos,PawnCaps,cnt,MList);
       PawnCaps:=((PawnOn7 and (not FilesBB[8])) shr 7) and Target;
       AddPawnPseudoCapPromos(7,AllPromos,PawnCaps,cnt,MList);
-      // Превращения без взятия
+      // РџСЂРµРІСЂР°С‰РµРЅРёСЏ Р±РµР· РІР·СЏС‚РёСЏ
       AddPawnPseudoPromos(8,StrongPromo,((PawnOn7 shr 8) and (not Board.AllPieses)),cnt,Mlist);
    end;
  Result:=cnt-beg;
 end;
 
 Function GeneratePseudoEscapes(beg:integer;var Board:TBoard;var MList:TMoveList):integer;
-// Генерирует псевдозащиты от шаха за сторону чья очередь хода.  в Target поля, где можно закрыться (побить). Возвращает число записанных в список взятий
+// Р“РµРЅРµСЂРёСЂСѓРµС‚ РїСЃРµРІРґРѕР·Р°С‰РёС‚С‹ РѕС‚ С€Р°С…Р° Р·Р° СЃС‚РѕСЂРѕРЅСѓ С‡СЊСЏ РѕС‡РµСЂРµРґСЊ С…РѕРґР°.  РІ Target РїРѕР»СЏ, РіРґРµ РјРѕР¶РЅРѕ Р·Р°РєСЂС‹С‚СЊСЃСЏ (РїРѕР±РёС‚СЊ). Р’РѕР·РІСЂР°С‰Р°РµС‚ С‡РёСЃР»Рѕ Р·Р°РїРёСЃР°РЅРЅС‹С… РІ СЃРїРёСЃРѕРє РІР·СЏС‚РёР№
 var
  from,MyColor,EnemyColor,KingSq,CheckSq:integer;
  temp,PawnOn7,PawnNon7,PawnCaps,Sliders,SlidersAttacksBB,Target,PawnSingle,PawnDouble,BB : TBitBoard;
  cnt : integer;
 begin
-  // Инициализация
+  // РРЅРёС†РёР°Р»РёР·Р°С†РёСЏ
   cnt:=beg;
   MyColor:=Board.SideToMove;
   EnemyColor:=MyColor xor 1;
   KingSq:=Board.KingSq[MyColor];
   SlidersAttacksBB:=0;
   Sliders:=Board.CheckersBB and (Board.Pieses[Bishop] or Board.Pieses[Rook] or Board.Pieses[Queen]) and Board.Occupancy[MyColor xor 1];
-  // вычисляем всем атакованные дальнобойными шахующими фигурами поля. Мы их исключим потом при определении псевдолегальных полей  ухода короля
+  // РІС‹С‡РёСЃР»СЏРµРј РІСЃРµРј Р°С‚Р°РєРѕРІР°РЅРЅС‹Рµ РґР°Р»СЊРЅРѕР±РѕР№РЅС‹РјРё С€Р°С…СѓСЋС‰РёРјРё С„РёРіСѓСЂР°РјРё РїРѕР»СЏ. РњС‹ РёС… РёСЃРєР»СЋС‡РёРј РїРѕС‚РѕРј РїСЂРё РѕРїСЂРµРґРµР»РµРЅРёРё РїСЃРµРІРґРѕР»РµРіР°Р»СЊРЅС‹С… РїРѕР»РµР№  СѓС…РѕРґР° РєРѕСЂРѕР»СЏ
   While Sliders<>0 do
     begin
       from:=BitScanForward(Sliders);
       SlidersAttacksBB:=(SlidersAttacksBB or FullLine[KingSq,from]) xor Only[from];
       Sliders:=Sliders and (Sliders-1);
     end;
-  // Смотрим сначала уходы короля
+  // РЎРјРѕС‚СЂРёРј СЃРЅР°С‡Р°Р»Р° СѓС…РѕРґС‹ РєРѕСЂРѕР»СЏ
   temp:=KingAttacks[KingSq] and (not Board.Occupancy[MyColor]) and (not SlidersAttacksBB);
   AddPseudoAll(KingSq,temp,Board.AllPieses,cnt,MList);
-  // Если двойной шах, то больше ничего не генерим
+  // Р•СЃР»Рё РґРІРѕР№РЅРѕР№ С€Р°С…, С‚Рѕ Р±РѕР»СЊС€Рµ РЅРёС‡РµРіРѕ РЅРµ РіРµРЅРµСЂРёРј
   If (Board.CheckersBB and (Board.CheckersBB-1))<>0 then
     begin
       Result:=cnt-beg;
       exit;
     end;
-  // Пробуем теперь закрыться или побить единственную шахующую фигуру
+  // РџСЂРѕР±СѓРµРј С‚РµРїРµСЂСЊ Р·Р°РєСЂС‹С‚СЊСЃСЏ РёР»Рё РїРѕР±РёС‚СЊ РµРґРёРЅСЃС‚РІРµРЅРЅСѓСЋ С€Р°С…СѓСЋС‰СѓСЋ С„РёРіСѓСЂСѓ
   CheckSq:=BitScanForward(Board.CheckersBB);
   Target:=Intersect[KingSq,CheckSq] or Only[CheckSq];
   temp:=Board.Pieses[Knight] and Board.Occupancy[Board.SideToMove];
@@ -883,18 +893,18 @@ begin
   if Board.SideToMove=White then
    begin
       PawnNon7:=Board.Pieses[Pawn] and Board.Occupancy[white] and (not RanksBB[7]);
-      // Простые ходы
+      // РџСЂРѕСЃС‚С‹Рµ С…РѕРґС‹
       PawnSingle:=(PawnNon7 shl 8) and (not Board.AllPieses);
       AddPawnPseudoMoves(-8,PawnSingle and  Target,cnt,Mlist);
-     // Двойные ходы
+     // Р”РІРѕР№РЅС‹Рµ С…РѕРґС‹
       PawnDouble:=((PawnSingle and RanksBB[3]) shl 8) and (not Board.AllPieses) and Target;
       AddPawnPseudoMoves(-16,PawnDouble,cnt,Mlist);
-      // Взятия пешками без превращения
+      // Р’Р·СЏС‚РёСЏ РїРµС€РєР°РјРё Р±РµР· РїСЂРµРІСЂР°С‰РµРЅРёСЏ
       PawnCaps:=((PawnNon7 and (not FilesBB[1])) shl 7) and  Board.CheckersBB;
       AddPawnPseudoCaptures(-7,PawnCaps,cnt,Mlist);
       PawnCaps:=((PawnNon7 and (not FilesBB[8])) shl 9) and Board.CheckersBB;
       AddPawnPseudoCaptures(-9,PawnCaps,cnt,Mlist);
-      // Взятие на проходе как защита от шаха
+      // Р’Р·СЏС‚РёРµ РЅР° РїСЂРѕС…РѕРґРµ РєР°Рє Р·Р°С‰РёС‚Р° РѕС‚ С€Р°С…Р°
       if (Board.EnPassSq<>NonSq) and ((Board.CheckersBB and Only[Board.EnPassSq-8])<>0) then
        begin
         BB:=PawnAttacks[black,Board.EnPassSq] and PawnNon7;
@@ -906,29 +916,29 @@ begin
             BB:=BB and (BB-1);
           end;
        end;
-      // Превращения со взятием
+      // РџСЂРµРІСЂР°С‰РµРЅРёСЏ СЃРѕ РІР·СЏС‚РёРµРј
       PawnOn7:=Board.Pieses[Pawn] and Board.Occupancy[white] and RanksBB[7];
       PawnCaps:=((PawnOn7 and (not FilesBB[1])) shl 7) and (Board.Occupancy[EnemyColor]) and Target;
       AddPawnPseudoCapPromos(-7,AllPromos,PawnCaps,cnt,MList);
       PawnCaps:=((PawnOn7 and (not FilesBB[8])) shl 9) and (Board.Occupancy[EnemyColor]) and Target;
       AddPawnPseudoCapPromos(-9,AllPromos,PawnCaps,cnt,MList);
-      // Превращения без взятия
+      // РџСЂРµРІСЂР°С‰РµРЅРёСЏ Р±РµР· РІР·СЏС‚РёСЏ
       AddPawnPseudoPromos(-8,AllPromos,((PawnOn7 shl 8) and (not Board.AllPieses)) and Target,cnt,Mlist);
    end else
    begin
       PawnNon7:=Board.Pieses[Pawn] and Board.Occupancy[black] and (not RanksBB[2]);
-      // Простые ходы
+      // РџСЂРѕСЃС‚С‹Рµ С…РѕРґС‹
       PawnSingle:=(PawnNon7 shr 8) and (not Board.AllPieses);
       AddPawnPseudoMoves(8,PawnSingle and  Target,cnt,Mlist);
-     // Двойные ходы
+     // Р”РІРѕР№РЅС‹Рµ С…РѕРґС‹
       PawnDouble:=((PawnSingle and RanksBB[6]) shr 8) and (not Board.AllPieses) and Target;
       AddPawnPseudoMoves(16,PawnDouble,cnt,Mlist);
-      // Взятия пешками без превращения
+      // Р’Р·СЏС‚РёСЏ РїРµС€РєР°РјРё Р±РµР· РїСЂРµРІСЂР°С‰РµРЅРёСЏ
       PawnCaps:=((PawnNon7 and (not FilesBB[1])) shr 9) and  Board.CheckersBB;
       AddPawnPseudoCaptures(9,PawnCaps,cnt,Mlist);
       PawnCaps:=((PawnNon7 and (not FilesBB[8])) shr 7) and  Board.CheckersBB;
       AddPawnPseudoCaptures(7,PawnCaps,cnt,Mlist);
-      // Взятие на проходе как защита от шаха
+      // Р’Р·СЏС‚РёРµ РЅР° РїСЂРѕС…РѕРґРµ РєР°Рє Р·Р°С‰РёС‚Р° РѕС‚ С€Р°С…Р°
       if (Board.EnPassSq<>NonSq) and ((Board.CheckersBB and Only[Board.EnPassSq+8])<>0) then
        begin
         BB:=PawnAttacks[white,Board.EnPassSq] and PawnNon7;
@@ -940,40 +950,40 @@ begin
             BB:=BB and (BB-1);
           end;
        end;
-      // Превращения со взятием
+      // РџСЂРµРІСЂР°С‰РµРЅРёСЏ СЃРѕ РІР·СЏС‚РёРµРј
       PawnOn7:=Board.Pieses[Pawn] and Board.Occupancy[black] and RanksBB[2];
       PawnCaps:=((PawnOn7 and (not FilesBB[1])) shr 9) and (Board.Occupancy[EnemyColor]) and Target;
       AddPawnPseudoCapPromos(9,AllPromos,PawnCaps,cnt,MList);
       PawnCaps:=((PawnOn7 and (not FilesBB[8])) shr 7) and (Board.Occupancy[EnemyColor]) and Target;
       AddPawnPseudoCapPromos(7,AllPromos,PawnCaps,cnt,MList);
-      // Превращения без взятия
+      // РџСЂРµРІСЂР°С‰РµРЅРёСЏ Р±РµР· РІР·СЏС‚РёСЏ
       AddPawnPseudoPromos(8,AllPromos,((PawnOn7 shr 8) and (not Board.AllPieses)) and Target,cnt,Mlist);
    end;
  Result:=cnt-beg;
 end;
 
 Function GeneratePseudoChecks(beg:integer; Target:TBitBoard; var Board:TBoard; var CheckInfo:TCheckInfo; var MList:TmoveList):integer;
-// Генерирует тихие (не взятия и не превращения) псевдошахи. Возвращает число записанных в список шахов
+// Р“РµРЅРµСЂРёСЂСѓРµС‚ С‚РёС…РёРµ (РЅРµ РІР·СЏС‚РёСЏ Рё РЅРµ РїСЂРµРІСЂР°С‰РµРЅРёСЏ) РїСЃРµРІРґРѕС€Р°С…Рё. Р’РѕР·РІСЂР°С‰Р°РµС‚ С‡РёСЃР»Рѕ Р·Р°РїРёСЃР°РЅРЅС‹С… РІ СЃРїРёСЃРѕРє С€Р°С…РѕРІ
 var
  from,PieseTyp:integer;
  temp,PawnNon7,PawnSingle,PawnDouble,BB,BB1,CC,CC1 : TBitBoard;
  cnt : integer;
 begin
-  // Инициализация
+  // РРЅРёС†РёР°Р»РёР·Р°С†РёСЏ
   cnt:=beg;
-  // Сначала пробуем давать вскрытые шахи
+  // РЎРЅР°С‡Р°Р»Р° РїСЂРѕР±СѓРµРј РґР°РІР°С‚СЊ РІСЃРєСЂС‹С‚С‹Рµ С€Р°С…Рё
   Temp:=CheckInfo.DiscoverCheckBB;
   while temp<>0 do
     begin
       from:=BitScanForward(temp);
       temp:=temp and (temp-1);
       PieseTyp:=TypOfPiese[Board.Pos[from]];
-      If PieseTyp=Pawn then continue; // Будем дальше рассматривать ходы пешек
+      If PieseTyp=Pawn then continue; // Р‘СѓРґРµРј РґР°Р»СЊС€Рµ СЂР°СЃСЃРјР°С‚СЂРёРІР°С‚СЊ С…РѕРґС‹ РїРµС€РµРє
       BB:=PieseAttacksBB(Board.SideToMove,PieseTyp,from,Board.AllPieses) and (not Board.AllPieses);
       if PieseTyp=King then BB:=BB and (not QueenFullAttacks[CheckInfo.EnemyKingSq]);
       AddPseudoMoves(from,BB,cnt,MList);
     end;
-  // Теперь прямые шахи
+  // РўРµРїРµСЂСЊ РїСЂСЏРјС‹Рµ С€Р°С…Рё
   temp:=Board.Pieses[Knight] and Board.Occupancy[Board.SideToMove];
   while temp<>0 do
    begin
@@ -1010,7 +1020,7 @@ begin
    end;
   if Board.SideToMove=White then
    begin
-     // Рокировки
+     // Р РѕРєРёСЂРѕРІРєРё
      if ((Board.CastleRights and WhiteShortCastleMask)<>0) and ((Board.AllPieses and W00SQ)=0) and ((SquareAttackedBB(f1,Board.AllPieses,Board) and Board.Occupancy[black])=0)  then
        begin
         if (RookAttacksBB(f1,(Board.AllPieses xor Only[e1])) and Only[CheckInfo.EnemyKingSq])<>0 then
@@ -1028,9 +1038,9 @@ begin
          end;
        end;
       PawnNon7:=Board.Pieses[Pawn] and Board.Occupancy[white] and (not RanksBB[7]);
-      // Простые ходы
+      // РџСЂРѕСЃС‚С‹Рµ С…РѕРґС‹
       PawnSingle:=(PawnNon7 shl 8) and (not Board.AllPieses);
-      // Двойные ходы
+      // Р”РІРѕР№РЅС‹Рµ С…РѕРґС‹
       PawnDouble:=((PawnSingle and RanksBB[3]) shl 8) and (not Board.AllPieses) and Target;
       BB:=PawnAttacks[Board.SideToMove xor 1,CheckInfo.EnemyKingSq] and PawnSingle;
       BB1:=PawnAttacks[Board.SideToMove xor 1,CheckInfo.EnemyKingSq] and PawnDouble;
@@ -1045,7 +1055,7 @@ begin
       AddPawnPseudoMoves(-16,BB1,cnt,Mlist);
    end else
    begin
-      // Рокировки
+      // Р РѕРєРёСЂРѕРІРєРё
      if ((Board.CastleRights and BlackShortCastleMask)<>0) and ((Board.AllPieses and B00SQ)=0) and ((SquareAttackedBB(f8,Board.AllPieses,Board) and Board.Occupancy[white])=0)  then
        begin
         if (RookAttacksBB(f8,(Board.AllPieses xor Only[e8])) and Only[CheckInfo.EnemyKingSq])<>0 then
@@ -1063,9 +1073,9 @@ begin
          end;
        end;
       PawnNon7:=Board.Pieses[Pawn] and Board.Occupancy[black] and (not RanksBB[2]);
-      // Простые ходы
+      // РџСЂРѕСЃС‚С‹Рµ С…РѕРґС‹
       PawnSingle:=(PawnNon7 shr 8) and (not Board.AllPieses);
-      // Двойные ходы
+      // Р”РІРѕР№РЅС‹Рµ С…РѕРґС‹
       PawnDouble:=((PawnSingle and RanksBB[6]) shr 8) and (not Board.AllPieses) and Target;
       BB:=PawnAttacks[Board.SideToMove xor 1,CheckInfo.EnemyKingSq] and PawnSingle;
       BB1:=PawnAttacks[Board.SideToMove xor 1,CheckInfo.EnemyKingSq] and PawnDouble;
@@ -1083,7 +1093,7 @@ begin
 end;
 
 Function GenerateLegals(beg:integer;var Board:TBoard;var MList:TMoveList):integer;
-// Генерирует легальные ходы. Используется для теста perft
+// Р“РµРЅРµСЂРёСЂСѓРµС‚ Р»РµРіР°Р»СЊРЅС‹Рµ С…РѕРґС‹. РСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ РґР»СЏ С‚РµСЃС‚Р° perft
 var
   PinnedBB : TBitBoard;
   KingSq,cnt,m,i : integer;
@@ -1098,7 +1108,7 @@ begin
            m:=GeneratePseudoCaptures(0,Board.Occupancy[Board.SideToMove xor 1],Board,FullList);
            m:=m+GeneratePseudoMoves(m,not Board.AllPieses,Board,FullList);
          end;
-// Выбираем только легальные ходы из только что сгенерированных
+// Р’С‹Р±РёСЂР°РµРј С‚РѕР»СЊРєРѕ Р»РµРіР°Р»СЊРЅС‹Рµ С…РѕРґС‹ РёР· С‚РѕР»СЊРєРѕ С‡С‚Рѕ СЃРіРµРЅРµСЂРёСЂРѕРІР°РЅРЅС‹С…
  i:=0;
  while i<m do
    begin
@@ -1154,32 +1164,28 @@ begin
   Board.Occupancy[color]:=Board.Occupancy[color] or mask;
   Board.AllPieses:=Board.AllPieses or mask;
 end;
-Procedure SetUndo(var Board:TBoard;var Undo:TUndo);inline;
+Procedure SetUndo(var Board:TBoard;var Undo:TUndo);
 begin
-  // Сохраняем данные в структуру Undo.
+  // РЎРѕС…СЂР°РЅСЏРµРј РґР°РЅРЅС‹Рµ РІ СЃС‚СЂСѓРєС‚СѓСЂСѓ Undo.
   Undo.EnPassSq:=Board.EnPassSq;
   Undo.CastleRights:=Board.CastleRights;
   Undo.Rule50:=Board.Rule50;
   Undo.CheckersBB:=Board.CheckersBB;
   Undo.CapturedPiese:=Board.CapturedPiese;
   Undo.Key:=Board.Key;
-  Undo.PawnKey:=Board.PawnKey;
-  Undo.MatKey:=Board.MatKey;
   Undo.NonPawnMat[white]:=Board.NonPawnMat[white];
   Undo.NonPawnMat[black]:=Board.NonPawnMat[black];
-  Undo.PstMid:=Board.PstMid;
-  undo.PstEnd:=Board.PstEnd;
   undo.nullcnt:=Board.nullcnt;
   undo.Wframe:=GetWhiteFrameIndex(Net.model,Board);
   undo.Bframe:=GetBlackFrameIndex(Net.model,Board);
 end;
-Procedure MakeMove(move : integer;var Board:TBoard;var Undo:TUndo;isCheck:boolean);  inline;
-// Процедура делает ход на доске
+Procedure MakeMove(move : integer;var Board:TBoard;var Undo:TUndo;isCheck:boolean);
+// РџСЂРѕС†РµРґСѓСЂР° РґРµР»Р°РµС‚ С…РѕРґ РЅР° РґРѕСЃРєРµ
 var
-  MyColor,EnemyColor,FromSq,DestSq,Piese,PieseTyp,Captured,CapturedTyp,CapSq,RookFromSq,RookDestSq,PromoPiese,PromoPieseTyp,cnt : integer;
+  MyColor,EnemyColor,FromSq,DestSq,Piese,PieseTyp,Captured,CapturedTyp,CapSq,RookFromSq,RookDestSq,PromoPiese,PromoPieseTyp : integer;
   Key : int64;
 begin
-  // Инициализация
+  // РРЅРёС†РёР°Р»РёР·Р°С†РёСЏ
   MyColor:=Board.SideToMove;
   EnemyColor:=MyColor xor 1;
   Undo.isCapture:=(move and CaptureFlag)<>0;
@@ -1191,9 +1197,9 @@ begin
   Undo.isEnnPass:=Undo.isCapture and (Captured=Empty);
   Undo.isCastle:=(PieseTyp=King) and ((fromSq-destSq=2) or (DestSq-FromSq=2));
   Key:=Board.Key xor ZColor;
-  // Увеличиваем счетчики
+  // РЈРІРµР»РёС‡РёРІР°РµРј СЃС‡РµС‚С‡РёРєРё
   inc(Board.Rule50);
-  // Убираем побитую с доски
+  // РЈР±РёСЂР°РµРј РїРѕР±РёС‚СѓСЋ СЃ РґРѕСЃРєРё
   if Undo.isCapture then
     begin
       Board.Rule50:=0;
@@ -1204,31 +1210,24 @@ begin
           Captured:=Board.Pos[CapSq];
         end;
       CapturedTyp:=TypOfPiese[Captured];
-      if CapturedTyp=Pawn
-        then Board.PawnKey:=Board.PawnKey xor PieseZobr[EnemyColor,pawn,CapSq]
-        else Board.NonPawnMat[EnemyColor]:=Board.NonPawnMat[EnemyColor]-PieseTypValue[CapturedTyp];
+      if CapturedTyp<>Pawn
+        then Board.NonPawnMat[EnemyColor]:=Board.NonPawnMat[EnemyColor]-PieseTypValue[CapturedTyp];
       RemovePiese(EnemyColor,CapSq,CapturedTyp,Board);
       Key:=Key xor PieseZobr[EnemyColor,CapturedTyp,CapSq];
-      cnt:=BitCount(Board.Pieses[CapturedTyp] and Board.Occupancy[EnemyColor]);
-      Board.MatKey:=Board.MatKey xor MatZobr[EnemyColor,CapturedTyp,cnt] xor MatZobr[EnemyColor,CapturedTyp,cnt+1];
-      Board.PstMid:=Board.PstMid-PiesePSTMid[EnemyColor,CapturedTyp,CapSq];
-      Board.PstEnd:=Board.PstEnd-PiesePSTEnd[EnemyColor,CapturedTyp,CapSq];
     end;
-  // Сбрасываем метку взятия на проходе
+  // РЎР±СЂР°СЃС‹РІР°РµРј РјРµС‚РєСѓ РІР·СЏС‚РёСЏ РЅР° РїСЂРѕС…РѕРґРµ
   if Board.EnPassSq<>NonSq then
     begin
      Key:=Key xor EnnPassZobr[Board.EnPassSq];
      Board.EnPassSq:=NonSq;
     end;
-  // Обновляем флаг рокировок
+  // РћР±РЅРѕРІР»СЏРµРј С„Р»Р°Рі СЂРѕРєРёСЂРѕРІРѕРє
   Board.CastleRights:=Board.CastleRights and CastleRightsSq[FromSq] and CastleRightsSq[DestSq];
   if (Undo.CastleRights<>Board.CastleRights) then Key:=Key xor CastleZobr[Undo.CastleRights] xor CastleZobr[Board.CastleRights];
-  // Передвигаем фигуру, которая ходит.
+  // РџРµСЂРµРґРІРёРіР°РµРј С„РёРіСѓСЂСѓ, РєРѕС‚РѕСЂР°СЏ С…РѕРґРёС‚.
   MovePiese(MyColor,FromSq,DestSq,Piese,PieseTyp,Board);
   Key:=Key xor PieseZobr[MyColor,PieseTyp,FromSq] xor PieseZobr[MyColor,PieseTyp,DestSq];
-  Board.PstMid:=Board.PstMid-PiesePstMid[MyColor,PieseTyp,FromSq]+PiesePstMid[MyColor,PieseTyp,DestSq];
-  Board.PstEnd:=Board.PstEnd-PiesePstEnd[MyColor,PieseTyp,FromSq]+PiesePstEnd[MyColor,PieseTyp,DestSq];
-  // Если рокировка - двигаем вторую
+  // Р•СЃР»Рё СЂРѕРєРёСЂРѕРІРєР° - РґРІРёРіР°РµРј РІС‚РѕСЂСѓСЋ
   if Undo.isCastle then
     begin
       if DestSq-FromSq=2 then
@@ -1242,15 +1241,12 @@ begin
         end;
       MovePiese(MyColor,RookFromSq,RookDestSq,Board.Pos[RookFromSq],Rook,Board);
       Key:=Key xor PieseZobr[MyColor,Rook,RookFromSq] xor PieseZobr[MyColor,Rook,RookDestSq];
-      Board.PstMid:=Board.PstMid-PiesePstMid[MyColor,rook,RookFromSq]+PiesePstMid[Mycolor,rook,RookDestSq];
-      Board.PstEnd:=Board.PstEnd-PiesePstEnd[MyColor,rook,RookFromSq]+PiesePstEnd[Mycolor,rook,RookDestSq];
     end;
-  // Для пешек - дополнительная работа
+  // Р”Р»СЏ РїРµС€РµРє - РґРѕРїРѕР»РЅРёС‚РµР»СЊРЅР°СЏ СЂР°Р±РѕС‚Р°
   if (PieseTyp=Pawn) then
     begin
       Board.Rule50:=0;
-      Board.PawnKey:=Board.PawnKey xor PieseZobr[MyColor,pawn,FromSq] xor PieseZobr[MyColor,pawn,DestSq];
-      // Устанавливаем метку взятия на проходе в случае двойного хода пешкой
+      // РЈСЃС‚Р°РЅР°РІР»РёРІР°РµРј РјРµС‚РєСѓ РІР·СЏС‚РёСЏ РЅР° РїСЂРѕС…РѕРґРµ РІ СЃР»СѓС‡Р°Рµ РґРІРѕР№РЅРѕРіРѕ С…РѕРґР° РїРµС€РєРѕР№
       if (FromSq-DestSq=16) or (FromSq-DestSq=-16) then
         begin
           Board.EnPassSq:=FromSq+PawnPush[MyColor];
@@ -1265,17 +1261,10 @@ begin
             else PromoPiese:=-PromoPieseTyp;
           SetPiese(MyColor,DestSq,PromoPiese,PromoPieseTyp,Board);
           Key:=Key xor PieseZobr[MyColor,Pawn,DestSQ] xor PieseZobr[MyColor,PromoPieseTyp,DestSq];
-          Board.PawnKey:=Board.PawnKey xor PieseZobr[MyColor,pawn,DestSq];
-          cnt:=BitCount(Board.Pieses[Pawn] and Board.Occupancy[MyColor]);
-          Board.MatKey:=Board.MatKey xor MatZobr[MyColor,pawn,cnt] xor MatZobr[MyColor,pawn,cnt+1];
-          cnt:=BitCount(Board.Pieses[PromoPieseTyp] and Board.Occupancy[MyColor]);
-          Board.MatKey:=Board.MatKey xor MatZobr[MyColor,PromoPieseTyp,cnt] xor MatZobr[MyColor,PromoPieseTyp,cnt-1];
           Board.NonPawnMat[MyColor]:=Board.NonPawnMat[MyColor]+PieseTypValue[PromoPieseTyp];
-          Board.PstMid:=Board.PstMid+PiesePstMid[MyColor,PromoPieseTyp,DestSq];
-          Board.PstEnd:=Board.PstEnd+PiesePstEnd[MyColor,PromoPieseTyp,DestSq];
         end;
     end;
-  // Устанавливаем флажки после хода
+  // РЈСЃС‚Р°РЅР°РІР»РёРІР°РµРј С„Р»Р°Р¶РєРё РїРѕСЃР»Рµ С…РѕРґР°
   Board.Key:=Key;
   Board.SideToMove:=EnemyColor;
   Board.CapturedPiese:=Captured;
@@ -1285,19 +1274,19 @@ begin
     else Board.CheckersBB:=0;
 end;
 
-Procedure UnMakeMove(move : integer;var Board:TBoard; var Undo:TUndo);inline;
-// Возвращает ход назад
+Procedure UnMakeMove(move : integer;var Board:TBoard; var Undo:TUndo);
+// Р’РѕР·РІСЂР°С‰Р°РµС‚ С…РѕРґ РЅР°Р·Р°Рґ
 var
   MyColor,FromSq,DestSq,Piese,PieseTyp,RookFromSq,RookDestSq,CapSq : integer;
 begin
-  // Инициализация
+  // РРЅРёС†РёР°Р»РёР·Р°С†РёСЏ
   Board.SideToMove:=Board.SideToMove xor 1;
   MyColor:=Board.SideToMove;
   FromSQ:=move and 63;
   DestSq:=(move shr 6) and 63;
-  Piese:=Board.Pos[DestSq];   // Либо ходившая фигура либо превращенная
-  PieseTyp:=TypOfPiese[Piese];  // Либо ходившая фигура либо превращенная
-    // Откатываем рокировку (ход ладьи)
+  Piese:=Board.Pos[DestSq];   // Р›РёР±Рѕ С…РѕРґРёРІС€Р°СЏ С„РёРіСѓСЂР° Р»РёР±Рѕ РїСЂРµРІСЂР°С‰РµРЅРЅР°СЏ
+  PieseTyp:=TypOfPiese[Piese];  // Р›РёР±Рѕ С…РѕРґРёРІС€Р°СЏ С„РёРіСѓСЂР° Р»РёР±Рѕ РїСЂРµРІСЂР°С‰РµРЅРЅР°СЏ
+    // РћС‚РєР°С‚С‹РІР°РµРј СЂРѕРєРёСЂРѕРІРєСѓ (С…РѕРґ Р»Р°РґСЊРё)
   if Undo.isCastle then
     begin
       if DestSq-FromSq=2 then
@@ -1311,45 +1300,41 @@ begin
         end;
       MovePiese(MyColor,RookDestSq,RookFromSq,Board.Pos[RookDestSq],Rook,Board);
     end;
-  // Откатываем превращение
+  // РћС‚РєР°С‚С‹РІР°РµРј РїСЂРµРІСЂР°С‰РµРЅРёРµ
   if (move and PromoteFlag)<>0 then
     begin
       RemovePiese(MyColor,DestSq,PieseTyp,Board);
-      PieseTyp:=Pawn;   // ходившая фигура
+      PieseTyp:=Pawn;   // С…РѕРґРёРІС€Р°СЏ С„РёРіСѓСЂР°
       if MyColor=White
         then Piese:=PieseTyp
         else Piese:=-PieseTyp;
       SetPiese(MyColor,DestSq,Piese,PieseTyp,Board);
     end;
  
-  // откатываем основной ход
+  // РѕС‚РєР°С‚С‹РІР°РµРј РѕСЃРЅРѕРІРЅРѕР№ С…РѕРґ
   MovePiese(MyColor,DestSq,FromSq,Piese,PieseTyp,Board);
-  // Откатываем взятие
+  // РћС‚РєР°С‚С‹РІР°РµРј РІР·СЏС‚РёРµ
   if Undo.isCapture then
     begin
       CapSq:=DestSq;
       if Undo.isEnnPass then CapSq:=DestSq-PawnPush[MyColor];
       SetPiese(MyColor xor 1,CapSq,Board.CapturedPiese,TypOfPiese[Board.CapturedPiese],Board);
     end;
- // Восстанавливаемся из Undo
+ // Р’РѕСЃСЃС‚Р°РЅР°РІР»РёРІР°РµРјСЃСЏ РёР· Undo
   Board.EnPassSq:=Undo.EnPassSq;
   Board.CastleRights:=Undo.CastleRights;
   Board.Rule50:=Undo.Rule50;
   Board.CheckersBB:=Undo.CheckersBB;
   Board.CapturedPiese:=Undo.CapturedPiese;
   Board.Key:=Undo.Key;
-  Board.PawnKey:=Undo.PawnKey;
-  Board.MatKey:=Undo.MatKey;
   Board.NonPawnMat[white]:=Undo.NonPawnMat[white];
   Board.NonPawnMat[black]:=Undo.NonPawnMat[black];
-  Board.PstMid:=Undo.PstMid;
-  Board.PstEnd:=Undo.PstEnd;
   Board.nullcnt:=Undo.nullcnt;
 end;
 
-Procedure MakeNullMove(var Board:TBoard);inline;
+Procedure MakeNullMove(var Board:TBoard);
 begin
-  // Сбрасываем метку взятия на проходе
+  // РЎР±СЂР°СЃС‹РІР°РµРј РјРµС‚РєСѓ РІР·СЏС‚РёСЏ РЅР° РїСЂРѕС…РѕРґРµ
   if Board.EnPassSq<>NonSq then
     begin
      Board.Key:=Board.Key xor EnnPassZobr[Board.EnPassSq];
@@ -1361,27 +1346,23 @@ begin
   Board.SideToMove:=Board.SideToMove xor 1;
 end;
 
-Procedure UnMakeNullMove(var Board:TBoard;var Undo:TUndo);inline;
+Procedure UnMakeNullMove(var Board:TBoard;var Undo:TUndo);
 begin
   Board.SideToMove:=Board.SideToMove xor 1;
-  // Восстанавливаемся из Undo
+  // Р’РѕСЃСЃС‚Р°РЅР°РІР»РёРІР°РµРјСЃСЏ РёР· Undo
   Board.EnPassSq:=Undo.EnPassSq;
   Board.CastleRights:=Undo.CastleRights;
   Board.Rule50:=Undo.Rule50;
   Board.CheckersBB:=Undo.CheckersBB;
   Board.CapturedPiese:=Undo.CapturedPiese;
   Board.Key:=Undo.Key;
-  Board.PawnKey:=Undo.PawnKey;
-  Board.MatKey:=Undo.MatKey;
   Board.NonPawnMat[white]:=Undo.NonPawnMat[white];
   Board.NonPawnMat[black]:=Undo.NonPawnMat[black];
-  Board.PstMid:=Undo.PstMid;
-  Board.PstEnd:=Undo.PstEnd;
   Board.nullcnt:=Undo.nullcnt;
 end;
 
 Function Perft(Root:boolean;t1:TDateTime;var Board:TBoard;depth:integer):int64;
-// Тест perft
+// РўРµСЃС‚ perft
 var
    t2 : TDateTime;
    nodes,cnt,nps: int64;
@@ -1421,13 +1402,13 @@ begin
 end;
 
 Procedure ReflectBoard(var Board:TBoard;var NewBoard:TBoard);
-// Переворачивает доску: черные фигуры становятся на место белых и наоборот. Используется для отладки.
+// РџРµСЂРµРІРѕСЂР°С‡РёРІР°РµС‚ РґРѕСЃРєСѓ: С‡РµСЂРЅС‹Рµ С„РёРіСѓСЂС‹ СЃС‚Р°РЅРѕРІСЏС‚СЃСЏ РЅР° РјРµСЃС‚Рѕ Р±РµР»С‹С… Рё РЅР°РѕР±РѕСЂРѕС‚. РСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ РґР»СЏ РѕС‚Р»Р°РґРєРё.
 var
   i,piese,sq,newsq:integer;
   temp : TBitBoard;
 begin
   ClearBoard(NewBoard);
-  // Переставляем фигуры
+  // РџРµСЂРµСЃС‚Р°РІР»СЏРµРј С„РёРіСѓСЂС‹
   for i:=a1 to h8 do
     begin
       piese:=Board.Pos[i];
@@ -1501,11 +1482,8 @@ begin
         end;
       NewBoard.CapturedPiese:=-Board.CapturedPiese;
       NewBoard.Key:=CalcFullKey(NewBoard);
-      NewBoard.PawnKey:=CalcFullPawnKey(NewBoard);
-      NewBoard.MatKey:=CalcFullMatKey(NewBoard);
       NewBoard.NonPawnMat[white]:=Board.NonPawnMat[black];
       NewBoard.NonPawnMat[black]:=Board.NonPawnMat[white];
-      CalcFullPST(NewBoard.PstMid,NewBoard.PstEnd,NewBoard);
     end;
 end;
 
@@ -1522,12 +1500,8 @@ begin
   NewBoard.CheckersBB:=Board.CheckersBB;
   NewBoard.CapturedPiese:=Board.CapturedPiese;
   NewBoard.Key:=Board.Key;
-  NewBoard.PawnKey:=Board.PawnKey;
-  NewBoard.MatKey:=Board.MatKey;
   NewBoard.NonPawnMat[white]:=Board.NonPawnMat[white];
   NewBoard.NonPawnMat[black]:=Board.NonPawnMat[black];
-  NewBoard.PstMid:=Board.PstMid;
-  NewBoard.PstEnd:=Board.PstEnd;
   NewBoard.nullcnt:=Board.nullcnt;
   NewBoard.Nodes:=Board.Nodes;
   NewBoard.remain:=Board.remain;
@@ -1555,12 +1529,8 @@ Result:=false;
  if NewBoard.CheckersBB<>Board.CheckersBB then exit;
  if NewBoard.CapturedPiese<>Board.CapturedPiese then exit;
  if NewBoard.Key<>Board.Key then exit;
- if NewBoard.PawnKey<>Board.PawnKey then exit;
- if NewBoard.MatKey<>Board.MatKey then exit;
  if NewBoard.NonPawnMat[white]<>Board.NonPawnMat[white] then exit;
  if NewBoard.NonPawnMat[black]<>Board.NonPawnMat[black] then exit;
- if NewBoard.PstMid<>Board.PstMid then exit;
- if NewBoard.PstEnd<>Board.PstEnd then exit;
  if NewBoard.nullcnt<>Board.nullcnt then exit;
  For i:=Pawn to Queen do
     if NewBoard.Pieses[i]<>Board.Pieses[i] then exit;

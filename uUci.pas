@@ -1,133 +1,67 @@
-unit uUci;
+Ôªøunit uUci;
+
+{$IFDEF FPC}
+  {$MODE Delphi}
+{$ENDIF}
 
 interface
-uses Windows,SysUtils,uBoard,uBitBoards,uSearch,uSort,uEval,uPawn,uMaterial,uHash,uAttacks,uMagic,uEndgame;
+uses SyncObjs,SysUtils,DateUtils,uBoard,uBitBoards,uSearch,uSort,uEval,uHash,uAttacks;
 Const
-     MaxBufer=16384;
      StartPositionFen='rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
-VAR
-   stin,stout : cardinal;
-   isConsole:boolean;
 
 Procedure MainLoop;
-procedure LWrite(s:ansistring);
-Procedure poll(var Board:Tboard);
+Procedure poll();
 Procedure NewSearch(ThreadId:integer);
 Function StrToMove(smove:ansistring;var Board:Tboard):integer;
 Procedure WaitPonderhit;
-Procedure SetHash(size:integer);
+Procedure SetHash(var TT:TTable;size:integer);
 Procedure NewGame;
 Procedure SetRemain;
-Procedure SetupChanels;
 
 implementation
-   uses uThread,UNN;
+   uses uThread,Unn,Ubenchmark;
 
-Procedure SetupChanels;
-var mode: cardinal;
-begin
-  stin := GetStdHandle(STD_INPUT_HANDLE);
-  stout := GetStdHandle(STD_OUTPUT_HANDLE);
-  IsConsole := GetConsoleMode(stin,mode);
-  if IsConsole then
-    begin
-     mode := mode and not (ENABLE_WINDOW_INPUT or ENABLE_MOUSE_INPUT);
-     SetConsoleMode(stin,mode);
-     FlushConsoleInputBuffer(stin);
-    end;
-end;
 
-procedure WriteData(pbuff:pointer; n:integer);
-var nw: cardinal;
+Procedure SetHash(var TT:TTable;size:integer);
 begin
-  WriteFile(stout,pbuff^,n,nw,nil);
-end;
-
-procedure LWrite(s:ansistring);
-begin
-  s := s + #10;
-  WriteData(pansichar(s),length(s));
-end;
-
-function CheckInput: integer;
-var
- n,bytesread,bytesleft: cardinal;
- i: integer;
- Inp: array[0..MaxBufer-1] of ansichar;
-begin
-  result := 0;
-  if IsConsole then
-    begin
-     GetNumberOfConsoleInputEvents(stin,n);
-     if n > 1 then result := 256;
-     exit;
-    end;
-  PeekNamedPipe(stin,@Inp,MaxBufer,@bytesread,@n,@bytesleft);
-  if bytesread = 0 then exit;
-  for i := 0 to bytesread-1 do
-  if (Inp[i] = #10) or (Inp[i] = #13) then
-    begin
-     result:= i+1;
-     break;
-    end;
-  if bytesread >= MaxBufer then result := MaxBufer;
-end;
-
-function ReadInput(total:integer):ansistring;
-var
- n: cardinal;
- Inp: array[0..MaxBufer-1] of ansichar;
-begin
-  Readfile(stin,Inp,total,n,nil);
-  Inp[n] := #0;
-  result := Inp;
-  result := trim(result);
-end;
-Procedure SetHash(size:integer);
-begin
-  InitTT(size);
-  InitPawnTable(1);
-  InitMatTable(1);
+  InitTT(TT,size);
 end;
 Procedure SetRemain;
-// ¬ Á‡‚ËÒËÏÓÒÚË ÓÚ ÓÒÚ‡‚¯Â„ÓÒˇ ‚ÂÏÂÌË ÓÔÂ‰ÂÎˇÂÏ ˜‡ÒÚÓÚÛ Â„Ó ÔÓ‚ÂÍË:
+// –í –∑–∞–≤–∏—Å–∏–º–æ—Å—Ç–∏ –æ—Ç –æ—Å—Ç–∞–≤—à–µ–≥–æ—Å—è –≤—Ä–µ–º–µ–Ω–∏ –æ–ø—Ä–µ–¥–µ–ª—è–µ–º —á–∞—Å—Ç–æ—Ç—É –µ–≥–æ –ø—Ä–æ–≤–µ—Ä–∫–∏:
 begin
-  If (game.time=64*3600*1000) then game.remain:=10000 else // œÓÌ‰ÂËÌ„ ‚ÒÂ„‰‡ ‚ Ò‡ÏÓÏ ·˚ÒÚÓÏ ÂÊËÏÂ ÔÓ‚ÂÍË
-  If (game.time=48*3600*1000) then game.remain:=1000000 else // –ÂÊËÏ ‡Ì‡ÎËÁ‡ - ‚ÒÂ„‰‡ ‚ Ò‡ÏÓÏ ÏÂ‰ÎÂÌÌÓÏ ÂÊËÏÂ ÔÓ‚ÂÍË
-  If (game.time>5000) then game.remain:=1000000 else // ≈ÒÎË ·ÓÎ¸¯Â 5 ÒÂÍÛÌ‰ Ì‡ ıÓ‰  - ÔÓ‚ÂÍ‡ ˜ÂÂÁ Í‡Ê‰˚È ÏËÎÎËÓÌ ÔÓÁËˆËÈ
-  If (game.time>1000) then game.remain:=200000  else // ≈ÒÎË ·ÓÎ¸¯Â 1 ÒÂÍÛÌ‰ Ì‡ ıÓ‰  - ÔÓ‚ÂÍ‡ ˜ÂÂÁ Í‡Ê‰˚Â 200Í ÔÓÁËˆËÈ
-  If (game.time>300)  then game.remain:=20000   else // ≈ÒÎË ·ÓÎ¸¯Â 0,3 ÒÂÍÛÌ‰ Ì‡ ıÓ‰  - ÔÓ‚ÂÍ‡ ˜ÂÂÁ Í‡Ê‰˚Â 20Í ÔÓÁËˆËÈ
-                           game.remain:=10000; // ≈ÒÎË ÏÂÌ¸¯Â 0,3 ÒÂÍÛÌ‰ Ì‡ ıÓ‰  - ÔÓ‚ÂÍ‡ ˜ÂÂÁ Í‡Ê‰˚Â 10Í ÔÓÁËˆËÈ
+  If (game.time=64*3600*1000) then game.remain:=10000 else // –ü–æ–Ω–¥–µ—Ä–∏–Ω–≥ –≤—Å–µ–≥–¥–∞ –≤ —Å–∞–º–æ–º –±—ã—Å—Ç—Ä–æ–º —Ä–µ–∂–∏–º–µ –ø—Ä–æ–≤–µ—Ä–∫–∏
+  If (game.time=48*3600*1000) then game.remain:=1000000 else // –†–µ–∂–∏–º –∞–Ω–∞–ª–∏–∑–∞ - –≤—Å–µ–≥–¥–∞ –≤ —Å–∞–º–æ–º –º–µ–¥–ª–µ–Ω–Ω–æ–º —Ä–µ–∂–∏–º–µ –ø—Ä–æ–≤–µ—Ä–∫–∏
+  If (game.time>5000) then game.remain:=1000000 else // –ï—Å–ª–∏ –±–æ–ª—å—à–µ 5 —Å–µ–∫—É–Ω–¥ –Ω–∞ —Ö–æ–¥  - –ø—Ä–æ–≤–µ—Ä–∫–∞ —á–µ—Ä–µ–∑ –∫–∞–∂–¥—ã–π –º–∏–ª–ª–∏–æ–Ω –ø–æ–∑–∏—Ü–∏–π
+  If (game.time>1000) then game.remain:=200000  else // –ï—Å–ª–∏ –±–æ–ª—å—à–µ 1 —Å–µ–∫—É–Ω–¥ –Ω–∞ —Ö–æ–¥  - –ø—Ä–æ–≤–µ—Ä–∫–∞ —á–µ—Ä–µ–∑ –∫–∞–∂–¥—ã–µ 200–∫ –ø–æ–∑–∏—Ü–∏–π
+  If (game.time>300)  then game.remain:=20000   else // –ï—Å–ª–∏ –±–æ–ª—å—à–µ 0,3 —Å–µ–∫—É–Ω–¥ –Ω–∞ —Ö–æ–¥  - –ø—Ä–æ–≤–µ—Ä–∫–∞ —á–µ—Ä–µ–∑ –∫–∞–∂–¥—ã–µ 20–∫ –ø–æ–∑–∏—Ü–∏–π
+                           game.remain:=10000; // –ï—Å–ª–∏ –º–µ–Ω—å—à–µ 0,3 —Å–µ–∫—É–Ω–¥ –Ω–∞ —Ö–æ–¥  - –ø—Ä–æ–≤–µ—Ä–∫–∞ —á–µ—Ä–µ–∑ –∫–∞–∂–¥—ã–µ 10–∫ –ø–æ–∑–∏—Ü–∏–π
 end;
 Procedure NewGame;
+// –∑–∞–ø—É—Å–∫–∞–µ—Ç—Å—è –ø—Ä–∏ –ø–æ–ª—É—á–µ–Ω–∏–∏ –∫–æ–º–∞–Ω–¥—ã ucinewgame
 var
   i : integer;
 begin
-  If game.Threads>1 then
-    begin
-      StopThreads;
-      Init_Threads(game.Threads);
-    end;
+  // –ù–∞—á–∞–ª—å–Ω–∞—è –ø–æ–∑–∏—Ü–∏—è - –≤ –ø–µ—Ä–≤—ã–π –ø–æ—Ç–æ–∫
   SetBoard(StartPositionFen,Threads[1].Board);
-  SetHash(game.hashsize);
-  game.time:=0;
-  SetRemain;
-  game.HashAge:=0;
-  game.showtext:=true;
+  game.movestocontrolmax:=0;
+  // –ß–∏—Å—Ç–∏–º –≥–ª–æ–±–∞–ª—å–Ω—ã–π —Ö–µ—à –∏ –∏—Å—Ç–æ—Ä–∏—é –¥–ª—è –≤—Å–µ—Ö –ø–æ—Ç–æ–∫–æ–≤
+  ClearHash(TTGlobal,game.threads);
   for i:=1 to game.Threads do
-   ClearHistory(Threads[i].Sortunit,Threads[i].Tree);
+   begin
+    ClearHistory(Threads[i].Sortunit,Threads[i].Tree);
+   end;
 end;
 
 Procedure NewSearch(ThreadId:integer);
+// –∑–∞–ø—É—Å–∫–∞–µ—Ç—Å—è –∫–∞–∂–¥—ã–π —Ä–∞–∑ –ø–æ—Å–ª–µ –ø–æ–ª—É—á–µ–Ω–∏—è –∫–æ–º–∞–Ω–¥—ã go –¥–ª—è –∫–∞–∂–¥–æ–≥–æ –ø–æ—Ç–æ–∫–∞
 begin
   Threads[ThreadId].Board.Nodes:=0;
   Threads[ThreadId].AbortSearch:=false;
   If ThreadId=1 then
     begin
-     game.HashAge:=game.HashAge+4;
-     if game.HashAge>=256 then game.HashAge:=0;
-     game.TimeStart:=GetTickCount;
+     // –î–ª—è –æ—Å–Ω–æ–≤–Ω–æ–≥–æ –ø–æ—Ç–æ–∫–∞ —É–≤–µ–ª–∏—á–∏–≤–∞–µ–º —Å—á–µ—Ç—á–∏–∫ –≤–æ–∑—Ä–∞—Å—Ç–∞ –≥–ª–æ–±–∞–ª—å–Ω–æ–≥–æ —Ö–µ—à–∞
+     TTGlobal.Age:=TTGlobal.Age+AgeInc;
      SetRemain;
      Threads[1].Board.remain:=game.remain;
     end;
@@ -171,10 +105,8 @@ var
   CheckInfo       :TCheckInfo;
   isCheck         : boolean;
   Undo            : TUndo;
-  PrevKey,LastKey : int64;
 begin
   mlist := trim(mlist) + ' ';
-  PrevKey:=0;LastKey:=0;
   repeat
     v := pos(' ',mlist);
     smove:= trim(copy(mlist,1,v));
@@ -184,14 +116,13 @@ begin
         SetUndo(Board,Undo);
         FillCheckInfo(CheckInfo,Board);
         isCheck:=isMoveCheck(move,CheckInfo,Board);
-        LastKey:=PrevKey;
-        PrevKey:=Board.Key;
         MakeMove(move,Board,Undo,isCheck);
+        // –∏—Å—Ç–æ—Ä–∏—è "–¥–æ –∫–æ—Ä–Ω—è" –∑–∞–ø–∏—Å—ã–≤–∞–µ—Ç—Å—è —Ç–æ–ª—å–∫–æ –≤ —á–∞—Å—Ç–∏ —Ü–µ–ø–æ—á–∫–∏ —Ö–æ–¥–æ–≤ –¥–æ –≤–∑—è—Ç–∏—è –∏–ª–∏ –¥–≤–∏–∂–µ–Ω–∏—è –ø–µ—à–∫–∏
+        rep.cnt:=Board.Rule50;
+        rep.keys[rep.cnt]:=Board.Key;
       end;
     delete(mlist,1,v);
   until length(mlist) < 4;
-  Tree[-1].key:=LastKey;
-  Tree[0].key:=PrevKey;
 end;
 
 function FindStringParam(from:ansistring;what:ansistring): string;
@@ -216,7 +147,7 @@ begin
 end;
 
 Function TakeHashSize(val : integer):integer;
-// ¬˚·Ë‡ÂÚ ·ÎËÊ‡È¯ÂÂ ÁÌ‡˜ÂÌËÂ ıÂ¯‡, ˇ‚Îˇ˛˘ÂÂÒˇ ÒÚÂÔÂÌ¸˛ 2
+// –í—ã–±–∏—Ä–∞–µ—Ç –±–ª–∏–∂–∞–π—à–µ–µ –∑–Ω–∞—á–µ–Ω–∏–µ —Ö–µ—à–∞, —è–≤–ª—è—é—â–µ–µ—Å—è —Å—Ç–µ–ø–µ–Ω—å—é 2
 const
   HashSizes : array[1..13] of integer = (16,32,64,128,256,512,1024,2048,4096,8192,16384,32768,65536);
 var
@@ -225,17 +156,12 @@ begin
   i:=1;
   while (i<=13) and (HashSizes[i]<val) do
     inc(i);
- {$IFDEF WIN64}
-    i:=i;
- {$ELSE}
-    If i>7 then i:=7;   // ƒÎˇ 32 ·ËÚÌÓÈ ‚ÂÒËË Ï‡ÍÒËÏÛÏ ıÂ¯‡ - 1√¡
- {$ENDIF}
   Result:=HashSizes[i];
 end;
 Procedure Parser(s:ansistring);
-// œÓˆÂ‰Û‡ ÍÓÏÏÛÌËÍ‡ˆËË Ò Ó·ÓÎÓ˜ÍÓÈ - ÔÓÎÛ˜‡ÂÚ Ë ÓÚÔ‡‚ÎˇÂÚ ÍÓÏ‡Ì‰˚
+// –ü—Ä–æ—Ü–µ–¥—É—Ä–∞ –∫–æ–º–º—É–Ω–∏–∫–∞—Ü–∏–∏ —Å –æ–±–æ–ª–æ—á–∫–æ–π - –ø–æ–ª—É—á–∞–µ—Ç –∏ –æ—Ç–ø—Ä–∞–≤–ª—è–µ—Ç –∫–æ–º–∞–Ω–¥—ã
 var
-   n,wtime,btime,winc,binc,movestocontrol,val,clock,incr,movetime : integer;
+   n,wtime,btime,winc,binc,movestocontrol,val,clock,incr,movetime,i : integer;
    fen,mlist:ansistring;
    //pondermove:integer;
    sval:string;
@@ -245,10 +171,11 @@ begin
     begin
       FillWhiteAcc16(Net.model,Threads[1].Board,Threads[1].Pass[1]);
       FillBlackAcc16(Net.model,Threads[1].Board,Threads[1].Pass[1]);
-      Lwrite(' Score = '+InttoStr(Evaluate(Threads[1].Board,1,1)));                         // —Ú‡ÚË˜ÂÒÍ‡ˇ ÓˆÂÌÍ‡ ÔÓÁËˆËË
+      Writeln(' Score = '+InttoStr(Evaluate(Threads[1].Board,1,1)));                         // –°—Ç–∞—Ç–∏—á–µ—Å–∫–∞—è –æ—Ü–µ–Ω–∫–∞ –ø–æ–∑–∏—Ü–∏–∏
+      Flush(Output);
       exit;
     end;
-  if pos('perft ',s)=1 then                                                     // ÚÂÒÚ perft
+  if pos('perft ',s)=1 then                                                     // —Ç–µ—Å—Ç perft
     begin
       n:=pos(' ',s);
       sval:=trim(copy(s,n,length(s)));
@@ -263,20 +190,24 @@ begin
     end;
   if pos('uci',s) = 1  then                                                               //uci
     begin
-     LWrite('id name ' + GetFullVersionName(Net.model));
-     LWrite('id author Alex Morozov (booot76@gmail.com)');
-     // “ÛÚ ‚˚‚‡ÎË‚‡ÂÏ ÒÔËÒÓÍ Ô‡‡ÏÂÚÓ‚ ‰‚ËÊÍ‡
-     LWrite('option name Hash type spin default 128 min 16 max 65536');
-     LWrite('option name Ponder type check default false');
-     LWrite('option name Threads type spin default 1 min 1 max '+inttostr(MaxThreads));
-     LWrite('uciok');
+     Writeln(Output,'id name ' + GetFullVersionName(Net.model));
+     Writeln(Output,'id author Alex Morozov (booot76@gmail.com)');
+     // –¢—É—Ç –≤—ã–≤–∞–ª–∏–≤–∞–µ–º —Å–ø–∏—Å–æ–∫ –ø–∞—Ä–∞–º–µ—Ç—Ä–æ–≤ –¥–≤–∏–∂–∫–∞
+     Writeln(Output,'option name Hash type spin default 128 min 16 max 65536');
+     Writeln(Output,'option name Ponder type check default false');
+     Writeln(Output,'option name Threads type spin default 1 min 1 max '+inttostr(MaxThreads));
+     Writeln(Output,'uciok');
+     Flush(Output);
      exit;
     end;
   if (pos('isready',s)>0) then                                                         //isready
     begin
-     LWrite('readyok');
+     Writeln(Output,'readyok');
+     Flush(Output);
      exit;
     end;
+  if pos('bench',s) = 1 then bench;                                          // Benchmark
+
   if pos('setoption ',s) = 1 then                                               // setoption
     begin
      n := pos('value ',s);
@@ -285,11 +216,12 @@ begin
         sval := trim(copy(s,n+6,length(s)));
         if (pos('name Hash',s) > 0) or (pos('name hash',s) > 0)   then
          begin
+          // –£—Å—Ç–∞–Ω–∞–≤–ª–∏–≤–∞–µ–º –Ω–æ–≤—ã–π —Ä–∞–∑–º–µ—Ä –≥–ª–æ–±–∞–ª—å–Ω–æ–≥–æ —Ö–µ—à–∞ –¥–≤–∏–∂–∫–∞
           val := StrToIntDef(sval,128);
           if val<16 then val:=16;
           val:=TakeHashSize(val);
           game.hashsize:=val;
-          SetHash(val);
+          SetHash(TTGlobal,val);
          end else
         if (pos('name ponder',s) > 0) or (pos('name Ponder',s) > 0) then
          begin
@@ -300,11 +232,11 @@ begin
          begin
            val := StrToIntDef(sval,1);
            if val>MaxThreads then val:=MaxThreads;
-            // ŒÒÚ‡Ì‡‚ÎË‚‡ÂÏ ÔÓÚÓÍË ÍÓÚÓ˚Â ÏÓ„ÎË ·˚Ú¸ Á‡ÔÛ˘ÂÌ˚ ‡ÌÂÂ
+            // –û—Å—Ç–∞–Ω–∞–≤–ª–∏–≤–∞–µ–º –ø–æ—Ç–æ–∫–∏ –∫–æ—Ç–æ—Ä—ã–µ –º–æ–≥–ª–∏ –±—ã—Ç—å –∑–∞–ø—É—â–µ–Ω—ã —Ä–∞–Ω–µ–µ
            StopThreads;
            game.Threads:=val;
-           ClearThreadMemory;
-           NewGame;
+           // –ó–∞–ø—É—Å–∫–∞–µ–º –∏–Ω–∏—Ü–∏–∞–ª–∏–∑–∞—Ü–∏—é –Ω—É–∂–Ω–æ–≥–æ –∫–æ–ª–∏—á–µ—Å—Ç–≤–∞ –ø–æ—Ç–æ–∫–æ–≤
+           InitThreads(game.Threads);
          end;
        end;
      exit;
@@ -327,8 +259,6 @@ begin
       if n > 0 then fen := copy(fen,n+4,length(fen)) else fen := '';
       if (fen='') or (fen='startpos') then fen:=StartPositionFEN;
       SetBoard(fen,Threads[1].Board);
-      Threads[1].tree[0].key:=0;
-      Threads[1].tree[-1].key:=0;
       ForceMoves(Threads[1].Board,Threads[1].tree,mlist);
      // PrintBoard(Boards[1]);
       Threads[1].tree[1].key:=Threads[1].Board.Key;
@@ -358,29 +288,32 @@ begin
             clock:=btime;
             incr:=binc;
           end;
-        // «‰ÂÒ¸ Ò˜ËÚ‡ÂÏ ÍÓÌÚÓÎ¸ ‚ÂÏÂÌË
+        // –ó–¥–µ—Å—å —Å—á–∏—Ç–∞–µ–º –∫–æ–Ω—Ç—Ä–æ–ª—å –≤—Ä–µ–º–µ–Ω–∏
         if movestocontrol>0 then
           begin
-            // ÓÌÚÓÎ¸ ‚ÂÏÂÌË
-            game.time:=clock div (movestocontrol+1);
-            If (clock>10000) and (movestoControl>2)
+            if movestocontrol>game.movestocontrolmax then game.movestocontrolmax:=movestocontrol;
+            //–ö–æ–Ω—Ç—Ä–æ–ª—å –≤—Ä–µ–º–µ–Ω–∏
+            if movestocontrol>1
+             then game.time:=clock div movestocontrol
+             else game.time:=clock div 2;
+            if movestocontrol>(game.movestocontrolmax div 2) then game.time:=game.time+(game.time div 2);
+            If (clock>1000) and (movestocontrol>1)
               then  game.rezerv:=clock div 4
               else  game.rezerv:=game.time;
           end else
           begin
-            // sudden death
             if incr>0 then
               begin
-                // — ‰Ó·‡‚ÎÂÌËÂÏ
-                game.time:=(clock div 20)+(incr div 2);
-                If clock>10000
-                  then  game.rezerv:=clock div 4
-                  else  game.rezerv:=game.time;
+                // –° –¥–æ–±–∞–≤–ª–µ–Ω–∏–µ–º
+                game.time:=(clock div 15) + (incr div 2);
+                if clock>1000
+                  then game.rezerv:=(clock div 4)
+                  else game.rezerv:=game.time;
               end else
               begin
-                // ·ÂÁ ‰Ó·‡‚ÎÂÌËˇ
+                // –±–µ–∑ –¥–æ–±–∞–≤–ª–µ–Ω–∏—è
                 game.time:=clock div 30;
-                If clock>20000
+                If clock>2000
                   then  game.rezerv:=game.time*2
                   else  game.rezerv:=game.time;
                 if movetime<>0 then
@@ -400,58 +333,11 @@ begin
            end;
          game.oldtime:=game.time;
        end;
-     Think;
+     // –ó–∞–ø—É—Å–∫–∞–µ–º –ø–µ—Ä–≤—ã–π –ø–æ—Ç–æ–∫
+     Threads[1].haswork:=true;
+     IdleEvent.SetEvent; // —á—Ç–æ–±—ã –∑–∞–ø—É—Å—Ç–∏—Ç—å Think
   end;
-end;
-
-Procedure MainLoop;
-var
-  n,i:integer;
-  s:ansistring;
-begin
-  game.uciPonder:=false;
-  game.hashsize:=128;
-  game.doIIR:=True;
-  game.doLMP:=True;
-  game.saveENNPass:=True;
-  for i:=1 to MaxThreads do
-    begin
-      Threads[i].isRun:=false;
-      Threads[i].idle:=true;
-    end;
-  game.Threads:=1;
-  NewGame;
-  repeat
-    n := CheckInput;
-    if n = 0 then
-      begin
-        sleep(10);
-        continue;
-      end;
-    s := ReadInput(n);
-   // œÓÎÛ˜ËÎË ÍÓÏ‡Ì‰Û Ì‡ ‚˚ıÓ‰
-    if (pos('quit',s)>0) then
-      begin
-        stopthreads;
-        exit;
-      end;
-   // –‡Á·Ë‡ÂÏ ÔÓÎÛ˜ÂÌÌÛ˛ ÍÓÏ‡Ì‰Û
-   Parser(s);
-  until false;
-end;
-
-Procedure poll(var Board:Tboard);
-var
-   n,i:integer;
-   s:ansistring;
-   timetot:cardinal;
-begin
-  Timetot:=gettickcount - game.TimeStart;
-  if timetot>=game.time then Threads[1].AbortSearch:=true;
-  n := CheckInput;
-  if n = 0 then exit;
-  s := ReadInput(n);
-  if (pos('stop',s)>0)  or (pos('quit',s)>0) then
+ if (pos('stop',s)>0)  then
     begin
      for i:=1 to game.Threads do
        Threads[i].AbortSearch:=true;
@@ -459,7 +345,8 @@ begin
      game.rezerv:=game.ponderrezerv;
      game.oldtime:=game.time;
      SetRemain;
-     Board.remain:=0;
+     Threads[1].Board.remain:=0;
+     Threads[1].WaitPonder:=false;
     end;
   if pos('ponderhit',s)>0  then
     begin
@@ -467,25 +354,41 @@ begin
       game.rezerv:=game.ponderrezerv;
       game.oldtime:=game.time;
       SetRemain;
-      Board.remain:=0;
+      Threads[1].Board.remain:=0;
     end;
+
 end;
-Procedure WaitPonderhit;
+
+Procedure MainLoop;
 var
-  n : integer;
-  s : ansistring;
+  s:ansistring;
 begin
-  while true  do
+  while True do
    begin
-    n := CheckInput;
-    if n = 0 then
+    readln(s);
+    // –ü–æ–ª—É—á–∏–ª–∏ –∫–æ–º–∞–Ω–¥—É –Ω–∞ –≤—ã—Ö–æ–¥
+    if (pos('quit',s)>0) then
       begin
-       sleep(25);
-       continue;
+        stopthreads;
+        exit;
       end;
-    s := ReadInput(n);
-    if (pos('stop',s)>0) or (pos('quit',s)>0) or (pos('ponderhit',s)>0)  then break;
+    // –†–∞–∑–±–∏—Ä–∞–µ–º –ø–æ–ª—É—á–µ–Ω–Ω—É—é –∫–æ–º–∞–Ω–¥—É
+    Parser(s);
    end;
+end;
+
+Procedure poll();
+var
+   timetot:int64;
+begin
+  Timetot:=MilliSecondsBetween(game.StartTime,now);
+  if timetot>=game.time then Threads[1].AbortSearch:=true;
+end;
+
+Procedure WaitPonderhit;
+begin
+  Threads[1].WaitPonder:=true;
+  while Threads[1].WaitPonder  do;
 end;
 
 end.

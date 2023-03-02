@@ -1,7 +1,11 @@
 unit uSort;
 
+{$IFDEF FPC}
+  {$MODE Delphi}
+{$ENDIF}
+
 interface
-uses uBoard,uAttacks,uBitBoards,uMagic;
+uses uBoard,uAttacks,uBitBoards;
 Const
   MaxKillersPly=127;
   HistDiv=15000;
@@ -40,18 +44,18 @@ var
 
 Procedure ClearHistory(var SortUnit:TSortUnit;var Tree:Ttree);
 Function GetStatBonus(depth:integer):integer;inline;
-Procedure FullSort(var MoveList:TMoveList;start:integer;stop:integer);inline;
-Function GetHistoryValue(var Sortunit:TSortUnit;var Tree:Ttree;ply:integer;piese:integer;dest:integer):integer;inline;
-Function GetStatsValue(var Sortunit:TSortUnit;var Tree:Ttree;ply:integer;piese:integer;dest:integer):integer;inline;
+Procedure FullSort(var MoveList:TMoveList;start:integer;stop:integer);
+Function GetHistoryValue(var Sortunit:TSortUnit;var Tree:Ttree;ply:integer;piese:integer;dest:integer):integer;
+Function GetStatsValue(var Tree:Ttree;ply:integer;piese:integer;dest:integer):integer;
 Procedure UpdateList(move:integer;start:integer;stop:integer;var MoveList:TmoveList);
-Procedure UpdHistory(var SortUnit:TSortUnit;piese:integer;dest:integer;bonus:integer);inline;
-Procedure UPdHistoryStats(var Tree:TTree;ply:integer;piese:integer;dest:integer;bonus:integer);inline;
-Procedure UpdateStats(var SortUnit:TSortUnit;var Tree:TTree;ply:integer;piese:integer;dest:integer;bonus:integer);inline;
-Function Next(var MoveList:TMoveList;var Board:TBoard;var SortUnit:TSortUnit;var tree:TTree;hashmove:integer;killer1:integer;killer2:integer;countermove:integer;ply:integer;depth:integer;skip:boolean) :integer;inline;
-Function NextFV(var MoveList:TMoveList;var Board:TBoard;var SortUnit:TSortUnit;var tree:TTree;var CheckInfo:TCheckInfo;hashmove:integer;ply:integer;depth:integer;prevsq:integer ):integer; inline;
-Function NextProbCut(var SortUnit:TSortUnit;var MoveList:TMoveList;var Board:TBoard;var tree:TTree;var hashmove:integer;ply:integer;margin:integer;depth:integer):integer; inline;
-Procedure UpdateQuietHistory(move:integer;depth:integer;ply:integer;qsearched:integer;var OldMoves:TmoveList;var SortUnit:TSortUnit;var Board:TBoard;var Tree:Ttree;bonus:integer);inline;
-Procedure UpdateFullHistory(move:integer;depth:integer;ply:integer;qsearched:integer;var OldMoves:TmoveList;capsearched:integer;var OldCaptures:Tmovelist;var SortUnit:TSortUnit;var Board:TBoard;var Tree:Ttree;margin:integer);inline;
+Procedure UpdHistory(var SortUnit:TSortUnit;piese:integer;dest:integer;bonus:integer);
+Procedure UPdHistoryStats(var Tree:TTree;ply:integer;piese:integer;dest:integer;bonus:integer);
+Procedure UpdateStats(var Tree:TTree;ply:integer;piese:integer;dest:integer;bonus:integer);
+Function Next(var MoveList:TMoveList;var Board:TBoard;var SortUnit:TSortUnit;var tree:TTree;var hashmove:integer;var killer1:integer;var killer2:integer;var countermove:integer;ply:integer;depth:integer;skip:boolean) :integer;
+Function NextFV(var MoveList:TMoveList;var Board:TBoard;var SortUnit:TSortUnit;var tree:TTree;var CheckInfo:TCheckInfo;var hashmove:integer;ply:integer;depth:integer;prevsq:integer ):integer;
+Function NextProbCut(var SortUnit:TSortUnit;var MoveList:TMoveList;var Board:TBoard;var tree:TTree;var hashmove:integer;ply:integer;margin:integer;depth:integer):integer;
+Procedure UpdateQuietHistory(move:integer;ply:integer;qsearched:integer;var OldMoves:TmoveList;var SortUnit:TSortUnit;var Board:TBoard;var Tree:Ttree;bonus:integer);
+Procedure UpdateFullHistory(move:integer;depth:integer;ply:integer;qsearched:integer;var OldMoves:TmoveList;capsearched:integer;var OldCaptures:Tmovelist;var SortUnit:TSortUnit;var Board:TBoard;var Tree:Ttree;margin:integer);
 
 implementation
 Procedure ClearHistory(var SortUnit:TSortUnit;var Tree:Ttree);
@@ -104,28 +108,28 @@ Function GetStatBonus(depth:integer):integer;inline;
 begin
   result:=DepthInc[depth];
 end;
-Procedure UpdHistory(var SortUnit:TSortUnit;piese:integer;dest:integer;bonus:integer);inline;
+Procedure UpdHistory(var SortUnit:TSortUnit;piese:integer;dest:integer;bonus:integer);
 begin
   SortUnit.History[piese,dest]:=Sortunit.History[piese,dest]-((Sortunit.History[piese,dest]*abs(bonus)) div HistDiv);  //-HistDiv .. HistDiv
   SortUnit.History[piese,dest]:=Sortunit.History[piese,dest]+bonus;
 end;
-Procedure UPdHistoryStats(var Tree:TTree;ply:integer;piese:integer;dest:integer;bonus:integer);inline;
+Procedure UPdHistoryStats(var Tree:TTree;ply:integer;piese:integer;dest:integer;bonus:integer);
 begin
   Tree[ply].CurrStat^[piese,dest]:=Tree[ply].CurrStat^[piese,dest]-((Tree[ply].CurrStat^[piese,dest]*abs(bonus)) div StatsDiv); // -StatsDiv .. StatsDiv
   Tree[ply].CurrStat^[piese,dest]:=Tree[ply].CurrStat^[piese,dest]+bonus;
 end;
-Procedure UpdCapHistory(var SortUnit:TSortUnit;piese:integer;dest:integer;captured:integer;bonus:integer);inline;
+Procedure UpdCapHistory(var SortUnit:TSortUnit;piese:integer;dest:integer;captured:integer;bonus:integer);
 begin
   SortUnit.CapHistory[piese,dest,captured]:=Sortunit.CapHistory[piese,dest,captured]-((Sortunit.CapHistory[piese,dest,captured]*abs(bonus)) div CapDiv);  //-CapDiv .. CapDiv
   SortUnit.CapHistory[piese,dest,captured]:=Sortunit.CapHistory[piese,dest,captured]+bonus;
 end;
-Procedure UpdateStats(var SortUnit:TSortUnit;var Tree:TTree;ply:integer;piese:integer;dest:integer;bonus:integer);inline;
+Procedure UpdateStats(var Tree:TTree;ply:integer;piese:integer;dest:integer;bonus:integer);
 begin
   If (ply>1) and  (Tree[ply-1].CurrMove<>0) then UpdHistoryStats(Tree,ply-1,piese,dest,bonus);
   If (ply>2) and  (Tree[ply-2].CurrMove<>0) then UpdHistoryStats(Tree,ply-2,piese,dest,bonus);
   If (ply>4) and  (Tree[ply-4].CurrMove<>0) then UpdHistoryStats(Tree,ply-4,piese,dest,bonus);
 end;
-Function GetHistoryValue(var Sortunit:TSortUnit;var Tree:Ttree;ply:integer;piese:integer;dest:integer):integer;inline;
+Function GetHistoryValue(var Sortunit:TSortUnit;var Tree:Ttree;ply:integer;piese:integer;dest:integer):integer;
 var
   res : integer;
 begin
@@ -135,7 +139,7 @@ begin
   if (ply>4) and  (Tree[ply-4].CurrMove<>0) then res:=res+Tree[ply-4].CurrStat^[piese,dest];
   Result:=res;
 end;
-Function GetQuietScore(var Sortunit:TSortUnit;var Tree:Ttree;ply:integer;piese:integer;dest:integer):integer;inline;
+Function GetQuietScore(var Sortunit:TSortUnit;var Tree:Ttree;ply:integer;piese:integer;dest:integer):integer;
 var
   res : integer;
 begin
@@ -145,7 +149,7 @@ begin
   if (ply>4) and  (Tree[ply-4].CurrMove<>0) then res:=res+Tree[ply-4].CurrStat^[piese,dest];
   Result:=res;
 end;
-Function GetEscapeScore(var Sortunit:TSortUnit;var Tree:Ttree;ply:integer;piese:integer;dest:integer):integer;inline;
+Function GetEscapeScore(var Sortunit:TSortUnit;var Tree:Ttree;ply:integer;piese:integer;dest:integer):integer;
 var
   res : integer;
 begin
@@ -153,7 +157,7 @@ begin
   if (ply>1) and  (Tree[ply-1].CurrMove<>0) then res:=res+2*Tree[ply-1].CurrStat^[piese,dest];
   Result:=res;
 end;
-Function GetStatsValue(var Sortunit:TSortUnit;var Tree:Ttree;ply:integer;piese:integer;dest:integer):integer;inline;
+Function GetStatsValue(var Tree:Ttree;ply:integer;piese:integer;dest:integer):integer;
 var
   res : integer;
 begin
@@ -163,39 +167,39 @@ begin
   if (ply>4) and  (Tree[ply-4].CurrMove<>0) then res:=res+Tree[ply-4].CurrStat^[piese,dest];
   Result:=res;
 end;
-Procedure UpdateQuietHistory(move:integer;depth:integer;ply:integer;qsearched:integer;var OldMoves:TmoveList;var SortUnit:TSortUnit;var Board:TBoard;var Tree:Ttree;bonus:integer);inline;
+Procedure UpdateQuietHistory(move:integer;ply:integer;qsearched:integer;var OldMoves:TmoveList;var SortUnit:TSortUnit;var Board:TBoard;var Tree:Ttree;bonus:integer);
 var
    Piese,dest,i : integer;
 begin
-  // Обновляем киллеры
+  // РћР±РЅРѕРІР»СЏРµРј РєРёР»Р»РµСЂС‹
   if (SortUnit.Killers[ply,0]<>move) then
     begin
       SortUnit.Killers[ply,1]:=SortUnit.Killers[ply,0];
       SortUnit.Killers[ply,0]:=move;
     end;
-  // Увеличиваем историю для успешного хода
+  // РЈРІРµР»РёС‡РёРІР°РµРј РёСЃС‚РѕСЂРёСЋ РґР»СЏ СѓСЃРїРµС€РЅРѕРіРѕ С…РѕРґР°
   dest:=(move shr 6) and 63;
-  Piese:=Board.Pos[move and 63]; // Фигура стоит на поле from
+  Piese:=Board.Pos[move and 63]; // Р¤РёРіСѓСЂР° СЃС‚РѕРёС‚ РЅР° РїРѕР»Рµ from
   UpdHistory(SortUnit,piese,dest,bonus);
-  UpdateStats(SortUnit,Tree,ply,piese,dest,bonus);
-  // Уменьшаем историю для рассмотренных ранее тихих ходов которые не привели к успеху
+  UpdateStats(Tree,ply,piese,dest,bonus);
+  // РЈРјРµРЅСЊС€Р°РµРј РёСЃС‚РѕСЂРёСЋ РґР»СЏ СЂР°СЃСЃРјРѕС‚СЂРµРЅРЅС‹С… СЂР°РЅРµРµ С‚РёС…РёС… С…РѕРґРѕРІ РєРѕС‚РѕСЂС‹Рµ РЅРµ РїСЂРёРІРµР»Рё Рє СѓСЃРїРµС…Сѓ
   for i:=1 to qsearched do
    if OldMoves[i].move<>move then
     begin
       Dest:=(OldMoves[i].move shr 6) and 63;
       Piese:=Board.Pos[OldMoves[i].move and 63];
       UpdHistory(SortUnit,piese,dest,-bonus);
-      UpdateStats(SortUnit,Tree,ply,piese,dest,-bonus);
+      UpdateStats(Tree,ply,piese,dest,-bonus);
     end;
-  // Записываем ход как опровергающий
+  // Р—Р°РїРёСЃС‹РІР°РµРј С…РѕРґ РєР°Рє РѕРїСЂРѕРІРµСЂРіР°СЋС‰РёР№
   if (Tree[ply-1].CurrMove<>0) then
     begin
       dest:=(Tree[ply-1].CurrMove shr 6) and 63;
-      Piese:=Board.Pos[dest];// Фигура уже стоит на поле dest
+      Piese:=Board.Pos[dest];// Р¤РёРіСѓСЂР° СѓР¶Рµ СЃС‚РѕРёС‚ РЅР° РїРѕР»Рµ dest
       SortUnit.CounterMoves[Piese,Dest]:=move;
     end;
 end;
-Procedure UpdateFullHistory(move:integer;depth:integer;ply:integer;qsearched:integer;var OldMoves:TmoveList;capsearched:integer;var OldCaptures:Tmovelist;var SortUnit:TSortUnit;var Board:TBoard;var Tree:Ttree;margin:integer);inline;
+Procedure UpdateFullHistory(move:integer;depth:integer;ply:integer;qsearched:integer;var OldMoves:TmoveList;capsearched:integer;var OldCaptures:Tmovelist;var SortUnit:TSortUnit;var Board:TBoard;var Tree:Ttree;margin:integer);
 var
    Piese,dest,i,bonus,captured : integer;
 begin
@@ -208,8 +212,8 @@ begin
       Piese:=Board.Pos[move and 63];
       captured:=TypOfPiese[Board.Pos[dest]];
       UpdCapHistory(SortUnit,piese,dest,captured,bonus);
-    end else UpdateQuietHistory(move,depth,ply,qsearched,OldMoves,SortUnit,Board,Tree,bonus);
-  // Уменьшаем историю для рассмотренных ранее взятий которые не привели к успеху
+    end else UpdateQuietHistory(move,ply,qsearched,OldMoves,SortUnit,Board,Tree,bonus);
+  // РЈРјРµРЅСЊС€Р°РµРј РёСЃС‚РѕСЂРёСЋ РґР»СЏ СЂР°СЃСЃРјРѕС‚СЂРµРЅРЅС‹С… СЂР°РЅРµРµ РІР·СЏС‚РёР№ РєРѕС‚РѕСЂС‹Рµ РЅРµ РїСЂРёРІРµР»Рё Рє СѓСЃРїРµС…Сѓ
   for i:=1 to capsearched do
    if OldCaptures[i].move<>move then
     begin
@@ -229,8 +233,8 @@ begin
       else MoveList[i].value:=MaxMoves-i;
   FullSort(MoveList,start,stop);
 end;
-Procedure FullSort(var MoveList:TMoveList;start:integer;stop:integer);inline;
-// Сортировка полная
+Procedure FullSort(var MoveList:TMoveList;start:integer;stop:integer);
+// РЎРѕСЂС‚РёСЂРѕРІРєР° РїРѕР»РЅР°СЏ
 var
    i,j: integer;
    temp : tmove;
@@ -248,38 +252,38 @@ begin
     end;
 end;
 
-Function TakeBest(var MoveList:TmoveList;start:integer;stop:integer;doSort:boolean):integer;inline;
-// Выбираем лучший ход из списка, ставим его на первое место в списке и возвращаем
+Function TakeBest(var MoveList:TmoveList;start:integer;stop:integer;doSort:boolean):integer;
+// Р’С‹Р±РёСЂР°РµРј Р»СѓС‡С€РёР№ С…РѕРґ РёР· СЃРїРёСЃРєР°, СЃС‚Р°РІРёРј РµРіРѕ РЅР° РїРµСЂРІРѕРµ РјРµСЃС‚Рѕ РІ СЃРїРёСЃРєРµ Рё РІРѕР·РІСЂР°С‰Р°РµРј
 var
   temp:Tmove;
   value,i,j : integer;
 begin
-  // Копируем первый элемент массива
+  // РљРѕРїРёСЂСѓРµРј РїРµСЂРІС‹Р№ СЌР»РµРјРµРЅС‚ РјР°СЃСЃРёРІР°
   if doSort then
   begin
    temp:=MoveList[start];
    value:=temp.value;
    j:=start;
-   // ищем максимальный элемент в списке, начиная со второго
+   // РёС‰РµРј РјР°РєСЃРёРјР°Р»СЊРЅС‹Р№ СЌР»РµРјРµРЅС‚ РІ СЃРїРёСЃРєРµ, РЅР°С‡РёРЅР°СЏ СЃРѕ РІС‚РѕСЂРѕРіРѕ
    For i:=start+1 to stop do
     if MoveList[i].value>value then
       begin
         value:=MoveList[i].value;
         j:=i;
       end;
-   // Если первый элемент в списке не оказался максималным, то меняем местами первый элемент и найденный максимальный
+   // Р•СЃР»Рё РїРµСЂРІС‹Р№ СЌР»РµРјРµРЅС‚ РІ СЃРїРёСЃРєРµ РЅРµ РѕРєР°Р·Р°Р»СЃСЏ РјР°РєСЃРёРјР°Р»РЅС‹Рј, С‚Рѕ РјРµРЅСЏРµРј РјРµСЃС‚Р°РјРё РїРµСЂРІС‹Р№ СЌР»РµРјРµРЅС‚ Рё РЅР°Р№РґРµРЅРЅС‹Р№ РјР°РєСЃРёРјР°Р»СЊРЅС‹Р№
    if j<>start then
     begin
       MoveList[start]:=MoveList[j];
       MoveList[j]:=temp;
     end;
   end;
-  // Возвращаем максимальный элемент, стоящий теперь уже на первом месте в списке
+  // Р’РѕР·РІСЂР°С‰Р°РµРј РјР°РєСЃРёРјР°Р»СЊРЅС‹Р№ СЌР»РµРјРµРЅС‚, СЃС‚РѕСЏС‰РёР№ С‚РµРїРµСЂСЊ СѓР¶Рµ РЅР° РїРµСЂРІРѕРј РјРµСЃС‚Рµ РІ СЃРїРёСЃРєРµ
   Result:=MoveList[start].move;
 end;
 
-Procedure ScoreCaptures(start:integer;stop:integer;var MoveList:TMoveList;var Board:TBoard;var SortUnit:TSortUnit);inline;
-// Оценка взятий - по mvllva
+Procedure ScoreCaptures(start:integer;stop:integer;var MoveList:TMoveList;var Board:TBoard;var SortUnit:TSortUnit);
+// РћС†РµРЅРєР° РІР·СЏС‚РёР№ - РїРѕ mvllva
 var
   i,piese,dest,captured : integer;
 begin
@@ -291,8 +295,8 @@ begin
     MoveList[i].value:=6*MVV[captured]+SortUnit.CapHistory[piese,dest,captured];
    end;
 end;
-Procedure ScoreMoves(start:integer;stop:integer;ply:integer;var MoveList:TMoveList;var SortUnit:TSortUnit;var Board:TBoard;var Tree:Ttree);inline;
-// Оценка простых ходов - по истории
+Procedure ScoreMoves(start:integer;stop:integer;ply:integer;var MoveList:TMoveList;var SortUnit:TSortUnit;var Board:TBoard;var Tree:Ttree);
+// РћС†РµРЅРєР° РїСЂРѕСЃС‚С‹С… С…РѕРґРѕРІ - РїРѕ РёСЃС‚РѕСЂРёРё
 var
   i,piese,dest : integer;
 begin
@@ -303,7 +307,7 @@ begin
       MoveList[i].value:=GetQuietScore(SortUnit,Tree,ply,piese,dest);
     end;
 end;
-Procedure ScoreEvasions(start:integer;stop:integer;ply:integer;var Movelist:TMoveList;var SortUnit:TSortUnit;var Board:TBoard;var Tree:TTree);inline;
+Procedure ScoreEvasions(start:integer;stop:integer;ply:integer;var Movelist:TMoveList;var SortUnit:TSortUnit;var Board:TBoard;var Tree:TTree);
 var
   i,piese,dest,captured : integer;
 begin
@@ -317,7 +321,7 @@ begin
           else MoveList[i].value:=GetEscapeScore(SortUnit,Tree,ply,piese,dest) - (1 shl 24);
     end;
 end;
-Function Next(var MoveList:TMoveList;var Board:TBoard;var SortUnit:TSortUnit;var tree:TTree;hashmove:integer;killer1:integer;killer2:integer;countermove:integer;ply:integer;depth:integer;skip:boolean) :integer;inline;
+Function Next(var MoveList:TMoveList;var Board:TBoard;var SortUnit:TSortUnit;var tree:TTree;var hashmove:integer;var killer1:integer;var killer2:integer;var countermove:integer;ply:integer;depth:integer;skip:boolean) :integer;
 var
   move: integer;
 begin
@@ -325,100 +329,100 @@ begin
       begin
         inc(tree[ply].Status);
         if Board.CheckersBB<>0 then tree[ply].Status:=GenerateEscapes;
-        // Здесь пробуем хешход - пока ничего не генерируем
+        // Р—РґРµСЃСЊ РїСЂРѕР±СѓРµРј С…РµС€С…РѕРґ - РїРѕРєР° РЅРёС‡РµРіРѕ РЅРµ РіРµРЅРµСЂРёСЂСѓРµРј
         If (hashmove<>0) and (isPseudoCorrect(hashmove,Board)) then
          begin
           Result:=hashmove;
           exit;
-         end;
-       // Если хешхода нет или некорректный то сразу переходим на следующую стадию - генерим взятия и превращения
+         end else hashmove:=0;
+       // Р•СЃР»Рё С…РµС€С…РѕРґР° РЅРµС‚ РёР»Рё РЅРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ С‚Рѕ СЃСЂР°Р·Сѓ РїРµСЂРµС…РѕРґРёРј РЅР° СЃР»РµРґСѓСЋС‰СѓСЋ СЃС‚Р°РґРёСЋ - РіРµРЅРµСЂРёРј РІР·СЏС‚РёСЏ Рё РїСЂРµРІСЂР°С‰РµРЅРёСЏ
       end;
    if tree[ply].Status=GenerateCaptures then
      begin
        inc(tree[ply].Status);
-       // Генерируем взятия и превращения
+       // Р“РµРЅРµСЂРёСЂСѓРµРј РІР·СЏС‚РёСЏ Рё РїСЂРµРІСЂР°С‰РµРЅРёСЏ
        tree[ply].max:=GeneratePseudoCaptures(0,Board.Occupancy[Board.SideToMove xor 1],Board,MoveList);
-       // Оцениваем сгенерированные взятия и превращения
+       // РћС†РµРЅРёРІР°РµРј СЃРіРµРЅРµСЂРёСЂРѕРІР°РЅРЅС‹Рµ РІР·СЏС‚РёСЏ Рё РїСЂРµРІСЂР°С‰РµРЅРёСЏ
        ScoreCaptures(0,tree[ply].max-1,MoveList,Board,SortUnit);
        tree[ply].curr:=0;
        tree[ply].badcap:=0;
        tree[ply].value:=1 shl 24;
-       // Приступаем к выбору взятий
+       // РџСЂРёСЃС‚СѓРїР°РµРј Рє РІС‹Р±РѕСЂСѓ РІР·СЏС‚РёР№
      end;
   if tree[ply].Status=TryGoodCaptures then
     begin
       while tree[ply].curr<=tree[ply].max-1 do
         begin
-          // Выбираем лучший ход
+          // Р’С‹Р±РёСЂР°РµРј Р»СѓС‡С€РёР№ С…РѕРґ
           move:=TakeBest(MOveList,tree[ply].curr,tree[ply].max-1,(tree[ply].value>=-3000*depth));
           tree[ply].value:=MoveList[tree[ply].curr].value;
           inc(tree[ply].curr);
-          if move=hashmove then continue;       // Уже рассмотрен
-          // Если это хорошее взятие - возвращаем его
+          if move=hashmove then continue;       // РЈР¶Рµ СЂР°СЃСЃРјРѕС‚СЂРµРЅ
+          // Р•СЃР»Рё СЌС‚Рѕ С…РѕСЂРѕС€РµРµ РІР·СЏС‚РёРµ - РІРѕР·РІСЂР°С‰Р°РµРј РµРіРѕ
           if GoodSee(move,Board,0) then
             begin
              Result:=move;
              exit;
             end;
-          // Если это плохое взятие - записываем его в конец списка ходов - расмотрим позже.
+          // Р•СЃР»Рё СЌС‚Рѕ РїР»РѕС…РѕРµ РІР·СЏС‚РёРµ - Р·Р°РїРёСЃС‹РІР°РµРј РµРіРѕ РІ РєРѕРЅРµС† СЃРїРёСЃРєР° С…РѕРґРѕРІ - СЂР°СЃРјРѕС‚СЂРёРј РїРѕР·Р¶Рµ.
           inc(tree[ply].badcap);
           MoveList[MaxMoves-tree[ply].badcap].move:=move;
         end;
-      // Если пересмотрели все взятия то идем дальше
+      // Р•СЃР»Рё РїРµСЂРµСЃРјРѕС‚СЂРµР»Рё РІСЃРµ РІР·СЏС‚РёСЏ С‚Рѕ РёРґРµРј РґР°Р»СЊС€Рµ
       inc(tree[ply].Status);
     end;
   if tree[ply].Status=TryKiller1 then
     begin
-      // Первый Киллер - до генерирования ходов
+      // РџРµСЂРІС‹Р№ РљРёР»Р»РµСЂ - РґРѕ РіРµРЅРµСЂРёСЂРѕРІР°РЅРёСЏ С…РѕРґРѕРІ
       inc(tree[ply].Status);
       if (killer1<>0) and (killer1<>hashmove) and (Board.Pos[(killer1 shr 6) and 63]=0) and (isPseudoCorrect(killer1,Board)) then
         begin
           Result:=killer1;
           exit;
-        end;
+        end else killer1:=0;
     end;
   if tree[ply].Status=TryKiller2 then
     begin
-      // Второй Киллер - до генерирования ходов
+      // Р’С‚РѕСЂРѕР№ РљРёР»Р»РµСЂ - РґРѕ РіРµРЅРµСЂРёСЂРѕРІР°РЅРёСЏ С…РѕРґРѕРІ
       inc(tree[ply].Status);
       if (killer2<>0) and (killer2<>hashmove) and (killer2<>killer1) and (Board.Pos[(killer2 shr 6) and 63]=0) and (isPseudoCorrect(killer2,Board)) then
         begin
           Result:=killer2;
           exit;
-        end;
+        end else killer2:=0;
     end;
   if tree[ply].Status=TryCounterMove then
     begin
-      // Смотрим  опровергающий  - до генерирования ходов
+      // РЎРјРѕС‚СЂРёРј  РѕРїСЂРѕРІРµСЂРіР°СЋС‰РёР№  - РґРѕ РіРµРЅРµСЂРёСЂРѕРІР°РЅРёСЏ С…РѕРґРѕРІ
       inc(tree[ply].Status);
       if (countermove<>0) and (countermove<>hashmove) and (countermove<>killer1) and  (countermove<>killer2) and (Board.Pos[(countermove shr 6) and 63]=0) and (isPseudoCorrect(countermove,Board)) then
             begin
               result:=countermove;
               exit;
-            end;
+            end else countermove:=0;
     end;
   if tree[ply].Status=GenerateOthers  then
     begin
-      // Генерируем тихие ходы
+      // Р“РµРЅРµСЂРёСЂСѓРµРј С‚РёС…РёРµ С…РѕРґС‹
       inc(tree[ply].Status);
       if (not skip) then
         begin
          tree[ply].max:=GeneratePseudoMoves(0,(not Board.AllPieses),Board,MoveList);
          tree[ply].curr:=0;
-         // Оцениваем тихие ходы
+         // РћС†РµРЅРёРІР°РµРј С‚РёС…РёРµ С…РѕРґС‹
          ScoreMoves(0,tree[ply].max-1,ply,MoveList,SortUnit,Board,Tree);
          tree[ply].value:=1 shl 24;
         end;
     end;
    if tree[ply].Status=tryOthers then
     begin
-     // выбираем лучшие тихие ходы (хорошие = с оценкой истории больше 0)
+     // РІС‹Р±РёСЂР°РµРј Р»СѓС‡С€РёРµ С‚РёС…РёРµ С…РѕРґС‹ (С…РѕСЂРѕС€РёРµ = СЃ РѕС†РµРЅРєРѕР№ РёСЃС‚РѕСЂРёРё Р±РѕР»СЊС€Рµ 0)
       while  (not skip) and (tree[ply].curr<=tree[ply].max-1) do
         begin
           move:=TakeBest(MOveList,tree[ply].curr,tree[ply].max-1,(tree[ply].value>=-3000*depth));
           tree[ply].value:=MoveList[tree[ply].curr].value;
           inc(tree[ply].curr);
-          if (move=hashmove) or (move=killer1) or (move=killer2) or (move=countermove) then continue;       // Уже рассмотрены
+          if (move=hashmove) or (move=killer1) or (move=killer2) or (move=countermove) then continue;       // РЈР¶Рµ СЂР°СЃСЃРјРѕС‚СЂРµРЅС‹
           Result:=move;
           exit;
         end;
@@ -456,7 +460,7 @@ begin
   Result:=0;
 end;
 
-Function NextFV(var MoveList:TMoveList;var Board:TBoard;var SortUnit:TSortUnit;var tree:TTree;var CheckInfo:TCheckInfo;hashmove:integer;ply:integer;depth:integer;prevsq:integer ):integer; inline;
+Function NextFV(var MoveList:TMoveList;var Board:TBoard;var SortUnit:TSortUnit;var tree:TTree;var CheckInfo:TCheckInfo;var hashmove:integer;ply:integer;depth:integer;prevsq:integer ):integer;
 var
   move : integer;
 begin
@@ -464,45 +468,45 @@ begin
       begin
         inc(tree[ply].Status);
         if Board.CheckersBB<>0 then tree[ply].Status:=GenerateEscapes;
-        // Здесь пробуем хешход - пока ничего не генерируем
+        // Р—РґРµСЃСЊ РїСЂРѕР±СѓРµРј С…РµС€С…РѕРґ - РїРѕРєР° РЅРёС‡РµРіРѕ РЅРµ РіРµРЅРµСЂРёСЂСѓРµРј
         If (hashmove<>0) and (isPseudoCorrect(hashmove,Board)) and ( (Board.CheckersBB<>0) or (depth>-5) or (((hashmove shr 6) and 63)=prevsq))   then
          begin
           Result:=hashmove;
           exit;
-         end;
-       // Если хешхода нет или некорректный то сразу переходим на следующую стадию - генерим взятия и превращения
+         end else hashmove:=0;
+       // Р•СЃР»Рё С…РµС€С…РѕРґР° РЅРµС‚ РёР»Рё РЅРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ С‚Рѕ СЃСЂР°Р·Сѓ РїРµСЂРµС…РѕРґРёРј РЅР° СЃР»РµРґСѓСЋС‰СѓСЋ СЃС‚Р°РґРёСЋ - РіРµРЅРµСЂРёРј РІР·СЏС‚РёСЏ Рё РїСЂРµРІСЂР°С‰РµРЅРёСЏ
       end;
    if tree[ply].Status=GenerateCaptures then
      begin
        inc(tree[ply].Status);
-       // Генерируем взятия и превращения
+       // Р“РµРЅРµСЂРёСЂСѓРµРј РІР·СЏС‚РёСЏ Рё РїСЂРµРІСЂР°С‰РµРЅРёСЏ
        tree[ply].max:=GeneratePseudoCaptures(0,Board.Occupancy[Board.SideToMove xor 1],Board,MoveList);
-       // Оцениваем сгенерированные взятия и превращения
+       // РћС†РµРЅРёРІР°РµРј СЃРіРµРЅРµСЂРёСЂРѕРІР°РЅРЅС‹Рµ РІР·СЏС‚РёСЏ Рё РїСЂРµРІСЂР°С‰РµРЅРёСЏ
        ScoreCaptures(0,tree[ply].max-1,MoveList,Board,SortUnit);
        tree[ply].curr:=0;
        tree[ply].value:=1 shl 24;
-       // Приступаем к выбору взятий
+       // РџСЂРёСЃС‚СѓРїР°РµРј Рє РІС‹Р±РѕСЂСѓ РІР·СЏС‚РёР№
      end;
   if tree[ply].Status=TryGoodCaptures then
     begin
       while tree[ply].curr<=tree[ply].max-1 do
         begin
-          // Выбираем лучший ход
+          // Р’С‹Р±РёСЂР°РµРј Р»СѓС‡С€РёР№ С…РѕРґ
           move:=TakeBest(MOveList,tree[ply].curr,tree[ply].max-1,(tree[ply].value>=-3000*depth));
           tree[ply].value:=MoveList[tree[ply].curr].value;
           inc(tree[ply].curr);
-          if move=hashmove then continue;       // Уже рассмотрен
+          if move=hashmove then continue;       // РЈР¶Рµ СЂР°СЃСЃРјРѕС‚СЂРµРЅ
           If (depth<=-5) and (((move shr 6) and 63)<>prevsq) then continue;
           Result:=move;
           exit;
         end;
-      // Если пересмотрели все взятия то идем дальше
+      // Р•СЃР»Рё РїРµСЂРµСЃРјРѕС‚СЂРµР»Рё РІСЃРµ РІР·СЏС‚РёСЏ С‚Рѕ РёРґРµРј РґР°Р»СЊС€Рµ
       inc(tree[ply].Status);
     end;
   if (tree[ply].Status=GenerateChecks) and (depth>=0) and (Board.CheckersBB=0) then
     begin
       inc(tree[ply].Status);
-      // Генерируем тихие шахи
+      // Р“РµРЅРµСЂРёСЂСѓРµРј С‚РёС…РёРµ С€Р°С…Рё
       tree[ply].max:=GeneratePseudoChecks(0,not Board.AllPieses,Board,CheckInfo,MoveList);
       tree[ply].curr:=0;
     end;
@@ -510,10 +514,10 @@ begin
     begin
       while tree[ply].curr<=tree[ply].max-1 do
         begin
-          // Выбираем лучший ход
+          // Р’С‹Р±РёСЂР°РµРј Р»СѓС‡С€РёР№ С…РѕРґ
           move:=MoveList[tree[ply].curr].move;
           inc(tree[ply].curr);
-          if move=hashmove then continue;       // Уже рассмотрен
+          if move=hashmove then continue;       // РЈР¶Рµ СЂР°СЃСЃРјРѕС‚СЂРµРЅ
           Result:=move;
           exit;
         end;
@@ -540,41 +544,41 @@ begin
     end;
   Result:=0;
 end;
-Function NextProbCut(var SortUnit:TSortUnit;var MoveList:TMoveList;var Board:TBoard;var tree:TTree;var hashmove:integer;ply:integer;margin:integer;depth:integer):integer; inline;
+Function NextProbCut(var SortUnit:TSortUnit;var MoveList:TMoveList;var Board:TBoard;var tree:TTree;var hashmove:integer;ply:integer;margin:integer;depth:integer):integer;
 var
   move : integer;
 begin
    if tree[ply].Status=TryHashMove then
       begin
         inc(tree[ply].Status);
-        // Здесь пробуем хешход - пока ничего не генерируем
+        // Р—РґРµСЃСЊ РїСЂРѕР±СѓРµРј С…РµС€С…РѕРґ - РїРѕРєР° РЅРёС‡РµРіРѕ РЅРµ РіРµРЅРµСЂРёСЂСѓРµРј
         If (hashmove<>0) and ((Board.Pos[(hashmove shr 6) and 63])<>Empty) and (isPseudoCorrect(hashmove,Board)) and (GoodSee(hashmove,Board,margin)) then
          begin
           Result:=hashmove;
           exit;
-         end;
-       // Если хешхода нет или некорректный то сразу переходим на следующую стадию - генерим взятия и превращения
+         end else hashmove:=0;
+       // Р•СЃР»Рё С…РµС€С…РѕРґР° РЅРµС‚ РёР»Рё РЅРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ С‚Рѕ СЃСЂР°Р·Сѓ РїРµСЂРµС…РѕРґРёРј РЅР° СЃР»РµРґСѓСЋС‰СѓСЋ СЃС‚Р°РґРёСЋ - РіРµРЅРµСЂРёРј РІР·СЏС‚РёСЏ Рё РїСЂРµРІСЂР°С‰РµРЅРёСЏ
       end;
    if tree[ply].Status=GenerateCaptures then
      begin
        inc(tree[ply].Status);
-       // Генерируем взятия и превращения
+       // Р“РµРЅРµСЂРёСЂСѓРµРј РІР·СЏС‚РёСЏ Рё РїСЂРµРІСЂР°С‰РµРЅРёСЏ
        tree[ply].max:=GeneratePseudoCaptures(0,Board.Occupancy[Board.SideToMove xor 1],Board,MoveList);
-       // Оцениваем сгенерированные взятия и превращения
+       // РћС†РµРЅРёРІР°РµРј СЃРіРµРЅРµСЂРёСЂРѕРІР°РЅРЅС‹Рµ РІР·СЏС‚РёСЏ Рё РїСЂРµРІСЂР°С‰РµРЅРёСЏ
        ScoreCaptures(0,tree[ply].max-1,MoveList,Board,SortUnit);
        tree[ply].curr:=0;
        tree[ply].value:= 1 shl 24;
-       // Приступаем к выбору взятий
+       // РџСЂРёСЃС‚СѓРїР°РµРј Рє РІС‹Р±РѕСЂСѓ РІР·СЏС‚РёР№
      end;
   if tree[ply].Status=TryGoodCaptures then
     begin
       while tree[ply].curr<=tree[ply].max-1 do
         begin
-          // Выбираем лучший ход
+          // Р’С‹Р±РёСЂР°РµРј Р»СѓС‡С€РёР№ С…РѕРґ
           move:=TakeBest(MOveList,tree[ply].curr,tree[ply].max-1,(tree[ply].value>=-3000*depth));
           tree[ply].value:=MoveList[tree[ply].curr].value;
           inc(tree[ply].curr);
-          if (move=hashmove) or ((move and CaptureFlag)=0)  then continue;       // Уже рассмотрен   или это не взятие
+          if (move=hashmove) or ((move and CaptureFlag)=0)  then continue;       // РЈР¶Рµ СЂР°СЃСЃРјРѕС‚СЂРµРЅ   РёР»Рё СЌС‚Рѕ РЅРµ РІР·СЏС‚РёРµ
           If GoodSee(move,Board,margin) then
             begin
              Result:=move;

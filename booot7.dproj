@@ -7,7 +7,7 @@
         <Base>True</Base>
         <Config Condition="'$(Config)'==''">Release</Config>
         <Platform Condition="'$(Platform)'==''">Win64</Platform>
-        <TargetedPlatforms>3</TargetedPlatforms>
+        <TargetedPlatforms>130</TargetedPlatforms>
         <AppType>Console</AppType>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Config)'=='Base' or '$(Base)'!=''">
@@ -155,10 +155,8 @@
         <Manifest_File>None</Manifest_File>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Cfg_2_Win64)'!=''">
-        <DCC_MinStackSize>1048576</DCC_MinStackSize>
         <DCC_StrictVarStrings>false</DCC_StrictVarStrings>
         <DCC_ConsoleTarget>true</DCC_ConsoleTarget>
-        <DCC_MaxStackSize>4194304</DCC_MaxStackSize>
         <DCC_EXPLICIT_STRING_CAST>true</DCC_EXPLICIT_STRING_CAST>
         <DCC_EXPLICIT_STRING_CAST_LOSS>true</DCC_EXPLICIT_STRING_CAST_LOSS>
         <DCC_IMPLICIT_STRING_CAST>false</DCC_IMPLICIT_STRING_CAST>
@@ -171,6 +169,7 @@
         <VerInfo_Locale>1033</VerInfo_Locale>
         <DCC_ImportedDataReferences>false</DCC_ImportedDataReferences>
         <Manifest_File>None</Manifest_File>
+        <DCC_MaxStackSize>16777216</DCC_MaxStackSize>
     </PropertyGroup>
     <ItemGroup>
         <DelphiCompile Include="$(MainSource)">
@@ -181,9 +180,7 @@
         <DCCReference Include="uAttacks.pas"/>
         <DCCReference Include="uBoard.pas"/>
         <DCCReference Include="uHash.pas"/>
-        <DCCReference Include="uMaterial.pas"/>
         <DCCReference Include="uEndgame.pas"/>
-        <DCCReference Include="uPawn.pas"/>
         <DCCReference Include="uEval.pas"/>
         <DCCReference Include="uSearch.pas"/>
         <DCCReference Include="uThread.pas"/>
@@ -191,6 +188,7 @@
         <DCCReference Include="uUci.pas"/>
         <DCCReference Include="uKPK.pas"/>
         <DCCReference Include="Unn.pas"/>
+        <DCCReference Include="Ubenchmark.pas"/>
         <BuildConfiguration Include="Release">
             <Key>Cfg_2</Key>
             <CfgParent>Base</CfgParent>
@@ -1070,11 +1068,12 @@
                 <ProjectRoot Platform="Android64" Name="$(PROJECTNAME)"/>
             </Deployment>
             <Platforms>
-                <Platform value="Linux64">False</Platform>
+                <Platform value="Linux64">True</Platform>
                 <Platform value="OSX32">False</Platform>
-                <Platform value="Win32">True</Platform>
+                <Platform value="Win32">False</Platform>
                 <Platform value="Win64">True</Platform>
             </Platforms>
+            <ModelSupport>False</ModelSupport>
         </BorlandProject>
         <ProjectFileVersion>12</ProjectFileVersion>
     </ProjectExtensions>
