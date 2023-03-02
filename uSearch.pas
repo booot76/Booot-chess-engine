@@ -1,16 +1,20 @@
-unit uSearch;
+п»їunit uSearch;
+
+{$IFDEF FPC}
+  {$MODE Delphi}
+{$ENDIF}
 
 interface
-uses uBitBoards,uBoard,uThread,uEval,uSort,uMaterial,uEndgame,uPawn,uAttacks,uMagic,uHash,SysUtils,Windows,Math;
+uses uBitBoards,uBoard,uThread,uEval,uSort,uAttacks,uHash,SysUtils,DateUtils,SyncObjs,Unn;
 Type
   Tgame = record
-              TimeStart : Cardinal;
+              StartTime : TdateTime;
               time  : Cardinal;
               rezerv:Cardinal;
               pondertime  : Cardinal;
               ponderrezerv : Cardinal;
               oldtime:cardinal;
-              HashAge : integer;
+              movestocontrolmax : integer;
               NodesTotal : cardinal;
               remain:integer;
               uciPonder : boolean;
@@ -20,13 +24,9 @@ Type
               doIIR : boolean;
               doLMP : boolean;
               gendepth:integer;
-              saveENNPass : boolean;
             end;
-   Trand=record
-     beg : integer;
-     en  : integer;
-   end;
-
+ 
+ 
 Const
 
   BuferSize=10000;
@@ -68,6 +68,8 @@ type
    TBufferFen = array[0..BuferSize] of shortstring;
 var
   game:TGame;
+
+
   RazoringValue,StatixLValue : array[0..16] of integer;
   StatixValue : array[false..True,0..16] of integer;
   PrunningCount : array[false..true,0..16] of integer;
@@ -78,19 +80,19 @@ var
   blockscount : integer;
   usebook : boolean;
   booksize : integer;
-  StartTime : TdateTime;
+  //StartTime : TdateTime;
   FenNumber,PosHashSize,PosHashMask : int64;
 
 Procedure Think;
 Procedure Iterate(ThreadId:integer);
-Function RootSearch(ThreadID:integer;alpha:integer;beta:integer;depth:integer;var Board:TBoard;var Tree:Ttree;var SortUnit:TSortUnit;var RootList:TMoveList;n:integer;var PVLine:TPV;var BestMove:integer):integer;
-Function Search(ThreadID:integer;alpha:integer;beta:integer;depth:integer;ply:integer;var Board:TBoard;var Tree:Ttree;var SortUnit:TSortUnit;var PVLine:TPV;emove:integer;cut:boolean):integer;
-Function FV(ThreadID:integer;alpha:integer;beta:integer;depth:integer;ply:integer;var Board:TBoard;var SortUnit:TSortUnit;var Tree:Ttree;var PVLine:TPV):integer;
+Function RootSearch(var TT:TTable; ThreadID:integer;alpha:integer;beta:integer;depth:integer;var Board:TBoard;var Tree:Ttree;var SortUnit:TSortUnit;var RootList:TMoveList;n:integer;var PVLine:TPV;var BestMove:integer):integer;
+Function Search(var TT:TTable;ThreadID:integer;alpha:integer;beta:integer;depth:integer;ply:integer;var Board:TBoard;var Tree:Ttree;var SortUnit:TSortUnit;var PVLine:TPV;emove:integer;cut:boolean):integer;
+Function FV(var TT:TTable;ThreadID:integer;alpha:integer;beta:integer;depth:integer;ply:integer;var Board:TBoard;var SortUnit:TSortUnit;var Tree:Ttree;var PVLine:TPV):integer;
 Procedure gamegen(ThreadId:integer;var cnt:integer;var FENS:TBufferFen);
 Procedure FenGenerator(depth:integer;megafens:integer;cpu:integer;book:shortstring;outfilename:shortstring;hashmb:integer;poshashmb:integer);
 Procedure SingleGenerator(ThreadID:integer;var bookposnum:integer);
 implementation
-uses uUci,uNN;
+uses uUci;
 Function MakePvString(var PV:TPV):ansistring;
 var
   i : integer;
@@ -108,12 +110,13 @@ begin
     end;
   Result:=s;
 end;
-Procedure PrintFullSearchInfo(value:integer;pv:TPV;TimeEnd:Cardinal;typ:integer);
+Procedure PrintFullSearchInfo(value:integer;var pv:TPV;typ:integer);
 var
- timetot:Cardinal;
+ timetot:int64;
  nps,i : integer;
  s:ansistring;
  FullNodes : int64;
+ StopTime : TDateTime;
 begin
   If game.Threads=1
     then FullNodes:=Threads[1].Board.Nodes
@@ -122,10 +125,11 @@ begin
            for i:=1 to game.Threads do
              FullNodes:=FullNodes+Threads[i].Board.Nodes;
          end;
-  timetot:=timeend-game.timestart;
-  // Даем статистику с небольшой задержкой, чтобы не перегружать оболочку данными и не терять время
+  StopTime:=now;
+  timetot:=MilliSecondsBetween(game.StartTime,StopTime);
+  // Р”Р°РµРј СЃС‚Р°С‚РёСЃС‚РёРєСѓ СЃ РЅРµР±РѕР»СЊС€РѕР№ Р·Р°РґРµСЂР¶РєРѕР№, С‡С‚РѕР±С‹ РЅРµ РїРµСЂРµРіСЂСѓР¶Р°С‚СЊ РѕР±РѕР»РѕС‡РєСѓ РґР°РЅРЅС‹РјРё Рё РЅРµ С‚РµСЂСЏС‚СЊ РІСЂРµРјСЏ
   if (TimeTot<250) or (not game.showtext) then exit;
-  // Тут выдаем полную информацию о переборе. Когда изменился лучший ход.
+  // РўСѓС‚ РІС‹РґР°РµРј РїРѕР»РЅСѓСЋ РёРЅС„РѕСЂРјР°С†РёСЋ Рѕ РїРµСЂРµР±РѕСЂРµ. РљРѕРіРґР° РёР·РјРµРЅРёР»СЃСЏ Р»СѓС‡С€РёР№ С…РѕРґ.
   if (typ=FullInfo) then
     begin
      if timetot=0 then nps:=0 else nps:=((FullNodes*1000) div timetot);
@@ -135,21 +139,24 @@ begin
      s:=s+' score cp '+inttostr(value);
      s:=s+' time '+inttostr(timetot)+' nodes '+inttostr(FullNodes)+' nps '+inttostr(nps);
      s:=s+' pv '+MakePvString(PV);
-     LWrite(s);
+     writeln(output,s);
+     Flush(Output);
     end else
-// Выдаем только информацию о начавшейся новой итерации
+// Р’С‹РґР°РµРј С‚РѕР»СЊРєРѕ РёРЅС„РѕСЂРјР°С†РёСЋ Рѕ РЅР°С‡Р°РІС€РµР№СЃСЏ РЅРѕРІРѕР№ РёС‚РµСЂР°С†РёРё
   if (typ=OnlyDepth)  then
     begin
       s:='info depth '+inttostr(Threads[1].rootdepth);
-      Lwrite(s);
+      writeln(output,s);
+      Flush(Output);
     end else
-// Выдаем статистику по только что завершившейся итерации
+// Р’С‹РґР°РµРј СЃС‚Р°С‚РёСЃС‚РёРєСѓ РїРѕ С‚РѕР»СЊРєРѕ С‡С‚Рѕ Р·Р°РІРµСЂС€РёРІС€РµР№СЃСЏ РёС‚РµСЂР°С†РёРё
   if (typ=TimeStat) then
     begin
       if timetot=0 then nps:=0 else nps:=((FullNodes*1000) div timetot);
       s:='info depth '+inttostr(Threads[1].rootdepth);
       s:=s+' time '+inttostr(timetot)+' nodes '+inttostr(FullNodes)+' nps '+inttostr(nps);
-      Lwrite(s);
+      writeln(output,s);
+      Flush(Output);
     end else
   if (typ=LowerStat) then
     begin
@@ -161,32 +168,41 @@ begin
      s:=s+' lowerbound';
      s:=s+' time '+inttostr(timetot)+' nodes '+inttostr(FullNodes)+' nps '+inttostr(nps);
      s:=s+' pv '+MakePVString(pv);
-     LWrite(s);
+     writeln(output,s);
+     Flush(Output);
     end
 end;
-Function isDraw(var Board:TBoard;var Tree:TTree;ply:integer):boolean;inline;
+Function isDraw(ThreadId:integer;var Board:TBoard;var Tree:TTree;ply:integer):boolean;inline;
 var
   MList:TMoveList;
-  stop,i : integer;
+  stop,i,reps,cnt : integer;
 begin
-  // Если достигли правила 50 ходов:
+  // Р•СЃР»Рё РґРѕСЃС‚РёРіР»Рё РїСЂР°РІРёР»Р° 50 С…РѕРґРѕРІ:
   if (Board.Rule50>=100) and ((Board.CheckersBB=0) or (GenerateLegals(0,Board,MList)>0)) then
     begin
       Result:=true;
       exit;
     end;
-  // Если на ветке произошло повторение (в том числе с корневой позицией)
+  // Р•СЃР»Рё РЅР° РІРµС‚РєРµ РїСЂРѕРёР·РѕС€Р»Рѕ РїРѕРІС‚РѕСЂРµРЅРёРµ (РІРєР»СЋС‡Р°СЏ РєРѕСЂРЅРµРІСѓСЋ РїРѕР·РёС†РёСЋ Рё РёСЃС‚РѕСЂРёСЋ РґРѕ РєРѕСЂРЅСЏ ).
   if Board.nullcnt<Board.Rule50
     then stop:=ply-Board.nullcnt
     else stop:=ply-Board.Rule50;
+  if threads[threadid].Fenflag
+    then cnt:=threads[threadid].repcnt   // Р’ РіРµРЅРµСЂР°С‚РѕСЂРµ РєР°Р¶РґС‹Р№ РїРѕС‚РѕРє РІРµРґРµС‚ СЃРІРѕСЋ СЃС‚СЂСѓРєС‚СѓСЂСѓ РіР»СѓР±РёРЅС‹ РїРѕР·РёС†РёР№ "РґРѕ РєРѕСЂРЅСЏ"
+    else cnt:=rep.cnt;                  //  Р’ РґРІРёР¶РєРµ РѕРЅР° РµРґРёРЅР°СЏ РіР»РѕР±Р°Р»СЊРЅР°СЏ
+  if stop<1-cnt then stop:=1-cnt;
   i:=ply-2;
+  reps:=0;
   while i>=stop do
     begin
-      if i<-1 then break;
-      if tree[i].Key=tree[ply].Key then
+      if tree[i].Key=Board.Key then
         begin
-          Result:=true;
-          exit;
+          inc(reps);
+          if (i>0) or (reps>1) then     // РґР°РµРј РЅРёС‡СЊСЋ РµСЃР»Рё СЃР»СѓС‡РёР»РѕСЃСЊ РѕРґРЅРѕ РїРѕРІС‚РѕСЂРµРЅРёРµ РЅР° РІРµС‚РєРµ (РІРєР»СЋС‡Р°СЏ РєРѕСЂРЅРµРІСѓСЋ) РёР»Рё РґРѕ РєРѕСЂРЅСЏ СЌС‚Р° РїРѕР·РёС†РёСЏ СѓР¶Рµ РІСЃС‚СЂРµС‡Р°Р»Р°СЃСЊ РЅРµ РјРµРЅСЊС€Рµ 2 СЂР°Р·
+            begin
+              Result:=true;
+              exit;
+            end;
         end;
       i:=i-2;
     end;
@@ -220,8 +236,8 @@ Procedure AddPV(move:integer;var PVLine:TPV;var Line:TPV);
 var
   i : integer;
 begin
-  If (Line[0]>MaxPly) or (Line[0]<0)
-    then Line[0]:=0;
+  If (Line[0]>=MaxPly-1)
+    then Line[0]:=MaxPly-1;
   PVLine[1]:=move;
   for i:=1 to Line[0] do
     PVLine[i+1]:=Line[i];
@@ -229,10 +245,9 @@ begin
 end;
 
 Procedure Iterate(ThreadId:integer);
-// Крутит цикл итераций (на нужном потоке)
+// РљСЂСѓС‚РёС‚ С†РёРєР» РёС‚РµСЂР°С†РёР№ (РЅР° РЅСѓР¶РЅРѕРј РїРѕС‚РѕРєРµ)
 var
-  RootAlpha,RootBeta,BestMove,BestValue,Delta,RootDepth,newdepth,CurrBestMove,OldBestMove : integer;
-  TimeEnd : Cardinal;
+  RootAlpha,RootBeta,BestMove,BestValue,Delta,RootDepth,newdepth,CurrBestMove,OldBestMove,i : integer;
   hbc : integer ;
 begin
   BestValue:=-Inf;
@@ -240,12 +255,17 @@ begin
   RootBeta:=Inf;
   Delta:=10;
   Threads[ThreadId].StableMove:=0;
+  Threads[ThreadID].StablePv[0]:=0;
   Threads[ThreadId].BestValue:=-Inf;
   RootDepth:=0;BestMove:=0; OldBestMove:=0;Threads[ThreadId].OldPvMove:=0;CurrBestMove:=0;
-  // Запускаем цикл итераций
+  // Р—Р°РїРѕР»РЅСЏРµРј РёСЃС‚РѕСЂРёСЋ С…РµС€РµР№ РїРѕР·РёС†РёР№ "РґРѕ РєРѕСЂРЅСЏ", РїРѕР»СѓС‡РµРЅРЅСѓСЋ РѕС‚ РѕР±РѕР»РѕС‡РєРё РµСЃР»Рё РµСЃС‚СЊ . Р’СЃРµ РїРѕС‚РѕРєРё РёСЃРїРѕР»СЊР·СѓСЋС‚ РґР»СЏ С‡С‚РµРЅРёСЏ РµРґРёРЅСѓСЋ СЃС‚СЂСѓРєС‚СѓСЂСѓ, РёРЅРёС†РёР°Р»РёР·РёСЂСѓРµРјСѓСЋ РїСЂРё Setboard
+  threads[threadid].tree[1].Key:=threads[threadid].Board.Key; //РєРѕСЂРµРЅСЊ
+   for i:=1 to rep.cnt do
+     threads[threadid].Tree[1-i].key:=rep.keys[rep.cnt-i]; //Р·Р°РїРѕР»РЅСЏРµРј РѕС‚ 0 РІ "РјРёРЅСѓСЃ", СЂР°Р·РјР°С‚С‹РІР°СЏ РёСЃС‚РѕСЂРёСЋ РѕС‚ РєРѕСЂРЅСЏ РІ "РїСЂРѕС€Р»РѕРµ".
+  // Р—Р°РїСѓСЃРєР°РµРј С†РёРєР» РёС‚РµСЂР°С†РёР№
   While RootDepth<=MaxPly do
     begin
-     // Главный поток просто увеличивает глубину на 1
+     // Р“Р»Р°РІРЅС‹Р№ РїРѕС‚РѕРє РїСЂРѕСЃС‚Рѕ СѓРІРµР»РёС‡РёРІР°РµС‚ РіР»СѓР±РёРЅСѓ РЅР° 1
      inc(RootDepth);
      Threads[ThreadID].RootDepth:=RootDepth;
      if RootDepth>5 then
@@ -261,15 +281,17 @@ begin
       begin
        newdepth:=rootDepth-hbc;
        if newdepth<1 then newdepth:=1;
-       BestValue:=RootSearch(ThreadId,RootAlpha,RootBeta,newdepth,Threads[ThreadId].Board,Threads[ThreadId].Tree,Threads[ThreadId].Sortunit,Threads[ThreadId].RootList,Threads[ThreadID].RootMoves,Threads[ThreadId].PVLine,BestMove);
+       BestValue:=RootSearch(TTGlobal,ThreadId,RootAlpha,RootBeta,newdepth,Threads[ThreadId].Board,Threads[ThreadId].Tree,Threads[ThreadId].Sortunit,Threads[ThreadId].RootList,Threads[ThreadID].RootMoves,Threads[ThreadId].PVLine,BestMove);
        if Threads[ThreadId].AbortSearch then break;
        if BestMove<>0 then
         begin
           Threads[ThreadId].StableMove:=BestMove;
-          // Обновляем Порядок ходов в списке ходов из корня (лучший ход идет на первое место в списке)
+          // РћР±РЅРѕРІР»СЏРµРј РџРѕСЂСЏРґРѕРє С…РѕРґРѕРІ РІ СЃРїРёСЃРєРµ С…РѕРґРѕРІ РёР· РєРѕСЂРЅСЏ (Р»СѓС‡С€РёР№ С…РѕРґ РёРґРµС‚ РЅР° РїРµСЂРІРѕРµ РјРµСЃС‚Рѕ РІ СЃРїРёСЃРєРµ)
           UpdateList(BestMove,0,Threads[ThreadId].RootMoves-1,Threads[ThreadID].RootList);
           Threads[ThreadId].BestValue:=BestValue;
-          AddPv(Bestmove,Threads[ThreadId].StablePv,Threads[ThreadId].Pvline);
+          for i:=1 to Threads[ThreadID].PVLine[0] do
+           Threads[ThreadID].StablePV[i]:=Threads[ThreadID].PVLine[i];
+          Threads[ThreadID].StablePV[0]:=Threads[ThreadID].PVLine[0];
         end;
        if BestValue<=RootAlpha then
         begin
@@ -277,16 +299,16 @@ begin
           RootBeta:=(RootAlpha+RootBeta) div 2;
           RootAlpha:=BestValue-Delta;
           if RootAlpha<-Inf then RootAlpha:=-Inf;
-          // Если оценка просела, то добавляем время на обдумывание
+          // Р•СЃР»Рё РѕС†РµРЅРєР° РїСЂРѕСЃРµР»Р°, С‚Рѕ РґРѕР±Р°РІР»СЏРµРј РІСЂРµРјСЏ РЅР° РѕР±РґСѓРјС‹РІР°РЅРёРµ
           If (ThreadId=1) and  (game.time<>game.rezerv) then game.time:=game.rezerv;
         end else
        if BestValue>=RootBeta then
         begin
           inc(hbc);
-          If (ThreadID=1) then PrintFullSearchInfo(BestValue,Threads[ThreadId].PVLine,GetTickCount,LowerStat);
+          If (ThreadID=1) then PrintFullSearchInfo(BestValue,Threads[ThreadId].PVLine,LowerStat);
           RootBeta:=BestValue+Delta;
           if RootBeta>Inf then RootBeta:=Inf;
-          // Если оценка просела, то добавляем время на обдумывание
+          // Р•СЃР»Рё РѕС†РµРЅРєР° РїСЂРѕСЃРµР»Р°, С‚Рѕ РґРѕР±Р°РІР»СЏРµРј РІСЂРµРјСЏ РЅР° РѕР±РґСѓРјС‹РІР°РЅРёРµ
           If (ThreadId=1) and  (game.time<>game.rezerv) then game.time:=game.rezerv;
         end else break;
        Delta:=Delta+(Delta div 4)+2;
@@ -296,132 +318,133 @@ begin
       Threads[ThreadId].BestValue:=BestValue;
       Threads[ThreadId].OldPvMove:=CurrBestMove;
       CurrBestMove:=BestMove;
-      AddPv(Bestmove,Threads[ThreadId].StablePv,Threads[ThreadId].Pvline);
-     // Завершили итерацию - обновляем статистику итерации (перебранные узлы и время)
+      for i:=1 to Threads[ThreadID].PVLine[0] do
+        Threads[ThreadID].StablePV[i]:=Threads[ThreadID].PVLine[i];
+      Threads[ThreadID].StablePV[0]:=Threads[ThreadID].PVLine[0];
+     // Р—Р°РІРµСЂС€РёР»Рё РёС‚РµСЂР°С†РёСЋ - РѕР±РЅРѕРІР»СЏРµРј СЃС‚Р°С‚РёСЃС‚РёРєСѓ РёС‚РµСЂР°С†РёРё (РїРµСЂРµР±СЂР°РЅРЅС‹Рµ СѓР·Р»С‹ Рё РІСЂРµРјСЏ)
      If ThreadID=1 then
       begin
-       TimeEnd:=GetTickCount;
-       PrintFullSearchInfo(0,Threads[ThreadId].StablePv,TimeEnd,TimeStat);
-       // После заверщившейся итерации возвращаем нормальный показатель времени
+       PrintFullSearchInfo(0,Threads[ThreadId].StablePv,TimeStat);
+       // РџРѕСЃР»Рµ Р·Р°РІРµСЂС‰РёРІС€РµР№СЃСЏ РёС‚РµСЂР°С†РёРё РІРѕР·РІСЂР°С‰Р°РµРј РЅРѕСЂРјР°Р»СЊРЅС‹Р№ РїРѕРєР°Р·Р°С‚РµР»СЊ РІСЂРµРјРµРЅРё
        If (OldBestMove=CurrBestMove)
          then game.time:=game.oldtime
          else game.time:=game.rezerv;
        OldBestMove:=CurrBestMove;
-        // Если осталось не так много времени - выходим не начиная новую итерацию
-       If (game.time<>game.rezerv) and ((TimeEnd-game.TimeStart)>(0.7*game.time)) then break;
+        // Р•СЃР»Рё РѕСЃС‚Р°Р»РѕСЃСЊ РЅРµ С‚Р°Рє РјРЅРѕРіРѕ РІСЂРµРјРµРЅРё - РІС‹С…РѕРґРёРј РЅРµ РЅР°С‡РёРЅР°СЏ РЅРѕРІСѓСЋ РёС‚РµСЂР°С†РёСЋ
+       If (game.time<>game.rezerv) and ((MilliSecondsBetween(game.StartTime,now))>(0.7*game.time)) then break;
       end;
 
     end;
 end;
 Procedure Think;
-// Основная функция , обеспечивающая перебор. Запускается когда оболочка получает команду go и выдает оболочке лучший ход и прочую информацию.
+// РћСЃРЅРѕРІРЅР°СЏ С„СѓРЅРєС†РёСЏ , РѕР±РµСЃРїРµС‡РёРІР°СЋС‰Р°СЏ РїРµСЂРµР±РѕСЂ. Р—Р°РїСѓСЃРєР°РµС‚СЃСЏ РєРѕРіРґР° РѕР±РѕР»РѕС‡РєР° РїРѕР»СѓС‡Р°РµС‚ РєРѕРјР°РЅРґСѓ go Рё РІС‹РґР°РµС‚ РѕР±РѕР»РѕС‡РєРµ Р»СѓС‡С€РёР№ С…РѕРґ Рё РїСЂРѕС‡СѓСЋ РёРЅС„РѕСЂРјР°С†РёСЋ.  Р Р°Р±РѕС‚Р°РµС‚ С‚РѕР»СЊРєРѕ РЅР° РїРµСЂРІРѕРј РїРѕС‚РѕРєРµ
 Label
   l1;
 var
   n,j : integer;
   s : ansistring;
-  TimeEnd : Cardinal;
   Pondermove,BestID: integer;
 begin
+  // РљР°Рє С‚РѕР»СЊРєРѕ РїРѕС‚РѕРє РЅР°С‡Р°Р» РёСЃРїРѕР»РЅСЏС‚СЊСЃСЏ - С‚СѓС€РёРј СЃРёРіРЅР°Р» С‡С‚РѕР±С‹ РЅРµ Р±С‹Р»Рѕ РїРѕС‚РѕРј Р»РѕР¶РЅРѕРіРѕ СЃСЂР°Р±Р°С‚С‹РІР°РЅРёСЏ.
+  IdleEvent.ResetEvent;
+  // Р—Р°РїСѓСЃРєР°РµРј РѕСЃРЅРѕРІРЅРѕР№ С‚Р°Р№РјРµСЂ
+  game.StartTime:=now;
   NewSearch(1);
   Threads[1].PVLine[0]:=0;
-  // Генерируем список ходов из корня позиции
+  // Р“РµРЅРµСЂРёСЂСѓРµРј СЃРїРёСЃРѕРє С…РѕРґРѕРІ РёР· РєРѕСЂРЅСЏ РїРѕР·РёС†РёРё
   n:=GenerateLegals(0,Threads[1].Board,Threads[1].RootList);
   Threads[1].RootMoves:=n;
- // Если перебор невозможен (мат или пат) то выдаем об этом сообщение оболочке и уходим
+ // Р•СЃР»Рё РїРµСЂРµР±РѕСЂ РЅРµРІРѕР·РјРѕР¶РµРЅ (РјР°С‚ РёР»Рё РїР°С‚) С‚Рѕ РІС‹РґР°РµРј РѕР± СЌС‚РѕРј СЃРѕРѕР±С‰РµРЅРёРµ РѕР±РѕР»РѕС‡РєРµ Рё СѓС…РѕРґРёРј
   if n=0 then
     begin
       s:='info depth '+inttoStr(MaxPly)+' score ';
       if Threads[1].Board.CheckersBB<>0
         then s:=s+inttostr(-mate)
         else s:=s+'0';
-      If game.showtext then LWrite(s);
+      If game.showtext then
+        begin
+         writeln(output,s);
+         Flush(Output);
+        end;
       BestId:=1;
       Threads[BestId].FullDepth:=MaxPly;
       Threads[BestId].RootList[0].move:=0;
       goto  l1;
     end;
 
-  // Запускаем вспомогательные потоки
+  // Р—Р°РїСѓСЃРєР°РµРј РІСЃРїРѕРјРѕРіР°С‚РµР»СЊРЅС‹Рµ РїРѕС‚РѕРєРё
   IF game.Threads>1 then
     begin
-       // Заполняем структуры в потоках при многопоточном переборе
+       // Р—Р°РїРѕР»РЅСЏРµРј СЃС‚СЂСѓРєС‚СѓСЂС‹ РІ РїРѕС‚РѕРєР°С… РїСЂРё РјРЅРѕРіРѕРїРѕС‚РѕС‡РЅРѕРј РїРµСЂРµР±РѕСЂРµ
       For j:=2 to game.Threads do
         CopyThread(j);
-      SetEvent(IdleEvent);
+      IdleEvent.SetEvent;
     end;
-  // Запускаем основной поток и ждем его завершения по таймауту или пользователем
+  // Р—Р°РїСѓСЃРєР°РµРј РѕСЃРЅРѕРІРЅРѕР№ РїРѕС‚РѕРє Рё Р¶РґРµРј РµРіРѕ Р·Р°РІРµСЂС€РµРЅРёСЏ РїРѕ С‚Р°Р№РјР°СѓС‚Сѓ РёР»Рё РїРѕР»СЊР·РѕРІР°С‚РµР»РµРј
   Iterate(1);
   BestID:=1;
   If game.Threads>1 then
    begin
-     // Останавливаем оставшиеся потоки
+    IdleEvent.ResetEvent;
+     // РћСЃС‚Р°РЅР°РІР»РёРІР°РµРј РѕСЃС‚Р°РІС€РёРµСЃСЏ РїРѕС‚РѕРєРё
     For j:=2 to game.Threads do
      Threads[j].AbortSearch:=true;
-    ResetEvent(IdleEvent);
     While isThreadIdle do;
-    // Смотрим: нет ли среди вспомогательных потоков того, кто перебрал на большую глубину или имеет лучшую оценку:
+    // РЎРјРѕС‚СЂРёРј: РЅРµС‚ Р»Рё СЃСЂРµРґРё РІСЃРїРѕРјРѕРіР°С‚РµР»СЊРЅС‹С… РїРѕС‚РѕРєРѕРІ С‚РѕРіРѕ, РєС‚Рѕ РїРµСЂРµР±СЂР°Р» РЅР° Р±РѕР»СЊС€СѓСЋ РіР»СѓР±РёРЅСѓ РёР»Рё РёРјРµРµС‚ Р»СѓС‡С€СѓСЋ РѕС†РµРЅРєСѓ:
     For j:=2 to game.Threads do
      If (Threads[j].FullDepth>Threads[BestID].FullDepth) or ((Threads[j].FullDepth=Threads[BestID].FullDepth) and (Threads[j].BestValue>Threads[BestId].BestValue)) then BestId:=j;
    end;
-  TimeEnd:=GetTickCount;
-  // Если вылетели слишком быстро по времени, то печатаем хоть какую-то статистику для отображения:
-  If (TimeEnd-game.TimeStart)<200 then
-    begin
-      TimeEnd:=game.TimeStart+200;
-      PrintFullSearchInfo(Threads[BestId].BestValue,Threads[BestId].PVLine,TimeEnd,FullInfo);
-    end else
-  // Если лучший результат достигнут во вспомогательном потоке - выводим информацию об этом
-  If BestID<>1 then PrintFullSearchInfo(Threads[BestId].BestValue,Threads[BestId].StablePV,TimeEnd,FullInfo);
+  // Р•СЃР»Рё Р»СѓС‡С€РёР№ СЂРµР·СѓР»СЊС‚Р°С‚ РґРѕСЃС‚РёРіРЅСѓС‚ РІРѕ РІСЃРїРѕРјРѕРіР°С‚РµР»СЊРЅРѕРј РїРѕС‚РѕРєРµ - РІС‹РІРѕРґРёРј РёРЅС„РѕСЂРјР°С†РёСЋ РѕР± СЌС‚РѕРј
+  If BestID<>1 then PrintFullSearchInfo(Threads[BestId].BestValue,Threads[BestId].StablePV,FullInfo);
 l1:
-  // Если в пондеррежиме достигли максимума по глубине - просто "зависаем" и ждем от оболочки команду на выход из пондеррежима
+  // Р•СЃР»Рё РІ РїРѕРЅРґРµСЂСЂРµР¶РёРјРµ РґРѕСЃС‚РёРіР»Рё РјР°РєСЃРёРјСѓРјР° РїРѕ РіР»СѓР±РёРЅРµ - РїСЂРѕСЃС‚Рѕ "Р·Р°РІРёСЃР°РµРј" Рё Р¶РґРµРј РѕС‚ РѕР±РѕР»РѕС‡РєРё РєРѕРјР°РЅРґСѓ РЅР° РІС‹С…РѕРґ РёР· РїРѕРЅРґРµСЂСЂРµР¶РёРјР°
   if (Threads[BestId].FullDepth>=MaxPly-1) and (game.time>=48*3600*1000) and (game.rezerv>=48*3600*1000) and (game.uciPonder) then WaitPonderhit;
-  // Печатаем оболочке лучший ход, полученный в процессе перебора ( и пондерход если находимся в соответствующем режиме)
+  // РџРµС‡Р°С‚Р°РµРј РѕР±РѕР»РѕС‡РєРµ Р»СѓС‡С€РёР№ С…РѕРґ, РїРѕР»СѓС‡РµРЅРЅС‹Р№ РІ РїСЂРѕС†РµСЃСЃРµ РїРµСЂРµР±РѕСЂР° ( Рё РїРѕРЅРґРµСЂС…РѕРґ РµСЃР»Рё РЅР°С…РѕРґРёРјСЃСЏ РІ СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‰РµРј СЂРµР¶РёРјРµ)
   if Threads[BestId].StableMove=0 then Threads[BestId].StableMove:=Threads[BestId].RootList[0].move;
-  // Пробуем вытащить PonderMove  если это возможно:
+  // РџСЂРѕР±СѓРµРј РІС‹С‚Р°С‰РёС‚СЊ PonderMove  РµСЃР»Рё СЌС‚Рѕ РІРѕР·РјРѕР¶РЅРѕ:
   If (game.uciPonder) and (Threads[BestId].StableMove<>0)
-    then Pondermove:=FindPonder(Threads[BestId].StableMove,Threads[1].Board)
+    then Pondermove:=FindPonder(TTGlobal,Threads[BestId].StableMove,Threads[1].Board)
     else Pondermove:=0;
   s:=StringMove(Threads[BestId].Stablemove);
   if (pondermove<>0) and (game.uciPonder)
         then s := s + ' ponder ' + StringMove(pondermove);
-  If (Threads[BestId].StableMove<>0) and (game.showtext) then LWrite('bestmove '+s);
+  If (Threads[BestId].StableMove<>0) and (game.showtext) then
+   begin
+    writeln('bestmove '+s);
+    Flush(Output);
+   end;
 end;
-Function RootSearch(ThreadID:integer;alpha:integer;beta:integer;depth:integer;var Board:TBoard;var Tree:Ttree;var SortUnit:TSortUnit;var RootList:TMoveList;n:integer;var PVLine:TPV;var BestMove:integer):integer;
+Function RootSearch(var TT:TTable;ThreadID:integer;alpha:integer;beta:integer;depth:integer;var Board:TBoard;var Tree:Ttree;var SortUnit:TSortUnit;var RootList:TMoveList;n:integer;var PVLine:TPV;var BestMove:integer):integer;
 var
    CheckInfo : TCheckInfo;
    Undo : TUndo;
    BestValue,j,extension,newdepth,value,R,D,move,qsearched,capsearched,hashmove,piese,from,dest,histvalue:integer;
-   TimeEnd:Cardinal;
    isCheck,doresearch,pv,hashcap,imp:boolean;
    Line:TPV;
    OldMoves,OldCaptures:TMoveList;
 begin
-  // Инициализация
+  // РРЅРёС†РёР°Р»РёР·Р°С†РёСЏ
   pv:=beta-alpha>1;
   PVLine[0]:=0;
-  line[0]:=0;
-  TimeEnd:=0;
   qsearched:=0;capsearched:=0;
-  tree[1].Key:=Board.Key;
   Threads[Threadid].nullply:=0;
   Threads[Threadid].nullclr:=-1;
-   // Готовимся к перебору
+   // Р“РѕС‚РѕРІРёРјСЃСЏ Рє РїРµСЂРµР±РѕСЂСѓ
   FillCheckInfo(CheckInfo,Board);
   SetUndo(Board,Undo);
-  // Аккумуляторы
+  // РђРєРєСѓРјСѓР»СЏС‚РѕСЂС‹
   FillWhiteAcc16(Net.model,Board,Threads[ThreadId].Pass[1]);
   FillBlackAcc16(Net.model,Board,Threads[ThreadId].Pass[1]);
-  // Печатаем текущую глубину
+  // РџРµС‡Р°С‚Р°РµРј С‚РµРєСѓС‰СѓСЋ РіР»СѓР±РёРЅСѓ
   If (threadId=1) then
     begin
-     TimeEnd:=GetTickCount;
-     PrintFullSearchInfo(0,PVLine,TimeEnd,OnlyDepth);
+     PrintFullSearchInfo(0,PVLine,OnlyDepth);
     end;
   BestValue:=-Inf;
   BestMove:=0;
   Tree[-1].StatEval:=-Inf;
   Tree[0].StatEval:=-Inf;
+  Tree[1].key:=Board.Key;
   tree[1].dblext:=0;
   if Board.CheckersBB=0
     then Tree[1].StatEval:=Evaluate(Board,1,1)
@@ -429,15 +452,19 @@ begin
   hashmove:=RootList[0].move;
   imp:=false;
   hashcap:=(hashmove and CaptureFlag)<>0;
-  // Крутим цикл ходов из корня
+  // РљСЂСѓС‚РёРј С†РёРєР» С…РѕРґРѕРІ РёР· РєРѕСЂРЅСЏ
   for j:=0 to n-1 do
        begin
          move:=RootList[j].move;
          from:=move and 63;
          dest:=(move shr 6) and 63;
          piese:=Board.Pos[from];
-         // статистика о текущем перебираемом ходе
-         if (ThreadID=1) and ((TimeEnd-game.TimeStart)>2000) and (game.showtext) then   Lwrite('info currmovenumber '+inttostr(j+1)+' info currmove '+StringMove(move));
+         // СЃС‚Р°С‚РёСЃС‚РёРєР° Рѕ С‚РµРєСѓС‰РµРј РїРµСЂРµР±РёСЂР°РµРјРѕРј С…РѕРґРµ
+         if (ThreadID=1) and ((MilliSecondsBetween(game.StartTime,now))>2000) and (game.showtext) then
+           begin
+            writeln('info currmovenumber '+inttostr(j+1)+' info currmove '+StringMove(move));
+            Flush(Output);
+           end;
          isCheck:=isMoveCheck(move,CheckInfo,Board);
          extension:=0;
          if (isCheck) and (((CheckInfo.DiscoverCheckBB and Only[from])<>0) or (GoodSee(move,Board,0))) then extension:=1;
@@ -446,10 +473,10 @@ begin
          Tree[1].CurrNum:=j+1;
          Tree[1].CurrStat:=@Sortunit.HistorySats[(Board.CheckersBB<>0),((move and CaptureFlag)<>0),piese,dest];
          MakeMove(move,Board,Undo,isCheck);
-         //Обновляем аккумуляторы
+         //РћР±РЅРѕРІР»СЏРµРј Р°РєРєСѓРјСѓР»СЏС‚РѕСЂС‹
          UpdAcc16(move,Board,Undo,Threads[ThreadId].Pass[1],Threads[ThreadId].Pass[2]);
          value:=-Inf;
-         if (j=0) then value:=-Search(ThreadId,-Beta,-Alpha,newdepth,2,Board,Tree,SortUnit,Line,0,false) else
+         if (j=0) then value:=-Search(TT,ThreadId,-Beta,-Alpha,newdepth,2,Board,Tree,SortUnit,Line,0,false) else
            begin
             doresearch:=true;
              // LMR Reduction
@@ -464,21 +491,21 @@ begin
                   begin
                    D:=newdepth-R;
                    if D<1 then D:=1;
-                   value:=-Search(ThreadId,-alpha-1,-alpha,D,2,Board,Tree,SortUnit,Line,0,true);
+                   value:=-Search(TT,ThreadId,-alpha-1,-alpha,D,2,Board,Tree,SortUnit,Line,0,true);
                    doresearch:=(value>alpha);
                   end;
                end;
-             if (doresearch) then value:=-Search(ThreadId,-alpha-1,-alpha,newdepth,2,Board,Tree,SortUnit,Line,0,true);
+             if (doresearch) then value:=-Search(TT,ThreadId,-alpha-1,-alpha,newdepth,2,Board,Tree,SortUnit,Line,0,true);
              if (value>alpha)   then
               begin
-               // Если ход из корня меняется - даем дополнительное время чтобы завершить его оценку
+               // Р•СЃР»Рё С…РѕРґ РёР· РєРѕСЂРЅСЏ РјРµРЅСЏРµС‚СЃСЏ - РґР°РµРј РґРѕРїРѕР»РЅРёС‚РµР»СЊРЅРѕРµ РІСЂРµРјСЏ С‡С‚РѕР±С‹ Р·Р°РІРµСЂС€РёС‚СЊ РµРіРѕ РѕС†РµРЅРєСѓ
                If (ThreadId=1) and (game.time<>game.rezerv) then game.time:=game.rezerv;
-               value:=-Search(ThreadId,-beta,-alpha,newdepth,2,Board,Tree,SortUnit,Line,0,false);
+               value:=-Search(TT,ThreadId,-beta,-alpha,newdepth,2,Board,Tree,SortUnit,Line,0,false);
               end;
            end;
          UnMakeMove(move,Board,Undo);
          if Threads[ThreadId].AbortSearch then break;
-      // Если сменился лучший ход из корня (или он первый) то запоминаем это на случай если вся итерация не успеет завершиться.
+      // Р•СЃР»Рё СЃРјРµРЅРёР»СЃСЏ Р»СѓС‡С€РёР№ С…РѕРґ РёР· РєРѕСЂРЅСЏ (РёР»Рё РѕРЅ РїРµСЂРІС‹Р№) С‚Рѕ Р·Р°РїРѕРјРёРЅР°РµРј СЌС‚Рѕ РЅР° СЃР»СѓС‡Р°Р№ РµСЃР»Рё РІСЃСЏ РёС‚РµСЂР°С†РёСЏ РЅРµ СѓСЃРїРµРµС‚ Р·Р°РІРµСЂС€РёС‚СЊСЃСЏ.
          If (j=0) or  (value>alpha) then
            begin
              Threads[ThreadId].FullDepth:=depth;
@@ -492,16 +519,22 @@ begin
            BestValue:=value;
            if value>alpha then
             begin
-             // Сменился лучший ход из корня - печатаем полную статистику
+             // РЎРјРµРЅРёР»СЃСЏ Р»СѓС‡С€РёР№ С…РѕРґ РёР· РєРѕСЂРЅСЏ - РїРµС‡Р°С‚Р°РµРј РїРѕР»РЅСѓСЋ СЃС‚Р°С‚РёСЃС‚РёРєСѓ
              BestMove:=move;
-             // Получаем обновленный основной вариант
+             if value>=beta then
+               begin
+                // Р—Р°РїРёСЃС‹РІР°РµРј РІ РєР°С‡РµСЃС‚РІРµ PV С…РѕРґ, РєРѕС‚РѕСЂС‹Р№ РїСЂРёРІРµР» Рє beta-РѕС‚СЃРµС‡РµРЅРёСЋ
+                PVLine[0]:=1;
+                PVline[1]:=move;
+                break;
+               end;
+             // РџРѕР»СѓС‡Р°РµРј РѕР±РЅРѕРІР»РµРЅРЅС‹Р№ РѕСЃРЅРѕРІРЅРѕР№ РІР°СЂРёР°РЅС‚
              AddPv(Bestmove,PVLine,Line);
-             if value>=beta then break;
-             If (ThreadId=1) then PrintFullSearchInfo(BestValue,PVLine,GetTickCount,FullInfo);
+             If (ThreadId=1) then PrintFullSearchInfo(BestValue,PVLine,FullInfo);
              alpha:=value;
             end;
           end;
-        // Тихие  ходы сохраняем отдельно
+        // РўРёС…РёРµ  С…РѕРґС‹ СЃРѕС…СЂР°РЅСЏРµРј РѕС‚РґРµР»СЊРЅРѕ
          if bestmove<>move then
           begin
            if  ((move and CaptureFlag)=0) then
@@ -517,13 +550,13 @@ begin
        end;
   if not Threads[ThreadId].AbortSearch then
     begin
-     // Обновляем историю
+     // РћР±РЅРѕРІР»СЏРµРј РёСЃС‚РѕСЂРёСЋ
      if (BestMove<>0) then UpdateFullHistory(Bestmove,depth,1,qsearched,OldMoves,capsearched,OldCaptures,SortUnit,Board,Tree,BestValue-beta);
     end else BestValue:=0;
   Result:=BestValue;
 end;
 
-Function Search(ThreadID:integer;alpha:integer;beta:integer;depth:integer;ply:integer;var Board:TBoard;var Tree:Ttree;var SortUnit:TSortUnit;var PVLine:TPV;emove:integer;cut:boolean):integer;
+Function Search(var TT:TTable;ThreadID:integer;alpha:integer;beta:integer;depth:integer;ply:integer;var Board:TBoard;var Tree:Ttree;var SortUnit:TSortUnit;var PVLine:TPV;emove:integer;cut:boolean):integer;
 label l1;
 var
   Undo : TUndo;
@@ -535,15 +568,17 @@ var
   Line : TPV;
   HashIndex : int64;
 begin
-  // Листья
+  // Р›РёСЃС‚СЊСЏ
   if depth<=0 then
     begin
-      Result:=FV(ThreadId,alpha,beta,0,ply,Board,SortUnit,Tree,PVLine);
+      Result:=FV(TT,ThreadId,alpha,beta,0,ply,Board,SortUnit,Tree,PVLine);
       exit;
     end;
-  // Подготовка к перебору
+  // РџРѕРґРіРѕС‚РѕРІРєР° Рє РїРµСЂРµР±РѕСЂСѓ
   inc(Board.Nodes);
   dec(Board.remain);
+  // С‡РёСЃС‚РёРј РІРѕР·РјРѕР¶РЅС‹Р№ Р±СѓРґСѓС‰РёР№ РџР’ РїРµСЂРµРґ РїРµСЂРµР±РѕСЂРѕРј
+  pvline[0]:=0;
   pv:=(beta-alpha)>1;
   qsearched:=0;capsearched:=0;
   tree[ply].Key:=Board.Key;
@@ -552,9 +587,9 @@ begin
   if (ThreadID=1) and (Board.remain<=0) then
     begin
       Board.remain:=game.remain;
-      poll(Board);
+      poll;
     end;
-  If (Threads[ThreadId].AbortSearch) or (ply>=MaxPly-1) or (isDraw(Board,tree,ply)) then
+  If (Threads[ThreadId].AbortSearch) or (ply>=MaxPly-1) or (isDraw(ThreadId,Board,tree,ply)) then
     begin
      if (ply>=MaxPly-1) and (Board.CheckersBB=0)
        then Result:=Evaluate(Board,ThreadID,ply)
@@ -572,14 +607,14 @@ begin
   // Hash
   if emove<>0
      then HashIndex:=-1
-     else HashIndex:=HashProbe(Board,Board.Key);
+     else HashIndex:=HashProbe(TT,Board.Key);
   if HashIndex>=0 then
     begin
-      Hashmove:=TT[HashIndex].move;
-      HashValue:=ValueFromTT(TT[HashIndex].value,ply);
-      Hashtyp:=TT[HashIndex].typage and 3;
-      HashDepth:=TT[HashIndex].depth;
-      StaticEval:=TT[HashIndex].steval;
+      Hashmove:=TT.data[HashIndex].move;
+      HashValue:=ValueFromTT(TT.data[HashIndex].value,ply);
+      Hashtyp:=TT.data[HashIndex].typage and 3;
+      HashDepth:=TT.data[HashIndex].depth;
+      StaticEval:=TT.data[HashIndex].steval;
       if (not pv) then
         begin
          if (hashdepth>=depth) and (HashValue<>-Inf) then
@@ -590,8 +625,8 @@ begin
                   begin
                     If HashValue>=beta then
                       begin
-                        If ((Hashmove and CaptureFlag)=0) then UpdateQuietHistory(Hashmove,depth,ply,qsearched,OldMoves,SortUnit,Board,Tree,DepthInc[depth]);
-                        If (tree[ply-1].CurrNum<3) and (Tree[ply-1].CurrMove<>0) and ((Tree[ply-1].CurrMove and CaptureFlag)=0) then UpdateStats(SortUnit,Tree,ply-1,Board.Pos[(tree[ply-1].CurrMove shr 6) and 63],(tree[ply-1].CurrMove shr 6) and 63,-GetStatBonus(depth+1));
+                        If ((Hashmove and CaptureFlag)=0) then UpdateQuietHistory(Hashmove,ply,qsearched,OldMoves,SortUnit,Board,Tree,DepthInc[depth]);
+                        If (tree[ply-1].CurrNum<3) and (Tree[ply-1].CurrMove<>0) and ((Tree[ply-1].CurrMove and CaptureFlag)=0) then UpdateStats(Tree,ply-1,Board.Pos[(tree[ply-1].CurrMove shr 6) and 63],(tree[ply-1].CurrMove shr 6) and 63,-GetStatBonus(depth+1));
                       end else
                     If ((Hashmove and CaptureFlag)=0) then
                       begin
@@ -620,7 +655,7 @@ begin
     end;
     SetUndo(Board,Undo);
     FillCheckInfo(CheckInfo,Board);
-  // Статическая оценка
+  // РЎС‚Р°С‚РёС‡РµСЃРєР°СЏ РѕС†РµРЅРєР°
   if (Board.CheckersBB=0) then
     begin
      If StaticEval=-inf then
@@ -632,19 +667,19 @@ begin
      tree[ply].StatEval:=StaticEval;
      tree[ply].StatKey:=Board.Key;
      Eval:=StaticEval;
-     if (HashIndex>=0) and (eval=0) and (TT[HashIndex].steval=0)  then eval:=draw_value(Board);
-     // Уточняем оценку хешем
+     if (HashIndex>=0) and (eval=0) and (TT.data[HashIndex].steval=0)  then eval:=draw_value(Board);
+     // РЈС‚РѕС‡РЅСЏРµРј РѕС†РµРЅРєСѓ С…РµС€РµРј
      if (HashIndex>=0) and (HashValue<>-Inf) then
        begin
          if ((hashtyp and HashUpper)<>0) and (HashValue<Eval) then Eval:=HashValue;
          if ((hashtyp and HashLower)<>0) and (HashValue>Eval) then Eval:=HashValue;
        end;
      imp:=(ply>1) and (Tree[ply].StatEval>tree[ply-2].StatEval);
-     // Если мы не под шахом - включаем дополнительные алгоритмы
+     // Р•СЃР»Рё РјС‹ РЅРµ РїРѕРґ С€Р°С…РѕРј - РІРєР»СЋС‡Р°РµРј РґРѕРїРѕР»РЅРёС‚РµР»СЊРЅС‹Рµ Р°Р»РіРѕСЂРёС‚РјС‹
      // Razoring
      if (not pv) and (depth<RazorDepth)  and (Eval<=alpha-RazorMargin*depth) then
            begin
-             value:=FV(ThreadID,alpha,beta,0,ply,Board,SortUnit,Tree,PVLine);
+             value:=FV(TT,ThreadID,alpha,beta,0,ply,Board,SortUnit,Tree,PVLine);
              if value<=alpha then
                begin
                 Result:=value;
@@ -666,15 +701,15 @@ begin
              if extension>3 then extension:=3;
              R:=R+extension;
              MakeNullMove(Board);
-             //Копируем аккумуляторы
+             //РљРѕРїРёСЂСѓРµРј Р°РєРєСѓРјСѓР»СЏС‚РѕСЂС‹
              CopyAcc16(Threads[ThreadId].Pass[ply],Threads[ThreadId].Pass[ply+1]);
              Tree[ply].CurrStat:=@SortUnit.HistorySats[false,false,0,a1];
              Tree[ply].CurrMove:=0;
              Tree[ply].CurrNum:=0;
              newdepth:=depth-R;
              If newdepth>0
-               then NullValue:=-Search(ThreadId,-beta,-alpha,newdepth,ply+1,Board,Tree,SortUnit,PVLine,0,(not cut))
-               else NullValue:=-FV(ThreadId,-beta,-alpha,0,ply+1,Board,SortUnit,Tree,PVLine);
+               then NullValue:=-Search(TT,ThreadId,-beta,-alpha,newdepth,ply+1,Board,Tree,SortUnit,PVLine,0,(not cut))
+               else NullValue:=-FV(TT,ThreadId,-beta,-alpha,0,ply+1,Board,SortUnit,Tree,PVLine);
              UnMakeNullMove(Board,Undo);
              If NullValue>=beta then
                begin
@@ -687,8 +722,8 @@ begin
                 Threads[ThreadId].nullply:=ply+(3*newdepth div 4);
                 Threads[ThreadId].nullclr:=Board.SideToMove;
                 If newdepth>0
-                  then value:=Search(ThreadId,alpha,beta,newdepth,ply,Board,Tree,SortUnit,PVLine,0,false)
-                  else value:=FV(ThreadId,alpha,beta,0,ply,Board,Sortunit,Tree,PVLine);
+                  then value:=Search(TT,ThreadId,alpha,beta,newdepth,ply,Board,Tree,SortUnit,PVLine,0,false)
+                  else value:=FV(TT,ThreadId,alpha,beta,0,ply,Board,Sortunit,Tree,PVLine);
                 Threads[ThreadId].nullply:=0;
                 Threads[ThreadId].nullclr:=-1;
                 If value>=beta then
@@ -720,11 +755,11 @@ begin
                     Tree[ply].CurrStat:=@Sortunit.HistorySats[false,(move and CaptureFlag)<>0,Board.Pos[move and 63],(move shr 6) and 63];
                     Tree[ply].CurrNum:=probcnt;
                     MakeMove(move,Board,Undo,isCheck);
-                     //Обновляем аккумуляторы
+                     //РћР±РЅРѕРІР»СЏРµРј Р°РєРєСѓРјСѓР»СЏС‚РѕСЂС‹
                     UpdAcc16(move,Board,Undo,Threads[ThreadId].Pass[ply],Threads[ThreadId].Pass[ply+1]);
-                    value:=-FV(ThreadId,-newbeta,-newbeta+1,0,ply+1,Board,SortUnit,Tree,PVLine);
+                    value:=-FV(TT,ThreadId,-newbeta,-newbeta+1,0,ply+1,Board,SortUnit,Tree,PVLine);
                     if value>=newbeta
-                      then value:=-Search(ThreadId,-newbeta,-newbeta+1,newdepth,ply+1,Board,Tree,SortUnit,PVLine,0,(not cut));
+                      then value:=-Search(TT,ThreadId,-newbeta,-newbeta+1,newdepth,ply+1,Board,Tree,SortUnit,PVLine,0,(not cut));
                     UnMakeMove(move,Board,Undo);
                     If value>=newbeta then
                       begin
@@ -741,7 +776,7 @@ begin
          dec(depth,2);
          if depth<=0 then
            begin
-             result:=FV(ThreadId,alpha,beta,0,ply,Board,SortUnit,Tree,PVLine);
+             result:=FV(TT,ThreadId,alpha,beta,0,ply,Board,SortUnit,Tree,PVLine);
              exit;
            end;
       end;
@@ -753,8 +788,6 @@ begin
      tree[ply].StatEval:=StaticEval;
      tree[ply].StatKey:=Board.Key;
     end;
-  pvline[0]:=0;
-  line[0]:=0;
   tree[ply].Status:=TryHashMove;
   BestMove:=0;
   searched:=0;
@@ -771,7 +804,7 @@ begin
   skip:=false;
   quietsingular:=false;
   hashcap:=(HashMove<>0) and ((hashmove and CaptureFlag)<>0) ;
-  // Перебор
+  // РџРµСЂРµР±РѕСЂ
   move:=Next(MList,Board,SortUnit,tree,hashmove,killer1,killer2,countermove,ply,depth,skip);
   While move<>0 do
     begin
@@ -781,11 +814,11 @@ begin
         inc(searched);
         from:=move and 63;
         dest:=(move shr 6) and 63;
-        piese:=Board.Pos[from]; //  Еще ход на доске не сделан
+        piese:=Board.Pos[from]; //  Р•С‰Рµ С…РѕРґ РЅР° РґРѕСЃРєРµ РЅРµ СЃРґРµР»Р°РЅ
         isCheck:=isMoveCheck(move,CheckInfo,Board);
         extension:=0;
         newdepth:=depth-1;
-        // Блок селективностей
+        // Р‘Р»РѕРє СЃРµР»РµРєС‚РёРІРЅРѕСЃС‚РµР№
         if  (bestvalue>-Mate+Maxply)   and (Board.NonPawnMat[Board.SideToMove]>0)  then
          begin
           skip:=(game.doLMP) and (depth<CountMoveDepth) and (searched>=PrunningCount[imp,depth]);
@@ -814,7 +847,7 @@ begin
              newbeta:=hashvalue-2*depth;
              newdepth:=depth div 2;
              oldstat:=tree[ply].Status;
-             value:=Search(ThreadId,newbeta-1,newbeta,newdepth,ply,Board,Tree,SortUnit,PVLine,move,cut);
+             value:=Search(TT,ThreadId,newbeta-1,newbeta,newdepth,ply,Board,Tree,SortUnit,PVLine,move,cut);
              tree[ply].Status:=oldstat;
              if value<newbeta then
                begin
@@ -839,10 +872,10 @@ begin
         Tree[ply].CurrStat:=@Sortunit.HistorySats[(Board.CheckersBB<>0),((move and CaptureFlag)<>0),piese,dest];
         Tree[ply].CurrNum:=searched;
         MakeMove(move,Board,Undo,isCheck);
-         //Обновляем аккумуляторы
+         //РћР±РЅРѕРІР»СЏРµРј Р°РєРєСѓРјСѓР»СЏС‚РѕСЂС‹
         UpdAcc16(move,Board,Undo,Threads[ThreadId].Pass[ply],Threads[ThreadId].Pass[ply+1]);
         value:=-Inf;
-        if (pv) and (searched=1) then value:=-Search(ThreadId,-beta,-alpha,newdepth,ply+1,Board,Tree,SortUnit,Line,0,false) else
+        if (pv) and (searched=1) then value:=-Search(TT,ThreadId,-beta,-alpha,newdepth,ply+1,Board,Tree,SortUnit,Line,0,false) else
         begin
           doresearch:=true;
           // LMR Reduction
@@ -859,12 +892,12 @@ begin
                 begin
                  D:=newdepth-R;
                  if D<1 then D:=1;
-                 value:=-Search(ThreadId,-alpha-1,-alpha,D,ply+1,Board,Tree,SortUnit,Line,0,true);
+                 value:=-Search(TT,ThreadId,-alpha-1,-alpha,D,ply+1,Board,Tree,SortUnit,Line,0,true);
                  doresearch:=(value>alpha);
                 end;
             end;
-          if doresearch then value:=-Search(ThreadId,-alpha-1,-alpha,newdepth,ply+1,Board,Tree,SortUnit,Line,0,(not cut));
-          if (pv) and (value>alpha) and (value<beta) then value:=-Search(ThreadId,-beta,-alpha,newdepth,ply+1,Board,Tree,SortUnit,Line,0,false);
+          if doresearch then value:=-Search(TT,ThreadId,-alpha-1,-alpha,newdepth,ply+1,Board,Tree,SortUnit,Line,0,(not cut));
+          if (pv) and (value>alpha) and (value<beta) then value:=-Search(TT,ThreadId,-beta,-alpha,newdepth,ply+1,Board,Tree,SortUnit,Line,0,false);
         end;
         UnMakeMove(move,Board,Undo);
         if Threads[ThreadId].AbortSearch then break;
@@ -874,13 +907,13 @@ begin
           if value>alpha then
            begin
             BestMove:=move;
-            If pv then AddPv(Bestmove,PVLine,Line);
             If pv and (value<beta)
               then  alpha:=value
               else  break;
+            If pv then AddPv(Bestmove,PVLine,Line);
            end;
          end;
-       //неудачные  ходы сохраняем отдельно
+       //РЅРµСѓРґР°С‡РЅС‹Рµ  С…РѕРґС‹ СЃРѕС…СЂР°РЅСЏРµРј РѕС‚РґРµР»СЊРЅРѕ
          if bestmove <> move then
           begin
            if  ((move and CapTureFlag)=0)  then
@@ -899,7 +932,7 @@ begin
     end;
   if not Threads[ThreadId].AbortSearch then
     begin
-     // Если ходов в позиции нет, то либо это мат либо пат
+     // Р•СЃР»Рё С…РѕРґРѕРІ РІ РїРѕР·РёС†РёРё РЅРµС‚, С‚Рѕ Р»РёР±Рѕ СЌС‚Рѕ РјР°С‚ Р»РёР±Рѕ РїР°С‚
      if (searched=0)  then
        begin
         if emove<>0 then BestValue:=alpha else
@@ -907,24 +940,24 @@ begin
           then BestValue:=-Mate+ply
           else BestValue:=0;
        end else
-      // Обновляем историю
+      // РћР±РЅРѕРІР»СЏРµРј РёСЃС‚РѕСЂРёСЋ
      if (BestMove<>0) then
        begin
          UpdateFullHistory(Bestmove,depth,ply,qsearched,OldMoves,capsearched,OldCaptures,SortUnit,Board,Tree,BestValue-beta);
        end else
-     If ((depth>=4) or (pv)) and ((Tree[ply-1].CurrMove)<>0) and  ((Tree[ply-1].CurrMove and CaptureFlag)=0) then UpdateStats(SortUnit,Tree,ply-1,Board.Pos[(tree[ply-1].CurrMove shr 6) and 63],(tree[ply-1].CurrMove shr 6) and 63,GetStatBonus(depth));
+     If ((depth>=4) or (pv)) and ((Tree[ply-1].CurrMove)<>0) and  ((Tree[ply-1].CurrMove and CaptureFlag)=0) then UpdateStats(Tree,ply-1,Board.Pos[(tree[ply-1].CurrMove shr 6) and 63],(tree[ply-1].CurrMove shr 6) and 63,GetStatBonus(depth));
      If emove=0 then
       begin
-       // Сохраняем хеш
-       if BestValue>=beta then HashStore(Board.Key,Board,ValueToTT(Bestvalue,ply),depth,HashLower,Bestmove,staticEval) else
+       // РЎРѕС…СЂР°РЅСЏРµРј С…РµС€
+       if BestValue>=beta then HashStore(TT,Board.Key,ValueToTT(Bestvalue,ply),depth,HashLower,Bestmove,staticEval) else
        if (pv) and (BestMove<>0)
-        then HashStore(Board.Key,Board,valueToTT(bestvalue,ply),depth,HashExact,BestMove,StaticEval)
-        else HashStore(Board.Key,Board,valueToTT(bestvalue,ply),depth,HashUpper,BestMove,StaticEval);
+        then HashStore(TT,Board.Key,valueToTT(bestvalue,ply),depth,HashExact,BestMove,StaticEval)
+        else HashStore(TT,Board.Key,valueToTT(bestvalue,ply),depth,HashUpper,BestMove,StaticEval);
       end;
     end else bestvalue:=0;
   Result:=bestvalue;
 end;
-Function FV(ThreadID:integer;alpha:integer;beta:integer;depth:integer;ply:integer;var Board:TBoard;var SortUnit:TSortUnit;var Tree:Ttree;var PVLine:TPV):integer;
+Function FV(var TT:TTable;ThreadID:integer;alpha:integer;beta:integer;depth:integer;ply:integer;var Board:TBoard;var SortUnit:TSortUnit;var Tree:Ttree;var PVLine:TPV):integer;
 label l1;
 var
   value,move,bestvalue,futility,qDepth,hashmove,hashvalue,hashdepth,hashtyp,bestmove,cappiese,StaticEval,searched,quietevasions,prevsq,piese,dest: integer;
@@ -935,13 +968,14 @@ var
   pv,isCheck,isCapture: boolean;
   Line:TPV;
 begin
+   // Р§РёСЃС‚РёРј Р±СѓРґСѓС‰РёР№ РІРѕР·РјРѕР¶РЅС‹Р№ РїРІ РїРµСЂРµРґ РїРµСЂРµР±РѕСЂРѕРј
+  pvline[0]:=0;
   inc(Board.Nodes);
   dec(Board.remain);
   pv:=(beta-alpha)>1;
   tree[ply].Key:=Board.Key;
-  If pv then line[0]:=0;
-  // Выход ранний если ничья или перебор невозможен
-  If  (ply>=MaxPly-1) or (isDraw(Board,Tree,ply)) then
+  // Р’С‹С…РѕРґ СЂР°РЅРЅРёР№ РµСЃР»Рё РЅРёС‡СЊСЏ РёР»Рё РїРµСЂРµР±РѕСЂ РЅРµРІРѕР·РјРѕР¶РµРЅ
+  If  (ply>=MaxPly-1) or (isDraw(ThreadId,Board,Tree,ply)) then
     begin
      if (ply>=MaxPly-1) and (Board.CheckersBB=0)
        then Result:=Evaluate(Board,ThreadId,ply)
@@ -952,14 +986,14 @@ begin
     then qDepth:=0
     else qDepth:=-1;
   // Hash
-  HashIndex:=HashProbe(Board,Board.Key);
+  HashIndex:=HashProbe(TT,Board.Key);
   if HashIndex>=0 then
     begin
-      Hashmove:=TT[HashIndex].move;
-      HashValue:=ValueFromTT(TT[HashIndex].value,ply);
-      Hashtyp:=TT[HashIndex].typage and 3;
-      HashDepth:=TT[HashIndex].depth;
-      StaticEval:=TT[HashIndex].steval;
+      Hashmove:=TT.data[HashIndex].move;
+      HashValue:=ValueFromTT(TT.data[HashIndex].value,ply);
+      Hashtyp:=TT.data[HashIndex].typage and 3;
+      HashDepth:=TT.data[HashIndex].depth;
+      StaticEval:=TT.data[HashIndex].steval;
       if (not pv) then
         begin
          if (hashdepth>=qDepth) and (HashValue<>-Inf) then
@@ -979,7 +1013,7 @@ begin
       StaticEval:=-inf;
     end;
 
-  // Статическая оценка и выход если нас она устраивает
+  // РЎС‚Р°С‚РёС‡РµСЃРєР°СЏ РѕС†РµРЅРєР° Рё РІС‹С…РѕРґ РµСЃР»Рё РЅР°СЃ РѕРЅР° СѓСЃС‚СЂР°РёРІР°РµС‚
   if Board.CheckersBB=0 then
     begin
       If StaticEval=-inf then
@@ -991,7 +1025,7 @@ begin
       tree[ply].StatEval:=StaticEval;
       tree[ply].StatKey:=Board.Key;
       bestvalue:=StaticEval;
-      // Уточняем оценку хешем
+      // РЈС‚РѕС‡РЅСЏРµРј РѕС†РµРЅРєСѓ С…РµС€РµРј
      if (Hashindex>=0) and (HashValue<>-Inf) then
        begin
          if ((hashtyp and HashUpper)<>0) and (HashValue<bestvalue) then bestvalue:=HashValue;
@@ -1001,7 +1035,7 @@ begin
        begin
         if bestvalue>=beta then
          begin
-          if (HashIndex<0) then HashStore(Board.Key,Board,ValueToTT(bestvalue,ply),-5,HashLower,0,StaticEval);
+          if (HashIndex<0) then HashStore(TT,Board.Key,ValueToTT(bestvalue,ply),-5,HashLower,0,StaticEval);
           Result:=bestvalue;
           exit;
          end;
@@ -1016,7 +1050,7 @@ begin
       tree[ply].StatEval:=bestvalue;
       tree[ply].StatKey:=Board.Key;
     end;
-  // Подготовка к перебору
+  // РџРѕРґРіРѕС‚РѕРІРєР° Рє РїРµСЂРµР±РѕСЂСѓ
   quietevasions:=0;
   Bestmove:=0;
   FillCheckInfo(CheckInfo,Board);
@@ -1065,9 +1099,9 @@ begin
         Tree[ply].CurrStat:=@Sortunit.HistorySats[(Board.CheckersBB<>0),isCapture,piese,dest];
         Tree[ply].CurrNum:=searched;
         MakeMove(move,Board,Undo,isCheck);
-         //Обновляем аккумуляторы
+         //РћР±РЅРѕРІР»СЏРµРј Р°РєРєСѓРјСѓР»СЏС‚РѕСЂС‹
         UpdAcc16(move,Board,Undo,Threads[ThreadId].Pass[ply],Threads[ThreadId].Pass[ply+1]);
-        value:=-FV(ThreadId,-beta,-alpha,depth-1,ply+1,Board,SortUnit,Tree,Line);
+        value:=-FV(TT,ThreadId,-beta,-alpha,depth-1,ply+1,Board,SortUnit,Tree,Line);
         UnMakeMove(move,Board,Undo);
         if value>bestvalue then
           begin
@@ -1075,13 +1109,13 @@ begin
            if value>alpha then
              begin
               Bestmove:=move;
-              If pv then  AddPv(Bestmove,PVLine,Line);
               If pv and (value<beta) then
                 begin
                  alpha:=value;
+                 If pv then  AddPv(Bestmove,PVLine,Line);
                 end else
                 begin
-                 HashStore(Board.Key,Board,ValueToTT(value,ply),qDepth,HashLower,move,StaticEval);
+                 HashStore(TT,Board.Key,ValueToTT(value,ply),qDepth,HashLower,move,StaticEval);
                  Result:=value;
                  exit;
                 end;
@@ -1091,13 +1125,13 @@ begin
   l1:
      move:=NextFV(MList,Board,SortUnit,tree,CheckInfo,hashmove,ply,depth,prevsq);
    end;
- // Отслеживаем мат
+ // РћС‚СЃР»РµР¶РёРІР°РµРј РјР°С‚
   if (Board.CheckersBB<>0) and (bestvalue=-Inf)  then
      begin
       result:=-Mate+ply;
       exit;
      end;
-  HashStore(Board.Key,Board,valueToTT(bestvalue,ply),qDepth,HashUpper,BestMove,StaticEval);
+  HashStore(TT,Board.Key,valueToTT(bestvalue,ply),qDepth,HashUpper,BestMove,StaticEval);
   Result:=bestvalue;
 end;
 
@@ -1118,20 +1152,19 @@ var
   s : ansistring;
 
 begin
-  // инициализация случайного генератора
+  // РёРЅРёС†РёР°Р»РёР·Р°С†РёСЏ СЃР»СѓС‡Р°Р№РЅРѕРіРѕ РіРµРЅРµСЂР°С‚РѕСЂР°
   Randomize;
   game.gendepth:=depth;
   game.doIIR:=False;
   game.doLMP:=False;
-  game.saveENNPass:=False;
-  // Файлы на диске для FEN
+  // Р¤Р°Р№Р»С‹ РЅР° РґРёСЃРєРµ РґР»СЏ FEN
   if fileexists(outfilename+'1.dat') then
     begin
       writeln('File already exists - be careful!');
       readln;
     end;
   blockscount:=0;
-  // Считываем дебютную книгу если она есть
+  // РЎС‡РёС‚С‹РІР°РµРј РґРµР±СЋС‚РЅСѓСЋ РєРЅРёРіСѓ РµСЃР»Рё РѕРЅР° РµСЃС‚СЊ
   if fileexists(book) then
     begin
       usebook:=true;
@@ -1150,7 +1183,7 @@ begin
       close(f);
       writeln('Loaded ',booksize,' positions from book');
     end else usebook:=false;
-  // инициализация потоков
+  // РёРЅРёС†РёР°Р»РёР·Р°С†РёСЏ РїРѕС‚РѕРєРѕРІ
   for i:=1 to MaxThreads do
     begin
       Threads[i].isRun:=false;
@@ -1162,12 +1195,7 @@ begin
   game.Threads:=cpu;
   FenNumber:=megafens*1000000;
 
-  If game.Threads>1 then
-    begin
-      StopThreads;
-      Init_Threads(game.Threads);
-    end;
-  SetBoard(StartPositionFen,Threads[1].Board);
+  If game.Threads>1 then InitThreads(game.Threads);
   writeln('Create files');
   for i:=1 to cpu do
    begin
@@ -1177,52 +1205,57 @@ begin
         then append(Threads[i].outfile)
         else rewrite(threads[i].outfile);
    end;
-  // и установка хеша
+  // СѓСЃС‚Р°РЅРѕРІРєР° Р»РѕРєР°Р»СЊРЅРѕРіРѕ С…РµС€Р° РґР»СЏ РєР°Р¶РґРѕРіРѕ РїРѕС‚РѕРєР°
   writeln('Set Zobrist Hash');
   game.hashsize:=hashmb;
-  SetHash(game.hashsize);
+  for i:=1 to cpu do
+    SetHash(Threads[i].TTLocal,hashmb);
   writeln('Set Position Hash');
-  PosHashSize:=poshashmb*1024*1024;
+  PosHashSize:=poshashmb*1024*1024; // РЈСЃС‚Р°РЅР°РІР»РёРІР°РµС‚СЃСЏ РІ РјРёР»Р»РёРѕРЅР°С… СЏС‡РµРµРє СЂР°Р·РјРµСЂР° int64
   PosHashMask:=PosHashSize-1;
-  SetLength(PositionHash,0);
   SetLength(PositionHash,PosHashSize+1);
-  // инициализируем глобальные переменные для перебора
+  // РёРЅРёС†РёР°Р»РёР·РёСЂСѓРµРј РіР»РѕР±Р°Р»СЊРЅС‹Рµ РїРµСЂРµРјРµРЅРЅС‹Рµ РґР»СЏ РїРµСЂРµР±РѕСЂР°
   game.uciPonder:=false;
   game.time:=48*3600*1000;
   game.rezerv:=48*3600*1000;
   game.oldtime:=game.time;
   game.showtext:=false;
   game.remain:=1000000000;
-  game.HashAge:=0;
-  // расбрасываем по потокам
+  // СЂР°СЃР±СЂР°СЃС‹РІР°РµРј РїРѕ РїРѕС‚РѕРєР°Рј
   Threads[1].AbortSearch:=false;
-  StartTime:=now;
+  game.StartTime:=now;
   writeln('Start working...');
   while  not threads[1].AbortSearch  do
    begin
-    ClearHAsh;
-    // Запускаем вспомогательные потоки
+     // РћС‡РёС‰Р°РµРј Р»РѕРєР°Р»СЊРЅС‹Р№ С…РµС€ РїРѕС‚РѕРєРѕРІ
+     for i:=1 to cpu do
+       ClearHAsh(Threads[i].TTLocal,1);
+
+    // Р—Р°РїСѓСЃРєР°РµРј РІСЃРїРѕРјРѕРіР°С‚РµР»СЊРЅС‹Рµ РїРѕС‚РѕРєРё
     IF game.Threads>1 then
       begin
         For j:=2 to game.Threads do
           begin
            Threads[j].AbortSearch:=false;
-           Threads[j].Fenflag:=true; // переключаем в режим генерирования FEN
+           Threads[j].Fenflag:=true; // РїРµСЂРµРєР»СЋС‡Р°РµРј РІ СЂРµР¶РёРј РіРµРЅРµСЂРёСЂРѕРІР°РЅРёСЏ FEN
            Threads[j].haswork:=true;
           end;
-        SetEvent(IdleEvent);
+        IdleEvent.SetEvent;
       end;
-    // Запускаем основной поток и ждем его завершения
+
+    // Р—Р°РїСѓСЃРєР°РµРј РѕСЃРЅРѕРІРЅРѕР№ РїРѕС‚РѕРє Рё Р¶РґРµРј РµРіРѕ Р·Р°РІРµСЂС€РµРЅРёСЏ
     SingleGenerator(1,threads[1].bookposnum);
-    // Ждем когда финишируют все потоки
+   // writeln('started');
+   //  readln;
+    // Р–РґРµРј РєРѕРіРґР° С„РёРЅРёС€РёСЂСѓСЋС‚ РІСЃРµ РїРѕС‚РѕРєРё
     If game.Threads>1 then While isThreadIdle do;
+    If game.Threads>1 then IdleEvent.ReSetEvent;
     writeln ('circle');
    end;
   writeln('All stopped-bye!');
   for i:=1 to cpu do
      close(Threads[i].outfile);
   StopThreads;
-  readln;
 end;
 Procedure SingleGenerator(ThreadID:integer;var bookposnum:integer);
 var
@@ -1230,12 +1263,12 @@ var
    cnt : integer;
    s:ansistring;
 begin
-  // Инициализируем буфер.
-  cnt:=0;
+  // РРЅРёС†РёР°Р»РёР·РёСЂСѓРµРј Р±СѓС„РµСЂ.
+  cnt:=0; FENS[0]:='';
   Threads[threadid].savedblock:=false;
   While not Threads[1].AbortSearch do
    begin
-    // Устанавливаем новую позицию (начальную или из книги) и генерируем партию, сохраняя позиции FEN.
+    // РЈСЃС‚Р°РЅР°РІР»РёРІР°РµРј РЅРѕРІСѓСЋ РїРѕР·РёС†РёСЋ (РЅР°С‡Р°Р»СЊРЅСѓСЋ РёР»Рё РёР· РєРЅРёРіРё) Рё РіРµРЅРµСЂРёСЂСѓРµРј РїР°СЂС‚РёСЋ, СЃРѕС…СЂР°РЅСЏСЏ РїРѕР·РёС†РёРё FEN.
     If usebook then
       begin
         s:=BookFEN[bookposnum];
@@ -1252,34 +1285,50 @@ Procedure SafeSave(ThreadId:integer;cnt:integer;var FENS: TBufferFen);
 var
  i : integer;
 begin
-   EnterCriticalSection(SMPLock);
+   SMPLock.Enter;
    for i:=0 to cnt-1 do
    writeln(threads[threadid].outfile,FENS[i]);
    inc(blockscount);
-   writeln('Saved ',blockscount,' Block (',BuferSize,' positions) after ',(now-StartTime)*86400:6:0,' seconds, ',inttostr(threadid));
-   LeaveCriticalSection(SMPLock);
+   writeln('Saved ',blockscount,' Block (',BuferSize,' positions) after ',SecondsBetween(game.StartTime,now),' seconds, ',inttostr(threadid));
+   SMPLock.Release;
 end;
 Function SelectRandomMove(ThreadId:integer;depth:integer):integer;
 var
    Roulette : array[0..MaxMoves] of integer;
    Undo : TUndo;
    Checkinfo : TcheckInfo;
-   i,cdepth,value,val,bestmove,n,num,cnum:integer;
+   i,cdepth,value,val,bestmove,n,num,cnum,rootn,y:integer;
    ischeck : boolean;
    Mlist : TmoveList;
    Line : TPV;
+   LastKey : int64;
 begin
+  Roulette[0]:=0;
   FillCheckInfo(CheckInfo,Threads[ThreadID].Board);
   SetUndo(Threads[ThreadID].Board,Undo);
-  cdepth:=depth-3;
+  cdepth:=depth-3; // Р“Р»СѓР±РёРЅР° СѓСЃРµС‡РµРЅРЅРѕРіРѕ РїРµСЂРµР±РѕСЂР°
   value:=-Mate-1;
+  rootn:=Threads[ThreadID].RootMoves;
+  LastKey:=Threads[ThreadID].Board.Key;  // РљР»СЋС‡ РёСЃС…РѕРґРЅРѕР№ РїРѕР·РёС†РёРё РіРґРµ РІС‹Р±РёСЂР°РµС‚СЃСЏ СЃР»СѓС‡Р°Р№РЅС‹Р№ С…РѕРґ
+   // РЈСЃС‚Р°РЅР°РІР»РёРІР°РµРј РёСЃС‚РѕСЂРёСЋ С…РѕРґРѕРІ "РґРѕ РєРѕСЂРЅСЏ" РґР»СЏ СѓСЃРµС‡РµРЅРЅРѕРіРѕ РїРµСЂРµР±РѕСЂР°
+  for y:=1 to Threads[threadid].Board.Rule50 do                // РЎРјРµС‰Р°РµРј РїРѕРґРіРѕС‚РѕРІР»РµРЅРЅСѓСЋ СѓР¶Рµ С†РµРїРѕС‡РєСѓ "РІР»РµРІРѕ" (РЅР° РѕРґРёРЅ С…РѕРґ РІ РіР»СѓР±СЊ РёСЃС‚РѕСЂРёРё)
+    Threads[threadid].Tree[y-Threads[threadid].Board.Rule50-1].key:=Threads[threadid].Tree[y-Threads[threadid].Board.Rule50].key;
+  Threads[threadid].Tree[0].key:=LastKey;                     // РёСЃС…РѕРґРЅР°СЏ РїРѕР·РёС†РёСЏ СЃС‚Р°РЅРѕРІРёС‚СЃСЏ СѓР¶Рµ  "РїСЂРµРґС‹РґСѓС‰РµР№"
  // printboard(Threads[Threadid].Board);
-  For i:=0 to Threads[ThreadID].RootMoves-1 do
+  For i:=0 to rootn-1 do
     begin
        isCheck:=isMoveCheck(Threads[ThreadID].RootList[i].move,CheckInfo,Threads[ThreadID].Board);
        MakeMove(Threads[ThreadID].RootList[i].move,Threads[ThreadID].Board,Undo,isCheck);
+       // Р“РѕС‚РѕРІРёРј СѓСЃРµС‡РµРЅРЅС‹Р№ РїРµСЂРµР±РѕСЂ
        n:=GenerateLegals(0,Threads[ThreadId].Board,MList);
-       Threads[ThreadID].RootList[i].value:=-RootSearch(ThreadId,-Mate,Mate,cdepth,Threads[ThreadID].Board,Threads[ThreadID].Tree,Threads[ThreadID].SortUnit,Mlist,n,Line,bestmove);
+       Threads[ThreadId].Board.remain:=game.remain;
+       Threads[ThreadID].Board.Nodes:=0;
+       bestmove:=0;
+       Threads[threadId].Tree[1].key:=Threads[threadid].Board.Key;   // РєРѕСЂРµРЅСЊ
+       Threads[threadid].repcnt:=Threads[threadid].Board.Rule50;     // Р’ РіРµРЅРµСЂР°С‚РѕСЂРµ РІРµРґРµС‚СЃСЏ СЃРІРѕР№ СѓС‡РµС‚ РіР»СѓР±РёРЅС‹ РёСЃС‚РѕСЂРёРё "РґРѕ РєРѕСЂРЅСЏ" СЃРІРѕРµР№  РґР»СЏ РєР°Р¶РґРѕРіРѕ РїРѕС‚РѕРєР°
+       if n=0
+         then Threads[ThreadID].RootList[i].value:=0                // РјР°С‚ Рё РїР°С‚ РёРјРµСЋС‚ РѕРґРёРЅР°РєРѕРІСѓСЋ РѕС†РµРЅРєСѓ РґР»СЏ СЃР»СѓС‡Р°Р№РЅРѕРіРѕ РІС‹Р±РѕСЂР°
+         else Threads[ThreadID].RootList[i].value:=-RootSearch(Threads[ThreadId].TTLocal,ThreadId,-Mate,Mate,cdepth,Threads[ThreadID].Board,Threads[ThreadID].Tree,Threads[ThreadID].SortUnit,Mlist,n,Line,bestmove);
        UnMakeMove(Threads[ThreadID].RootList[i].move,Threads[ThreadID].Board,Undo);
        if Threads[ThreadID].RootList[i].value>value then value:=Threads[ThreadID].RootList[i].value;
     end;
@@ -1287,13 +1336,11 @@ begin
   for i:=0 to Threads[ThreadID].RootMoves-1 do
     begin
       val:=abs(value-Threads[ThreadID].RootList[i].value);
-      if val>500 then num:=0 else
       if val>250 then num:=1 else
-      if val>100 then num:=2 else
-      if val>50  then num:=8 else
-      if val>25  then num:=16 else
-      if val>15  then num:=24
-                 else num:=32;
+      if val>100  then num:=2 else
+      if val>50  then num:=4 else
+      if val>25  then num:=8
+                 else num:=16;
       Roulette[i]:=cnum+num;
      // writeln(i,' ',Decodesq[Threads[ThreadID].RootList[i].move and 63],Decodesq[(Threads[ThreadID].RootList[i].move shr 6) and 63],' ',Threads[ThreadID].RootList[i].value,' Roulette - ',Roulette[i]) ;
       cnum:=cnum+num;
@@ -1306,57 +1353,53 @@ begin
   Result:=i;
 end;
 Procedure gamegen(ThreadId:integer;var cnt:integer;var FENS: TBufferFen);
-label l1,ex;
+label ex;
 const
   RandomMin=4;
   RandomMax=6;
   maxrandomply=20;
   writeminply=10;
   maxply=400;
-  MaxEval=1000;
-  SafeMargin=250;
+  MaxEval=1200;
+  ResignLimit=1000;
 var
-  n,i,j,ply,value,BestMove,Randomnum,drawcnt,resigncnt,mrandomply,gameres,writeply,SimpleEval,cdepth: integer;
+  n,i,j,y,ply,value,BestMove,Randomnum,RandomStart,RandomStop,drawcnt,resigncnt,gameres,writeply,FVEval,NextMove,temp: integer;
   wp,wn,wb,wr,wq,bp,bn,bb,br,bq,wind,bind:integer;
   keys : array[0..128] of int64;
-  randommap : array[0..maxply+1] of boolean;
   Undo : TUndo;
   Checkinfo : TcheckInfo;
   isCheck : boolean;
   s:ansistring;
   GameFen : array[0..maxply] of shortstring;
   gamecnt : integer;
-  isQuiet : boolean;
+  FVPV:TPV;
 begin
+  // РўРѕР»СЊРєРѕ С‡С‚Рѕ СѓСЃС‚Р°РЅРѕРІР»РµРЅРЅР°СЏ РЅР° РґРѕСЃРєРµ РїРѕР·РёС†РёСЏ РёРґРµС‚ РІ РЅР°С‡Р°Р»Рѕ СЃРїРёСЃРєР° РєР»СЋС‡РµР№ РІРЅРµ Р·Р°РІРёСЃРёРјРѕСЃС‚Рё РѕС‚ РїРѕРєР°Р·Р°С‚РµР»СЏ РІ СЃР°РјРѕР№ Р¤Р•Рќ
   keys[0]:=Threads[ThreadId].Board.Key;
-  ply:=0;
-  // Генерим список ходов, которые будут случайные
-  for i:=0 to maxply do
-    RandomMap[i]:=false;
+  Threads[ThreadId].Board.Rule50:=0;
+  ply:=0;GameFen[0]:='';
+  // Р“РµРЅРµСЂРёРј РёРЅС‚РµСЂРІР°Р» С…РѕРґРѕРІ, РєРѕС‚РѕСЂС‹Рµ Р±СѓРґСѓС‚ СЃР»СѓС‡Р°Р№РЅС‹Рµ
   RandomNum:=RandomMin+Random(RandomMax-RandomMin+1);
-  mrandomply:=-1;
-  for i:=1 to RandomNum do
-    begin
-l1:
-      n:=Random(maxrandomply)+1;
-      if RandomMap[n] then  goto l1;
-      RandomMap[n]:=True;
-      if n>mrandomply then mrandomply:=n;
-    end;
-   writeply:=writeminply;
-   if mrandomply>writeply then writeply:=mrandomply;
-   // играем партию
+  RandomStart:=Random(maxrandomply)+1;
+  RandomStop:=RandomStart+RandomNum-1;
+  writeply:=RandomStop;
+  if writeply<=writeminply then writeply:=writeminply;
+   // РёРіСЂР°РµРј РїР°СЂС‚РёСЋ
   ClearHistory(Threads[THreadId].SortUnit,Threads[THreadId].Tree);
   drawcnt:=0; resigncnt:=0;
-  gamecnt:=0;
+  gamecnt:=0;NextMove:=0;
+  gameres:=100;
   while True do
     begin
-     ply:=ply+1;  // ply начинается с 1
+     ply:=ply+1;  // ply РЅР°С‡РёРЅР°РµС‚СЃСЏ СЃ 1
      SetUndo(Threads[ThreadId].Board,Undo);
      FillCheckInfo(CheckInfo,Threads[ThreadId].Board);
-     // Генерируем список ходов из корня позиции
+     // РђРєРєСѓРјСѓР»СЏС‚РѕСЂС‹
+     FillWhiteAcc16(Net.model,Threads[ThreadId].Board,Threads[ThreadId].Pass[1]);
+     FillBlackAcc16(Net.model,Threads[ThreadId].Board,Threads[ThreadId].Pass[1]);
+     // Р“РµРЅРµСЂРёСЂСѓРµРј СЃРїРёСЃРѕРє С…РѕРґРѕРІ РёР· РєРѕСЂРЅСЏ РїРѕР·РёС†РёРё
      n:=GenerateLegals(0,Threads[ThreadId].Board,Threads[ThreadId].RootList);
-     // Если нет легальных ходов - выход (пат или мат)
+     // Р•СЃР»Рё РЅРµС‚ Р»РµРіР°Р»СЊРЅС‹С… С…РѕРґРѕРІ - РІС‹С…РѕРґ (РїР°С‚ РёР»Рё РјР°С‚)
      if n=0 then
        begin
         If Threads[ThreadId].Board.CheckersBB<>0 then
@@ -1368,10 +1411,16 @@ l1:
         goto ex;
        end;
      Threads[ThreadId].RootMoves:=n;
-     // Смотрим : нужно ли нам делать перебор или берем случайный ход
-     if RandomMap[ply] then
+     // Р—Р°РїРѕР»РЅСЏРµРј РёСЃС‚РѕСЂРёСЋ С…РѕРґРѕРІ "РґРѕ РєРѕСЂРЅСЏ" РёР· СЃРїРёСЃРєР° РєР»СЋС‡РµР№ РёРіСЂР°РµРјРѕР№ РїР°СЂС‚РёРё
+     Threads[threadid].Tree[1].key:=Threads[threadid].Board.Key;                // РєРѕСЂРµРЅСЊ
+     for y:=1 to threads[threadid].Board.rule50 do
+       Threads[ThreadId].Tree[1-y].key:=keys[threads[threadid].Board.rule50-y]; // Р—Р°РїРѕР»РЅСЏРµРј РѕС‚ 0 РІ "РјРёРЅСѓСЃ" РЅР° РіР»СѓР±РёРЅСѓ РґРѕ Р±Р»РёР¶Р°Р№С€РµРіРѕ РІ РїСЂРѕС€Р»РѕРј РІР·СЏС‚РёСЏ РёР»Рё С…РѕРґР° РїРµС€РєРѕР№
+     Threads[threadid].repcnt:=threads[threadid].board.Rule50;                  // Р’ РіРµРЅРµСЂР°С‚РѕСЂРµ Р”Р»СЏ РєР°Р¶РґРѕРіРѕ РїРѕС‚РѕРєР° РІРµРґРµРј СЃРІРѕР№ СЃС‡РµС‚С‡РёРє. РСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ РІ РїРµСЂРµР±РѕСЂРµ РґР»СЏ РїСЂРѕРІРµСЂРєРё РЅРёС‡СЊРё РїРѕРІС‚РѕСЂРµРЅРёСЏРјРё
+     // РЎРјРѕС‚СЂРёРј : РЅСѓР¶РЅРѕ Р»Рё РЅР°Рј РґРµР»Р°С‚СЊ РїРµСЂРµР±РѕСЂ РёР»Рё Р±РµСЂРµРј СЃР»СѓС‡Р°Р№РЅС‹Р№ С…РѕРґ
+     if (ply>=RandomStart) and (ply<=RandomStop) then
        begin
-         // Тут просто выбираем случайный ход
+         NextMove:=0;
+         // Р’ СЌС‚РѕРј РёРЅС‚РµСЂРІР°Р»Рµ РІС‹Р±РёСЂР°РµРј СЃР»СѓС‡Р°Р№РЅС‹Р№ С…РѕРґ
          if n=1
            then j:=0
            else j:=SelectRandomMove(ThreadId,game.gendepth);
@@ -1381,42 +1430,35 @@ l1:
          resigncnt:=0;
        end else
        begin
-         // Тут делаем перебор и выбираем лучший ход
-         // инициализация нового перебора
-         Threads[ThreadId].Board.remain:=game.remain;
-         Threads[ThreadID].Board.Nodes:=0;
-         Threads[ThreadId].PVLine[0]:=0;
-         BestMove:=0;
-         SimpleEval:=RootSearch(ThreadId,-mate,mate,2,Threads[ThreadId].Board,Threads[ThreadId].Tree,Threads[ThreadId].Sortunit,Threads[ThreadId].RootList,Threads[ThreadId].RootMoves,Threads[ThreadId].PVLine,BestMove);
-         Threads[ThreadId].Board.remain:=game.remain;
-         Threads[ThreadID].Board.Nodes:=0;
-         Threads[ThreadId].PVLine[0]:=0;
-         if ((BestMove and CapPromoFlag)=0) and (Threads[ThreadId].Board.CheckersBB=0) then
-           begin
-             isQuiet:=True;
-             cdepth:=game.gendepth;
-           end else
-           begin
-             isQuiet:=False;
-             cdepth:=game.gendepth-3;
-           end;
-        // Ставим лучший ход из микроперебора на 1 место в списке
-         for i:=0 to n-1 do
-           if Threads[ThreadId].RootList[i].move=BestMove then
+         // РџСЂРѕР±СѓРµРј РїРѕСЃС‚Р°РІРёС‚СЊ РЅР° РїРµСЂРІРѕРµ РјРµСЃС‚Рѕ С…РѕРґ РёР· РїСЂРµРґС‹РґСѓС‰РµРіРѕ РїРµСЂРµР±РѕСЂР° РµСЃР»Рё РѕРЅ РµСЃС‚СЊ
+         If NextMove<>0 then
+          for i:=0 to Threads[ThreadId].RootMoves-1 do
+           if Threads[ThreadId].RootList[i].move=NextMove then
              begin
+               temp:=Threads[ThreadId].RootList[i].move;
                Threads[ThreadId].RootList[i].move:=Threads[ThreadId].RootList[0].move;
-               Threads[ThreadId].RootList[0].move:=BestMove;
-               break;
+               Threads[ThreadId].RootList[0].move:=temp;
              end;
+         // РўСѓС‚ РґРµР»Р°РµРј РїРµСЂРµР±РѕСЂ Рё РІС‹Р±РёСЂР°РµРј Р»СѓС‡С€РёР№ С…РѕРґ
+         // РёРЅРёС†РёР°Р»РёР·Р°С†РёСЏ РЅРѕРІРѕРіРѕ РїРµСЂРµР±РѕСЂР°
+         Threads[ThreadId].Board.remain:=game.remain;
+         Threads[ThreadID].Board.Nodes:=0;
+         FVPV[0]:=0;
+         // РџСЂРѕРІРµСЂРєР° РїРѕР·РёС†РёРё РЅР° "СЃРїРѕРєРѕР№СЃС‚РІРёРµ"
+         FVEval:=FV(Threads[ThreadID].TTLocal,ThreadId,-mate,mate,0,1,Threads[ThreadId].Board,Threads[ThreadId].Sortunit,Threads[ThreadId].Tree,FVPV);
+         Threads[ThreadId].PVLine[0]:=0;
          BestMove:=0;
-         value:=RootSearch(ThreadId,-mate,mate,cdepth,Threads[ThreadId].Board,Threads[ThreadId].Tree,Threads[ThreadId].Sortunit,Threads[ThreadId].RootList,Threads[ThreadId].RootMoves,Threads[ThreadId].PVLine,BestMove);
+         value:=RootSearch(Threads[ThreadId].TTLocal,ThreadId,-mate,mate,game.gendepth,Threads[ThreadId].Board,Threads[ThreadId].Tree,Threads[ThreadId].Sortunit,Threads[ThreadId].RootList,Threads[ThreadId].RootMoves,Threads[ThreadId].PVLine,BestMove);
+         If Threads[ThreadId].PVLine[0]>=2
+           then NextMove:=Threads[ThreadId].PVLine[2]
+           else NextMove:=0;
          if abs(value)<=1
           then inc(drawcnt);
        end;
      isCheck:=isMoveCheck(Bestmove,CheckInfo,Threads[ThreadId].Board);
      IF Threads[1].AbortSearch then goto ex;
-     // Сохраняем FEN если только что рассмотренная позиция удовлетворяет условиям.
-     if (ply>writeply) and (not RandomMap[ply]) and isQuiet and (abs(value)<MaxEval) and (abs(value-SimpleEval)<=SafeMargin) and (BestMove<>0) and ((BestMove and CapPromoFlag)=0)  and (Threads[ThreadId].Board.CheckersBB=0)  and (Threads[ThreadId].Board.rule50<80) and (isUnic(Threads[ThreadId].Board.Key)) then
+     // РЎРѕС…СЂР°РЅСЏРµРј FEN РµСЃР»Рё С‚РѕР»СЊРєРѕ С‡С‚Рѕ СЂР°СЃСЃРјРѕС‚СЂРµРЅРЅР°СЏ РїРѕР·РёС†РёСЏ СѓРґРѕРІР»РµС‚РІРѕСЂСЏРµС‚ СѓСЃР»РѕРІРёСЏРј.
+     if (ply>writeply)   and (abs(value)<MaxEval) and (BestMove<>0) and (FVPV[0]=0)  and (Threads[ThreadId].Board.CheckersBB=0)  and (isUnic(Threads[ThreadId].Board.Key)) then
        begin
          PositionHash[Threads[ThreadId].Board.Key and PosHashMask]:=Threads[ThreadId].Board.Key;
          wp:=BitCOunt(Threads[ThreadId].Board.Pieses[pawn] and Threads[ThreadId].Board.Occupancy[white]);
@@ -1431,40 +1473,40 @@ l1:
          bq:=BitCOunt(Threads[ThreadId].Board.Pieses[queen] and Threads[ThreadId].Board.Occupancy[black]);
          wind:=wp+10*wn+100*wb+1000*wr+10000*wq+100000;
          bind:=bp+10*bn+100*bb+1000*br+10000*bq+100000;
-         s:=inttostr(value)+' '+inttostr(Threads[Threadid].Board.KingSq[white])+' '+inttostr(Threads[Threadid].Board.KingSq[black])+' '+inttostr(wind)+' '+inttostr(bind)+' '+PackFen(Threads[ThreadId].Board);
+         s:=inttostr(value)+' '+inttostr(Threads[Threadid].Board.KingSq[white])+' '+inttostr(Threads[Threadid].Board.KingSq[black])+' '+inttostr(wind)+' '+inttostr(bind)+' '+PackFen(Threads[ThreadId].Board)+' '+inttostr(Threads[ThreadId].Board.Key);
          GameFen[gamecnt]:=s;
          inc(gamecnt);
        end;
      MakeMove(BestMove,Threads[ThreadId].Board,Undo,isCheck);
      keys[Threads[ThreadId].Board.rule50]:=Threads[ThreadId].Board.Key;
-     // Определяем момент окончания партии
-     if not RandomMap[ply] then
+     // РћРїСЂРµРґРµР»СЏРµРј РјРѕРјРµРЅС‚ РѕРєРѕРЅС‡Р°РЅРёСЏ РїР°СЂС‚РёРё
+     if ply>RandomStop then
         begin
-          //0. Если оценка превышает лимит
-          if abs(value)>=MaxEval then
+          //0. Р•СЃР»Рё РѕС†РµРЅРєР° РїСЂРµРІС‹С€Р°РµС‚ Р»РёРјРёС‚
+          if abs(value)>=ResignLimit then
             begin
              inc(resigncnt);
-             if resigncnt>3 then
+             if resigncnt>5 then
                begin
-                // Одна из сторон сдается
+                // РћРґРЅР° РёР· СЃС‚РѕСЂРѕРЅ СЃРґР°РµС‚СЃСЏ
                 If value>0 then
                   begin
-                    If Threads[ThreadId].Board.SideToMove=white  // Ход только что сделан
+                    If Threads[ThreadId].Board.SideToMove=white  // РҐРѕРґ С‚РѕР»СЊРєРѕ С‡С‚Рѕ СЃРґРµР»Р°РЅ
                       then gameres:=-1
                       else gameres:=1;
                   end else
                   begin
-                    If Threads[ThreadId].Board.SideToMove=white  // Ход только что сделан
+                    If Threads[ThreadId].Board.SideToMove=white  // РҐРѕРґ С‚РѕР»СЊРєРѕ С‡С‚Рѕ СЃРґРµР»Р°РЅ
                       then gameres:=1
                       else gameres:=-1;
                   end;
                 goto ex;
                end;
-            end;
-         //1. присуждение партии исходя из материала на доске в беспешечных эндшпилях
+            end else resigncnt:=0;
+         //1. РїСЂРёСЃСѓР¶РґРµРЅРёРµ РїР°СЂС‚РёРё РёСЃС…РѕРґСЏ РёР· РјР°С‚РµСЂРёР°Р»Р° РЅР° РґРѕСЃРєРµ РІ Р±РµСЃРїРµС€РµС‡РЅС‹С… СЌРЅРґС€РїРёР»СЏС…
           if (Threads[ThreadId].Board.Pieses[pawn]=0) then
             begin
-             // Если недостаточный для мата материал
+             // Р•СЃР»Рё РЅРµРґРѕСЃС‚Р°С‚РѕС‡РЅС‹Р№ РґР»СЏ РјР°С‚Р° РјР°С‚РµСЂРёР°Р»
              if (Threads[ThreadId].Board.NonPawnMat[white]<=BishopValueMid) and (Threads[ThreadId].Board.NonPawnMat[black]<=BishopValueMid) then
                 begin
                  gameres:=0;
@@ -1480,31 +1522,20 @@ l1:
                  gameres:=0;
                  goto ex;
                 end;
-             // В технически выигранных эндшпилях с большим материальным преимуществом
-             if (Threads[ThreadId].Board.NonPawnMat[black]<=BishopValueMid) and (Threads[ThreadId].Board.NonPawnMat[white]>=Threads[ThreadId].Board.NonPawnMat[black]+RookValueMid) then
-               begin
-                 gameres:=1;
-                 goto ex;
-               end;
-             if (Threads[ThreadId].Board.NonPawnMat[white]<=BishopValueMid) and (Threads[ThreadId].Board.NonPawnMat[black]>=Threads[ThreadId].Board.NonPawnMat[white]+RookValueMid) then
-               begin
-                 gameres:=-1;
-                 goto ex;
-               end;
             end;
-          //2. Если правило 50 ходов
+          //2. Р•СЃР»Рё РїСЂР°РІРёР»Рѕ 50 С…РѕРґРѕРІ
           if Threads[ThreadId].Board.rule50>=100 then
            begin
             gameres:=0;
             goto ex;
            end;
-          // 3 Если партия затянулась
+          // 3 Р•СЃР»Рё РїР°СЂС‚РёСЏ Р·Р°С‚СЏРЅСѓР»Р°СЃСЊ
           if ply>=maxply then
             begin
              gameres:=100;
              goto ex;
             end;
-          // 4 Если случились повторения позиции
+          // 4 Р•СЃР»Рё СЃР»СѓС‡РёР»РёСЃСЊ РїРѕРІС‚РѕСЂРµРЅРёСЏ РїРѕР·РёС†РёРё
           i:=Threads[ThreadId].Board.rule50-2;
           j:=0;
           while i>=0  do
@@ -1512,27 +1543,27 @@ l1:
              if Threads[ThreadId].Board.key=keys[i] then inc(j);
              i:=i-2;
            end;
-          if j>1 then
+          if j>2 then
             begin
-             if value=0
+             if abs(value)<50
                then gameres:=0
                else gameres:=100;
              goto ex;
             end;
-          // 5 Если последние несколько ходов оба противника показывают ничью
-          if drawcnt>5 then
+          // 5 Р•СЃР»Рё РїРѕСЃР»РµРґРЅРёРµ РЅРµСЃРєРѕР»СЊРєРѕ С…РѕРґРѕРІ РѕР±Р° РїСЂРѕС‚РёРІРЅРёРєР° РїРѕРєР°Р·С‹РІР°СЋС‚ РЅРёС‡СЊСЋ
+          if drawcnt>7 then
             begin
              gameres:=0;
              goto ex;
             end;
         end;
       end;
-ex:  // Мы сыграли партию - тут мы проставляем ее результат всем сохраненным ранее позициям и сохраняем их в буфер.
+ex:  // РњС‹ СЃС‹РіСЂР°Р»Рё РїР°СЂС‚РёСЋ - С‚СѓС‚ РјС‹ РїСЂРѕСЃС‚Р°РІР»СЏРµРј РµРµ СЂРµР·СѓР»СЊС‚Р°С‚ РІСЃРµРј СЃРѕС…СЂР°РЅРµРЅРЅС‹Рј СЂР°РЅРµРµ РїРѕР·РёС†РёСЏРј Рё СЃРѕС…СЂР°РЅСЏРµРј РёС… РІ Р±СѓС„РµСЂ.
      for i:=0 to gamecnt-1 do
        begin
          Fens[cnt]:=GameFen[i]+' '+inttostr(gameres);
          inc(cnt);
-         // Сохраняем заполнившийся буфер на диск
+         // РЎРѕС…СЂР°РЅСЏРµРј Р·Р°РїРѕР»РЅРёРІС€РёР№СЃСЏ Р±СѓС„РµСЂ РЅР° РґРёСЃРє
          if cnt>BuferSize-1 then
            begin
              SafeSave(ThreadId,cnt,Fens);
@@ -1540,7 +1571,7 @@ ex:  // Мы сыграли партию - тут мы проставляем ее результат всем сохраненным ран
              Threads[threadid].savedblock:=true;
              if (not Threads[1].AbortSearch) then
                begin
-                  // Если уже сохранили нужное количество позиций - посылаем оснвному потоку сигнал закрываться
+                  // Р•СЃР»Рё СѓР¶Рµ СЃРѕС…СЂР°РЅРёР»Рё РЅСѓР¶РЅРѕРµ РєРѕР»РёС‡РµСЃС‚РІРѕ РїРѕР·РёС†РёР№ - РїРѕСЃС‹Р»Р°РµРј РѕСЃРЅРІРЅРѕРјСѓ РїРѕС‚РѕРєСѓ СЃРёРіРЅР°Р» Р·Р°РєСЂС‹РІР°С‚СЊСЃСЏ
                  If Blockscount*BuferSize>=FenNumber then Threads[1].AbortSearch:=true;
                end;
               break;
@@ -1571,7 +1602,6 @@ begin
   for j:=1 to MaxMoves do
   for imp:=false to true do
     LMRRED[imp,i,j]:=LMRReduction(imp,i,j);
-  game.showtext:=true;
 end;
 
 initialization

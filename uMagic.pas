@@ -1,9 +1,13 @@
 unit uMagic;
 
+{$IFDEF FPC}
+  {$MODE Delphi}
+{$ENDIF}
+
 interface
-   uses uBitboards,SysUtils,DateUtils;
+   uses uBitBoards,SysUtils,DateUtils;
 Type
-  T16  = array[0..15] of integer;  // Тип массива номеров битборда аттак единичной фигуры (слона или ладьи)
+  T16  = array[0..15] of integer;  // РўРёРї РјР°СЃСЃРёРІР° РЅРѕРјРµСЂРѕРІ Р±РёС‚Р±РѕСЂРґР° Р°С‚С‚Р°Рє РµРґРёРЅРёС‡РЅРѕР№ С„РёРіСѓСЂС‹ (СЃР»РѕРЅР° РёР»Рё Р»Р°РґСЊРё)
 
   TTempMagic = record
                  AttackSet:TBitBoard;
@@ -63,7 +67,10 @@ var
     BishopMasks,RookMasks   : array[a1..h8] of TBitBoard;
     BishopMM                : array[0..4799] of TBitBoard;
     RookMM                  : array[0..88575] of TBitBoard;
+    BishoppextMM            : array[0..5247] of TBitBoard;
+    RookpextMM              : array[0..102399] of TBitBoard;
     BishopOffset,RookOffset : array[a1..h8] of integer;
+    Bishoppextoffset,Rookpextoffset : array[a1..h8] of integer;
 
   Procedure FindMagicForSquare(sq:integer;isRook:boolean;mode:integer;initbits:integer;best:boolean);
   Procedure MagicsInit;
@@ -72,7 +79,7 @@ var
 implementation
 
 Function CalcSochetFun(n:integer;k:integer):int64;
-// Функция вычисляет сочетания из n элементов по k
+// Р¤СѓРЅРєС†РёСЏ РІС‹С‡РёСЃР»СЏРµС‚ СЃРѕС‡РµС‚Р°РЅРёСЏ РёР· n СЌР»РµРјРµРЅС‚РѕРІ РїРѕ k
   var
      res:int64;
      i:integer;
@@ -92,7 +99,7 @@ Function CalcSochetFun(n:integer;k:integer):int64;
    end;
 
 Function PboardBishopMovesBB(Occupied:TBitBoard;sq:integer):TBitBoard;
-  // Генератор хода слона на поле sq на доске занятой фигурами по битборду occupied  с помощью проверочной доски
+  // Р“РµРЅРµСЂР°С‚РѕСЂ С…РѕРґР° СЃР»РѕРЅР° РЅР° РїРѕР»Рµ sq РЅР° РґРѕСЃРєРµ Р·Р°РЅСЏС‚РѕР№ С„РёРіСѓСЂР°РјРё РїРѕ Р±РёС‚Р±РѕСЂРґСѓ occupied  СЃ РїРѕРјРѕС‰СЊСЋ РїСЂРѕРІРµСЂРѕС‡РЅРѕР№ РґРѕСЃРєРё
   const
    movearray : array[1..4] of integer =(11,-11,9,-9) ;
   var
@@ -114,7 +121,7 @@ Function PboardBishopMovesBB(Occupied:TBitBoard;sq:integer):TBitBoard;
    end;
 
  Function PboardRookMovesBB(Occupied:TBitBoard;sq:integer):TBitBoard;
-  // Генератор хода ладьи на поле sq на доске занятой фигурами по битборду occupied  с помощью проверочной доски
+  // Р“РµРЅРµСЂР°С‚РѕСЂ С…РѕРґР° Р»Р°РґСЊРё РЅР° РїРѕР»Рµ sq РЅР° РґРѕСЃРєРµ Р·Р°РЅСЏС‚РѕР№ С„РёРіСѓСЂР°РјРё РїРѕ Р±РёС‚Р±РѕСЂРґСѓ occupied  СЃ РїРѕРјРѕС‰СЊСЋ РїСЂРѕРІРµСЂРѕС‡РЅРѕР№ РґРѕСЃРєРё
   const
    movearray : array[1..4] of integer =(1,-1,10,-10) ;
   var
@@ -136,7 +143,7 @@ Function PboardBishopMovesBB(Occupied:TBitBoard;sq:integer):TBitBoard;
    end;
 
  Function GetRandom64:int64;
- // Генерит 64 битное случайное число
+ // Р“РµРЅРµСЂРёС‚ 64 Р±РёС‚РЅРѕРµ СЃР»СѓС‡Р°Р№РЅРѕРµ С‡РёСЃР»Рѕ
   var
   sl1,sl2,sl3,sl4:int64;
   begin
@@ -148,7 +155,7 @@ Function PboardBishopMovesBB(Occupied:TBitBoard;sq:integer):TBitBoard;
   end;
 
  Function GetRandom32:integer;
- // Генерит 32 битное случайное число
+ // Р“РµРЅРµСЂРёС‚ 32 Р±РёС‚РЅРѕРµ СЃР»СѓС‡Р°Р№РЅРѕРµ С‡РёСЃР»Рѕ
   var
   sl1,sl2:int64;
   begin
@@ -158,7 +165,7 @@ Function PboardBishopMovesBB(Occupied:TBitBoard;sq:integer):TBitBoard;
   end;
  
  Function Snoob(BB:TBitBoard):TbitBoard;
-// Дает следующее по величине число с таким же количеством единичных битов, что в аргументе. Для брутфорса
+// Р”Р°РµС‚ СЃР»РµРґСѓСЋС‰РµРµ РїРѕ РІРµР»РёС‡РёРЅРµ С‡РёСЃР»Рѕ СЃ С‚Р°РєРёРј Р¶Рµ РєРѕР»РёС‡РµСЃС‚РІРѕРј РµРґРёРЅРёС‡РЅС‹С… Р±РёС‚РѕРІ, С‡С‚Рѕ РІ Р°СЂРіСѓРјРµРЅС‚Рµ. Р”Р»СЏ Р±СЂСѓС‚С„РѕСЂСЃР°
  var
    smallest,riple,ones : TBitBoard;
    n : integer;
@@ -172,18 +179,18 @@ Function PboardBishopMovesBB(Occupied:TBitBoard;sq:integer):TBitBoard;
  end;
 
  Function LowBitRandom:int64;
- // Выдает случайное 64-битное число с малым числом единичных битов
+ // Р’С‹РґР°РµС‚ СЃР»СѓС‡Р°Р№РЅРѕРµ 64-Р±РёС‚РЅРѕРµ С‡РёСЃР»Рѕ СЃ РјР°Р»С‹Рј С‡РёСЃР»РѕРј РµРґРёРЅРёС‡РЅС‹С… Р±РёС‚РѕРІ
   begin
     result:=GetRandom64 and GetRandom64 and GetRandom64;
   end;
 Function HiBitRandom:int64;
- // Выдает случайное 64-битное число с большим числом единичных битов
+ // Р’С‹РґР°РµС‚ СЃР»СѓС‡Р°Р№РЅРѕРµ 64-Р±РёС‚РЅРѕРµ С‡РёСЃР»Рѕ СЃ Р±РѕР»СЊС€РёРј С‡РёСЃР»РѕРј РµРґРёРЅРёС‡РЅС‹С… Р±РёС‚РѕРІ
   begin
     result:=GetRandom64 or GetRandom64;
   end;
 
  Procedure FillBBArray(Occupied:TBitBoard;var A :T16);
-  // Заполняет целочисленный массив номерами установленных в 1 битов битборда Occupied.  битборд содержит ходы слона или ладьи так что макс размер массива - 16 с лихвой
+  // Р—Р°РїРѕР»РЅСЏРµС‚ С†РµР»РѕС‡РёСЃР»РµРЅРЅС‹Р№ РјР°СЃСЃРёРІ РЅРѕРјРµСЂР°РјРё СѓСЃС‚Р°РЅРѕРІР»РµРЅРЅС‹С… РІ 1 Р±РёС‚РѕРІ Р±РёС‚Р±РѕСЂРґР° Occupied.  Р±РёС‚Р±РѕСЂРґ СЃРѕРґРµСЂР¶РёС‚ С…РѕРґС‹ СЃР»РѕРЅР° РёР»Рё Р»Р°РґСЊРё С‚Р°Рє С‡С‚Рѕ РјР°РєСЃ СЂР°Р·РјРµСЂ РјР°СЃСЃРёРІР° - 16 СЃ Р»РёС…РІРѕР№
   var
    i : integer;
   begin
@@ -199,7 +206,7 @@ Function HiBitRandom:int64;
 
 
  Function SetOccupancy(Kol:integer;Num:integer;var A:T16):TBitBoard;
- // Устанавливает битборд занятых фигур количеством kol по его номеру num используя ранее заполненный массив всех используемых битов для этой Occupancy
+ // РЈСЃС‚Р°РЅР°РІР»РёРІР°РµС‚ Р±РёС‚Р±РѕСЂРґ Р·Р°РЅСЏС‚С‹С… С„РёРіСѓСЂ РєРѕР»РёС‡РµСЃС‚РІРѕРј kol РїРѕ РµРіРѕ РЅРѕРјРµСЂСѓ num РёСЃРїРѕР»СЊР·СѓСЏ СЂР°РЅРµРµ Р·Р°РїРѕР»РЅРµРЅРЅС‹Р№ РјР°СЃСЃРёРІ РІСЃРµС… РёСЃРїРѕР»СЊР·СѓРµРјС‹С… Р±РёС‚РѕРІ РґР»СЏ СЌС‚РѕР№ Occupancy
  var
    res:TBitBoard;
    i:integer;
@@ -207,13 +214,13 @@ Function HiBitRandom:int64;
  begin
    res:=0;
    for i:=0 to kol-1 do
-    // Если в номере occupancy установлен бит, то соответсвующий ему бит в битборде тоже зажигаем.
+    // Р•СЃР»Рё РІ РЅРѕРјРµСЂРµ occupancy СѓСЃС‚Р°РЅРѕРІР»РµРЅ Р±РёС‚, С‚Рѕ СЃРѕРѕС‚РІРµС‚СЃРІСѓСЋС‰РёР№ РµРјСѓ Р±РёС‚ РІ Р±РёС‚Р±РѕСЂРґРµ С‚РѕР¶Рµ Р·Р°Р¶РёРіР°РµРј.
     if (Num and (1 shl i))<>0 then res:=res or Only[A[i]];
    Result:=res;
  end;
 
  Procedure ClearEdgeSquares(sq:integer;var OccupancyMask:TBitBoard);
- // Убираем из маски поля края доски
+ // РЈР±РёСЂР°РµРј РёР· РјР°СЃРєРё РїРѕР»СЏ РєСЂР°СЏ РґРѕСЃРєРё
  var
    x,y : integer;
  begin
@@ -226,10 +233,10 @@ Function HiBitRandom:int64;
  end;
 
  Function FindBruteForceMagic(sq:integer;n:integer;kol:integer;isRook:boolean;mode : integer; initbits:int64; best:boolean; var A:T16):int64;
- // Функция поиска magic номера
+ // Р¤СѓРЅРєС†РёСЏ РїРѕРёСЃРєР° magic РЅРѕРјРµСЂР°
   var
    MullBB,AttackBB,Occupancy,ii,maxii,nodes : int64;
-   i,index,shift,bit,collisions,mincol,shiftsize,useful,j:integer;
+   i,index,shift,bit,collisions,mincol,shiftsize,useful,j,ind:integer;
    s:string;
    AttackSets,OccupancySets: array of TBitBoard;
    Temp : array of TTempMagic;
@@ -238,37 +245,53 @@ Function HiBitRandom:int64;
   begin
     t1:=now;
     nodes:=0;
-   // Считаем сдвиг
+   // РЎС‡РёС‚Р°РµРј СЃРґРІРёРі
     shift:=(64-kol);
-   // Если ищем идеальный magic то увеличиваем shift
+   // Р•СЃР»Рё РёС‰РµРј РёРґРµР°Р»СЊРЅС‹Р№ magic С‚Рѕ СѓРІРµР»РёС‡РёРІР°РµРј shift
     if best then inc(shift);
     shiftsize:= 1 shl (64-shift);
-   // Устанавливаем минимальное количество коллизий в заведомо большое число - используется для статистики
+   // РЈСЃС‚Р°РЅР°РІР»РёРІР°РµРј РјРёРЅРёРјР°Р»СЊРЅРѕРµ РєРѕР»РёС‡РµСЃС‚РІРѕ РєРѕР»Р»РёР·РёР№ РІ Р·Р°РІРµРґРѕРјРѕ Р±РѕР»СЊС€РѕРµ С‡РёСЃР»Рѕ - РёСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ РґР»СЏ СЃС‚Р°С‚РёСЃС‚РёРєРё
     mincol:=n+1;
-   // Выделяем память
+   // Р’С‹РґРµР»СЏРµРј РїР°РјСЏС‚СЊ
    Setlength(AttackSets,n);
    Setlength(OccupancySets,n);
    Setlength(temp,shiftsize);
-    // Устанавливаем предвычисленные ходы для каждой комбинации Occupancy для этой клетки поля
+    // РЈСЃС‚Р°РЅР°РІР»РёРІР°РµРј РїСЂРµРґРІС‹С‡РёСЃР»РµРЅРЅС‹Рµ С…РѕРґС‹ РґР»СЏ РєР°Р¶РґРѕР№ РєРѕРјР±РёРЅР°С†РёРё Occupancy РґР»СЏ СЌС‚РѕР№ РєР»РµС‚РєРё РїРѕР»СЏ
     For i:=0 to n-1 do
       begin
-        // Для каждой комбинации Occupancy Генерим битборд возможных ходов для нее
+        // Р”Р»СЏ РєР°Р¶РґРѕР№ РєРѕРјР±РёРЅР°С†РёРё Occupancy Р“РµРЅРµСЂРёРј Р±РёС‚Р±РѕСЂРґ РІРѕР·РјРѕР¶РЅС‹С… С…РѕРґРѕРІ РґР»СЏ РЅРµРµ
         Occupancy:=SetOccupancy(kol,i,A);
         if isRook
           then AttackBB:=PboardRookMovesBB(Occupancy,sq)
           else AttackBB:=PboardBishopMovesBB(Occupancy,sq);
         AttackSets[i]:=AttackBB;
         OccupancySets[i]:=Occupancy;
+        // pext
+        if isRook then
+          begin
+            ind:=pext(Occupancy,RookMasks[pboard[sq]]);
+            RookpextMM[Rookpextoffset[pboard[sq]]+ind]:=AttackBB;
+          end else
+          begin
+            ind:=pext(Occupancy,BishopMasks[pboard[sq]]);
+            BishoppextMM[Bishoppextoffset[pboard[sq]]+ind]:=AttackBB;
+          end;
+        if sq<>88 then
+          begin
+            if isRook
+              then Rookpextoffset[pboard[sq]+1]:= Rookpextoffset[pboard[sq]]+ n
+              else Bishoppextoffset[pboard[sq]+1]:= Bishoppextoffset[pboard[sq]]+n;
+          end;
       end;
-   // Для брутфорса крутим цикл количества единичных битов  - просто цикл. Для остальных типов это просто пустой бесконечный почти цикл
+   // Р”Р»СЏ Р±СЂСѓС‚С„РѕСЂСЃР° РєСЂСѓС‚РёРј С†РёРєР» РєРѕР»РёС‡РµСЃС‚РІР° РµРґРёРЅРёС‡РЅС‹С… Р±РёС‚РѕРІ  - РїСЂРѕСЃС‚Рѕ С†РёРєР». Р”Р»СЏ РѕСЃС‚Р°Р»СЊРЅС‹С… С‚РёРїРѕРІ СЌС‚Рѕ РїСЂРѕСЃС‚Рѕ РїСѓСЃС‚РѕР№ Р±РµСЃРєРѕРЅРµС‡РЅС‹Р№ РїРѕС‡С‚Рё С†РёРєР»
     for bit:=initbits to 64 do
     begin
       MullBB:=(Only[bit]-1);
-     // Вычисляем количество комбинаций для данного количества битов в 64-битном битборде
+     // Р’С‹С‡РёСЃР»СЏРµРј РєРѕР»РёС‡РµСЃС‚РІРѕ РєРѕРјР±РёРЅР°С†РёР№ РґР»СЏ РґР°РЅРЅРѕРіРѕ РєРѕР»РёС‡РµСЃС‚РІР° Р±РёС‚РѕРІ РІ 64-Р±РёС‚РЅРѕРј Р±РёС‚Р±РѕСЂРґРµ
      if bit>32
        then maxii:=CalcSochetFun(64,64-bit)
        else maxii:=CalcSochetFun(64,bit);
-     // Для брутфорса печатаем статистику начала следующей итерации нового количества единичных битов
+     // Р”Р»СЏ Р±СЂСѓС‚С„РѕСЂСЃР° РїРµС‡Р°С‚Р°РµРј СЃС‚Р°С‚РёСЃС‚РёРєСѓ РЅР°С‡Р°Р»Р° СЃР»РµРґСѓСЋС‰РµР№ РёС‚РµСЂР°С†РёРё РЅРѕРІРѕРіРѕ РєРѕР»РёС‡РµСЃС‚РІР° РµРґРёРЅРёС‡РЅС‹С… Р±РёС‚РѕРІ
      if mode=BruteForce then
       begin
        t2:=now;
@@ -276,18 +299,18 @@ Function HiBitRandom:int64;
       end;
      ii:=0; round:=4294967295;
 
-     // крутим основной цикл поиска magic
+     // РєСЂСѓС‚РёРј РѕСЃРЅРѕРІРЅРѕР№ С†РёРєР» РїРѕРёСЃРєР° magic
      while ii<maxii do
       begin
-       //  очищаем  временный массив комбинаций Occupancy
+       //  РѕС‡РёС‰Р°РµРј  РІСЂРµРјРµРЅРЅС‹Р№ РјР°СЃСЃРёРІ РєРѕРјР±РёРЅР°С†РёР№ Occupancy
         if round=4294967295 then
          begin
-          // Очищаем массив когда дошли до конца счетчика
+          // РћС‡РёС‰Р°РµРј РјР°СЃСЃРёРІ РєРѕРіРґР° РґРѕС€Р»Рё РґРѕ РєРѕРЅС†Р° СЃС‡РµС‚С‡РёРєР°
            round:=0;
            for i:=0 to shiftsize-1 do
              Temp[i].age:=4294967295;
          end;
-       // Берем очередное число-кандидат   в зависимости от типа его генерации
+       // Р‘РµСЂРµРј РѕС‡РµСЂРµРґРЅРѕРµ С‡РёСЃР»Рѕ-РєР°РЅРґРёРґР°С‚   РІ Р·Р°РІРёСЃРёРјРѕСЃС‚Рё РѕС‚ С‚РёРїР° РµРіРѕ РіРµРЅРµСЂР°С†РёРё
         case mode of
           LowRandom    : MullBB:=LowBitRandom;
           HiRandom     : MullBB:=HiBitRandom;
@@ -302,9 +325,9 @@ Function HiBitRandom:int64;
         collisions:=0; useful:=0;
         for i:=0 to n-1 do
           begin
-            // Вычисляем индекс хеша
+            // Р’С‹С‡РёСЃР»СЏРµРј РёРЅРґРµРєСЃ С…РµС€Р°
             index:=((MullBB *OccupancySets[i]) shr shift);
-            // Если в этом индексе уже есть битборд и он другой - коллизия +1 Если нет - записываем битборд по индексу и смотрим следующую комбинацию
+            // Р•СЃР»Рё РІ СЌС‚РѕРј РёРЅРґРµРєСЃРµ СѓР¶Рµ РµСЃС‚СЊ Р±РёС‚Р±РѕСЂРґ Рё РѕРЅ РґСЂСѓРіРѕР№ - РєРѕР»Р»РёР·РёСЏ +1 Р•СЃР»Рё РЅРµС‚ - Р·Р°РїРёСЃС‹РІР°РµРј Р±РёС‚Р±РѕСЂРґ РїРѕ РёРЅРґРµРєСЃСѓ Рё СЃРјРѕС‚СЂРёРј СЃР»РµРґСѓСЋС‰СѓСЋ РєРѕРјР±РёРЅР°С†РёСЋ
             if (Temp[index].age=round) and (Temp[index].AttackSet<>AttackSets[i]) then
               begin
                 inc(collisions);
@@ -319,7 +342,7 @@ Function HiBitRandom:int64;
                  end;
               end;
           end;
-       // Все комбинации рассмотрены - коллизий нет. Это и есть искомый Magic
+       // Р’СЃРµ РєРѕРјР±РёРЅР°С†РёРё СЂР°СЃСЃРјРѕС‚СЂРµРЅС‹ - РєРѕР»Р»РёР·РёР№ РЅРµС‚. Р­С‚Рѕ Рё РµСЃС‚СЊ РёСЃРєРѕРјС‹Р№ Magic
         if collisions=0 then
          begin
           t2:=now;
@@ -331,7 +354,9 @@ Function HiBitRandom:int64;
               begin
                 i:=RookOffset[pboard[sq]];
                 for j:=0 to shiftsize-1 do
-                  RookMM[i+j]:=Temp[j].AttackSet;
+                  begin
+                    RookMM[i+j]:=Temp[j].AttackSet;
+                  end;
                 if sq<>88 then RookOffset[pboard[sq]+1]:=RookOffset[pboard[sq]]+shiftsize;
               end else
               begin
@@ -347,7 +372,7 @@ Function HiBitRandom:int64;
           Result:=MullBB;
           exit;
          end;
-       // Обновляем статистику минимальных коллизий если надо
+       // РћР±РЅРѕРІР»СЏРµРј СЃС‚Р°С‚РёСЃС‚РёРєСѓ РјРёРЅРёРјР°Р»СЊРЅС‹С… РєРѕР»Р»РёР·РёР№ РµСЃР»Рё РЅР°РґРѕ
         if collisions<mincol then
          begin
           t2:=now;
@@ -363,15 +388,14 @@ Function HiBitRandom:int64;
   end;
 
  Procedure FindMagicForSquare(sq:integer;isRook:boolean;mode:integer;initbits:integer;best:boolean);
-  // Ищем magicnumbers  для каждой клетки sq , представленной в координатах доски a1=11 h8=88 c выбираемым способом генерирования кандидата и начального уровня количества единичных битов в битборде
-  label l1;
+  // РС‰РµРј magicnumbers  РґР»СЏ РєР°Р¶РґРѕР№ РєР»РµС‚РєРё sq , РїСЂРµРґСЃС‚Р°РІР»РµРЅРЅРѕР№ РІ РєРѕРѕСЂРґРёРЅР°С‚Р°С… РґРѕСЃРєРё a1=11 h8=88 c РІС‹Р±РёСЂР°РµРјС‹Рј СЃРїРѕСЃРѕР±РѕРј РіРµРЅРµСЂРёСЂРѕРІР°РЅРёСЏ РєР°РЅРґРёРґР°С‚Р° Рё РЅР°С‡Р°Р»СЊРЅРѕРіРѕ СѓСЂРѕРІРЅСЏ РєРѕР»РёС‡РµСЃС‚РІР° РµРґРёРЅРёС‡РЅС‹С… Р±РёС‚РѕРІ РІ Р±РёС‚Р±РѕСЂРґРµ
   var
     OccupancyMask: TBitBoard;
     kol,n:integer;
     A:T16;
   begin
     if mode<>SingleProbe then Writeln('Searching magics for square ',sq);
-    // Ищем на пустой доске битборд атаки фигуры с этой клетки
+    // РС‰РµРј РЅР° РїСѓСЃС‚РѕР№ РґРѕСЃРєРµ Р±РёС‚Р±РѕСЂРґ Р°С‚Р°РєРё С„РёРіСѓСЂС‹ СЃ СЌС‚РѕР№ РєР»РµС‚РєРё
     if isRook
       then
        begin
@@ -393,27 +417,28 @@ Function HiBitRandom:int64;
             then best:=false
             else best:=true;
        end;
-   // Количество битов в маске
+   // РљРѕР»РёС‡РµСЃС‚РІРѕ Р±РёС‚РѕРІ РІ РјР°СЃРєРµ
     kol:=BitCount(OccupancyMask);
-   // Заполняем массив номерами битбордов
+   // Р—Р°РїРѕР»РЅСЏРµРј РјР°СЃСЃРёРІ РЅРѕРјРµСЂР°РјРё Р±РёС‚Р±РѕСЂРґРѕРІ
     FillBBArray(OccupancyMask,A);
-   //вычисляем количество комбинаций occupancy
+   //РІС‹С‡РёСЃР»СЏРµРј РєРѕР»РёС‡РµСЃС‚РІРѕ РєРѕРјР±РёРЅР°С†РёР№ occupancy
     n:=(1 shl kol);
    FindBruteForceMagic(sq,n,kol,isRook,mode,initbits,best,A);
   end;
 Procedure MagicsInit;
-// Инициализация magic структур
+// РРЅРёС†РёР°Р»РёР·Р°С†РёСЏ magic СЃС‚СЂСѓРєС‚СѓСЂ
  var
   i,j : integer;
  begin
    BishopOffset[a1]:=0;RookOffset[a1]:=0;
+   BishoppextOffset[a1]:=0;RookpextOffset[a1]:=0;
    for i:=1 to 8 do
    for j:=1 to 8 do
     begin
      FindMagicForSquare(i+j*10,true,SingleProbe,1,true);
      FindMagicForSquare(i+j*10,false,SingleProbe,1,true);
     end;
-  
+
  end;
 
 

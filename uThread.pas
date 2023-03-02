@@ -1,18 +1,34 @@
-unit uThread;
+п»їunit uThread;
+
+{$IFDEF FPC}
+  {$MODE Delphi}
+{$ENDIF}
 
 interface
-uses Windows,SysUtils,uBoard,uSort,uMaterial,uPawn,uEval,Unn;
+uses SyncObjs,SysUtils,uBoard,uSort,Unn,uHash,Classes;
 Const
-  MaxThreads=64;
+  MaxThreads=128;
   MaxPV=130;
 Type
+ Thread=class(TThread)
+  private
+   ThreadID : integer;
+  protected
+   procedure Execute;override;
+  public
+   constructor Create(CreateSuspended:boolean;Id:integer);
+ end;
+
+
+
   TPv = array[0..MaxPV] of smallint;
+  
   TThread  = record
-              Id       : integer;   // Идентификатор
-              handle   : LongWord;  // хендл потока
-              isRun    : boolean;  // Показывает что поток работает
-              idle     : boolean;  // Показывает простой потока
-              haswork  : boolean;  // Флаг наличия задания у потока
+              Id       : integer;   // РРґРµРЅС‚РёС„РёРєР°С‚РѕСЂ
+              handle   : LongWord;  // С…РµРЅРґР» РїРѕС‚РѕРєР°
+              isRun    : boolean;  // РџРѕРєР°Р·С‹РІР°РµС‚ С‡С‚Рѕ РїРѕС‚РѕРє СЂР°Р±РѕС‚Р°РµС‚
+              idle     : boolean;  // РџРѕРєР°Р·С‹РІР°РµС‚ РїСЂРѕСЃС‚РѕР№ РїРѕС‚РѕРєР°
+              haswork  : boolean;  // Р¤Р»Р°Рі РЅР°Р»РёС‡РёСЏ Р·Р°РґР°РЅРёСЏ Сѓ РїРѕС‚РѕРєР°
               AbortSearch : Boolean;
               RootDepth : integer;
               FullDepth : integer;
@@ -28,48 +44,47 @@ Type
               RootList : TMoveList;
               stableMove : integer;
               BestValue  : integer;
-              MatTable : array of TMatEntry;
-              MatTableMask : int64;
-              PawnTable : array of TPawnEntry;
-              PawnTableMask : int64;
+              WaitPonder : boolean;
               Fenflag : boolean;
               outname : shortstring;
               outfile : textfile;
               Pass:array[0..129] of TForwardPass;
               bookposnum : integer;
               savedblock : boolean;
+              TTLocal    :TTable;  // Р»РѕРєР°Р»СЊРЅС‹Р№ С…РµС€ РїРѕС‚РѕРєР° (РґР»СЏ РіРµРЅРµСЂР°С†РёРё С„РµРЅ РїРѕР·РёС†РёР№)
+              clrflag    :boolean;   // С„Р»Р°Рі РѕС‡РёСЃС‚РєРё С…РµС€Р°
+              hashstart  : Pentry; // СЃС‚Р°СЂС‚РѕРІР°СЏ СЏС‡РµР№РєР°
+              hashcnt    : int64; // РєРѕР»РёС‡РµСЃС‚РІРѕ РґР»СЏ РѕС‡РёСЃС‚РєРё
+              repcnt     : integer;
             end;
 
 var
    AllThreadsStop : boolean;
    Threads : array [1..MaxThreads] of TThread;
-   SMPLock :TRTLCriticalSection;
-   IdleEvent : THandle;
-Threadvar
-    global : ^Integer;
+   SMPLock : TCriticalSection;
+   IdleEvent : TEvent;
 
-Procedure Init_Threads(n:integer);
+
+
+Procedure InitThreads(n:integer);
 Procedure StopThreads;
 Function isThreadidle:boolean;
 Procedure CopyThread(ThreadId:integer);
-Procedure ClearThreadMemory;
 implementation
-  uses uUci,uSearch,UHash;
+  uses uUci,uSearch;
 
-Procedure ClearThreadMemory;
-var
-  i:integer;
+Constructor Thread.Create(CreateSuspended: Boolean;Id : integer);
 begin
-  for i:=1 to MaxThreads do
-    begin
-      SetLength(Threads[i].MatTable,0);
-      SetLength(Threads[i].PawnTable,0);
-    end;
+  inherited Create(CreateSuspended);
+  ThreadId:=id;
 end;
+
+
+
 Procedure CopyThread(ThreadId:integer);
 var
   i: integer;
-// Копирует данные из главного потока в вспомогательные
+// РљРѕРїРёСЂСѓРµС‚ РґР°РЅРЅС‹Рµ РёР· РіР»Р°РІРЅРѕРіРѕ РїРѕС‚РѕРєР° РІ РІСЃРїРѕРјРѕРіР°С‚РµР»СЊРЅС‹Рµ
 begin
   Threads[ThreadId].RootMoves:=Threads[1].RootMoves;
     Threads[ThreadId].PVLine[0]:=0;
@@ -87,107 +102,107 @@ end;
 
 
 Procedure Idle_loop (threadid : integer);
-// Здесь потоки крутятся
+// Р—РґРµСЃСЊ РїРѕС‚РѕРєРё РєСЂСѓС‚СЏС‚СЃСЏ
 begin
   Threads[threadid].Id:=Threadid;
   Threads[threadid].haswork:=false;
-  Threads[threadid].isRun:=true;  // Поток поднялся - даем сигнал стартеру что все ок.
- // В этом цикле живет поток. Выход из цикла - по флагу. Тогда поток закрывается.
+  Threads[threadid].isRun:=true;  // РџРѕС‚РѕРє РїРѕРґРЅСЏР»СЃСЏ - РґР°РµРј СЃРёРіРЅР°Р» СЃС‚Р°СЂС‚РµСЂСѓ С‡С‚Рѕ РІСЃРµ РѕРє.
+ // Р’ СЌС‚РѕРј С†РёРєР»Рµ Р¶РёРІРµС‚ РїРѕС‚РѕРє. Р’С‹С…РѕРґ РёР· С†РёРєР»Р° - РїРѕ С„Р»Р°РіСѓ. РўРѕРіРґР° РїРѕС‚РѕРє Р·Р°РєСЂС‹РІР°РµС‚СЃСЏ.
   while true do
    begin
-    // закрытие потока
+    // Р·Р°РєСЂС‹С‚РёРµ РїРѕС‚РѕРєР°
     if (AllThreadsStop)  then break;
-    // Если для потока сейчас нет работы (например сразу после старта) - он спит.
-    // Чтобы его разбудить надо дать ему наше событие !
+    // Р•СЃР»Рё РґР»СЏ РїРѕС‚РѕРєР° СЃРµР№С‡Р°СЃ РЅРµС‚ СЂР°Р±РѕС‚С‹ (РЅР°РїСЂРёРјРµСЂ СЃСЂР°Р·Сѓ РїРѕСЃР»Рµ СЃС‚Р°СЂС‚Р°) - РѕРЅ СЃРїРёС‚.
+    // Р§С‚РѕР±С‹ РµРіРѕ СЂР°Р·Р±СѓРґРёС‚СЊ РЅР°РґРѕ РґР°С‚СЊ РµРјСѓ РЅР°С€Рµ СЃРѕР±С‹С‚РёРµ !
     if (not Threads[threadid].haswork)  then
      begin
       Threads[threadid].idle:=true;
-      WaitForSingleObject(IdleEvent, INFINITE);
-      //  Тут поток ждет наступление нашего персонального события
+      IdleEvent.WaitFor(INFINITE);
+      //  РўСѓС‚ РїРѕС‚РѕРє Р¶РґРµС‚ РЅР°СЃС‚СѓРїР»РµРЅРёРµ РЅР°С€РµРіРѕ РїРµСЂСЃРѕРЅР°Р»СЊРЅРѕРіРѕ СЃРѕР±С‹С‚РёСЏ
      end;
-    // Тут поток проснулся и ждет работу или сигнала закрыться. Активируется поток  в работу путем подачи на haswork true
+    // РўСѓС‚ РїРѕС‚РѕРє РїСЂРѕСЃРЅСѓР»СЃСЏ Рё Р¶РґРµС‚ СЂР°Р±РѕС‚Сѓ РёР»Рё СЃРёРіРЅР°Р»Р° Р·Р°РєСЂС‹С‚СЊСЃСЏ. РђРєС‚РёРІРёСЂСѓРµС‚СЃСЏ РїРѕС‚РѕРє  РІ СЂР°Р±РѕС‚Сѓ РїСѓС‚РµРј РїРѕРґР°С‡Рё РЅР° haswork true
     if Threads[threadid].haswork then
       begin
         Threads[threadid].idle:=false;
         If Threads[ThreadId].Fenflag
-          then SingleGenerator(ThreadID,threads[threadid].bookposnum)
-          else Iterate(ThreadId);                       ////////////////////////////// функция запуска потока
+          then SingleGenerator(ThreadID,threads[threadid].bookposnum) else   // Р—Р°РґР°С‡Р° РіРµРЅРµСЂРёСЂРѕРІР°С‚СЊ С„РµРЅРєРё
+        if Threads[ThreadId].clrflag then multiclear(threadid)  // Р—Р°РґР°С‡Р° С‡РёСЃС‚РёС‚СЊ С…РµС‰
+          else if threadid=1
+            then Think                                      // РїРµСЂРІС‹Р№ РїРѕС‚РѕРє
+            else Iterate(ThreadId);                         // РІСЃРµ РѕСЃС‚Р°Р»СЊРЅС‹Рµ РІСЃРїРѕРјРѕРіР°С‚РµР»СЊРЅС‹Рµ
+        Threads[threadid].fenflag:=False;
+        threads[threadid].clrflag:=False;
         Threads[threadid].haswork:=false;
-        Threads[threadid].idle:=true;
       end;
    end;
-// Закрытие потока
+// Р—Р°РєСЂС‹С‚РёРµ РїРѕС‚РѕРєР°
  Threads[threadid].isRun:=false;
 end;
-Procedure win_init(Par:Pointer);
-// Базовая процедура старта потоков. Получаем в качестве параметра номер потока и запускаем
-// его крутиться в цикле.
-var
-  i:integer;
+Procedure Thread.Execute;
 begin
-  global:=par;
-  i:=global^;
-  Idle_loop(i);
+  Idle_loop(ThreadId);
 end;
-Procedure Init_Threads(n:integer);
-// Инициализация потоков. Все потоки переходят в спящее состояние и ждут работу
+
+Procedure InitThreads(n:integer);
+// РРЅРёС†РёР°Р»РёР·Р°С†РёСЏ РїРѕС‚РѕРєРѕРІ. Р’СЃРµ РїРѕС‚РѕРєРё РїРµСЂРµС…РѕРґСЏС‚ РІ СЃРїСЏС‰РµРµ СЃРѕСЃС‚РѕСЏРЅРёРµ Рё Р¶РґСѓС‚ СЂР°Р±РѕС‚Сѓ
 var
   i : integer;
-  tr:longword;
+  //tr:longword;
 begin
    AllThreadsStop:=false;
- // Стартуем потоки
-  for i:=2 to n do
+ // РЎС‚Р°СЂС‚СѓРµРј РїРѕС‚РѕРєРё
+  for i:=1 to n do
       begin
         Threads[i].haswork:=false;
-        Threads[i].Fenflag:=false;   // По умолчанию запускаемся в нормальном режиме для перебора
-        Threads[i].handle:=BeginThread(nil,0,addr(win_init),addr(i),0,tr);
-        // Как только поток поднялся и сам проинициализировался - мы сразу из цикла выйдем
+        Threads[i].Fenflag:=false;   // РџРѕ СѓРјРѕР»С‡Р°РЅРёСЋ Р·Р°РїСѓСЃРєР°РµРјСЃСЏ РІ РЅРѕСЂРјР°Р»СЊРЅРѕРј СЂРµР¶РёРјРµ РґР»СЏ РїРµСЂРµР±РѕСЂР°
+        Threads[i].clrflag:=False;
+        Thread.Create(false,i);
+        //Threads[i].handle:=BeginThread(nil,0,addr(win_init),addr(i),0,tr);
+        // РљР°Рє С‚РѕР»СЊРєРѕ РїРѕС‚РѕРє РїРѕРґРЅСЏР»СЃСЏ Рё СЃР°Рј РїСЂРѕРёРЅРёС†РёР°Р»РёР·РёСЂРѕРІР°Р»СЃСЏ - РјС‹ СЃСЂР°Р·Сѓ РёР· С†РёРєР»Р° РІС‹Р№РґРµРј
         while not Threads[i].isRun do;
       end;
 end;
 Function isThreadidle:boolean;
-// Проверяем все ли потоки отработали - если кто-то еще работет - результат true
+// РџСЂРѕРІРµСЂСЏРµРј РІСЃРµ Р»Рё  РІСЃРїРѕРјРѕРіР°С‚РµР»СЊРЅС‹Рµ РїРѕС‚РѕРєРё РѕС‚СЂР°Р±РѕС‚Р°Р»Рё - РµСЃР»Рё РєС‚Рѕ-С‚Рѕ РµС‰Рµ СЂР°Р±РѕС‚РµС‚ - СЂРµР·СѓР»СЊС‚Р°С‚ true
 var
   i:integer;
 begin
+  result:=false;
   for i:=2 to MaxThreads do
     if (Threads[i].idle=false) then
       begin
         result:=true;
         exit;
       end;
-  result:=false;
 end;
 Function isThreadsrunning:boolean;
-// Проверяем есть ли хоть один поток работающий
+// РџСЂРѕРІРµСЂСЏРµРј РµСЃС‚СЊ Р»Рё С…РѕС‚СЊ РѕРґРёРЅ РїРѕС‚РѕРє СЂР°Р±РѕС‚Р°СЋС‰РёР№ (РЅР°С‡РёРЅР°СЏ СЃ РїРµСЂРІРѕРіРѕ)
 var
   i:integer;
 begin
-  for i:=2 to MaxThreads do
+ result:=false;
+  for i:=1 to MaxThreads do
     if Threads[i].isRun then
       begin
         result:=true;
         exit;
       end;
-  result:=false;
 end;
 Procedure StopThreads;
-// Тушим потоки
+// РўСѓС€РёРј РїРѕС‚РѕРєРё
 begin
-  // Подаем сигнал всем потокам завершить свою работу
+  // РџРѕРґР°РµРј СЃРёРіРЅР°Р» РІСЃРµРј РїРѕС‚РѕРєР°Рј Р·Р°РІРµСЂС€РёС‚СЊ СЃРІРѕСЋ СЂР°Р±РѕС‚Сѓ
   AllThreadsStop:=true;
-  // Даем наступление события чтобы вызвать из спячки спящие потоки
-  SetEvent(IdleEvent);
-  // Ждем окончания работы всех потоков!
+  // Р”Р°РµРј РЅР°СЃС‚СѓРїР»РµРЅРёРµ СЃРѕР±С‹С‚РёСЏ С‡С‚РѕР±С‹ РІС‹Р·РІР°С‚СЊ РёР· СЃРїСЏС‡РєРё СЃРїСЏС‰РёРµ РїРѕС‚РѕРєРё
+  IdleEvent.SetEvent;
+  // Р–РґРµРј РѕРєРѕРЅС‡Р°РЅРёСЏ СЂР°Р±РѕС‚С‹ РІСЃРµС… РїРѕС‚РѕРєРѕРІ!
   while isThreadsrunning do;
-  ResetEvent(IdleEvent);
+  IdleEvent.ResetEvent;
 end;
 
 Initialization
-// Инициализируем критическую секцию
-InitializeCriticalSection(SmpLock);
-// Инициализируем событие для синхронизации потоков
-IdleEvent:=CreateEvent(nil,true,false,nil);
-
+// РРЅРёС†РёР°Р»РёР·РёСЂСѓРµРј РєСЂРёС‚РёС‡РµСЃРєСѓСЋ СЃРµРєС†РёСЋ
+SmpLock:=TCriticalSection.Create;
+// РРЅРёС†РёР°Р»РёР·РёСЂСѓРµРј СЃРѕР±С‹С‚РёРµ РґР»СЏ СЃРёРЅС…СЂРѕРЅРёР·Р°С†РёРё РїРѕС‚РѕРєРѕРІ
+IdleEvent:=TEvent.Create(nil,true,false,'main'{,false});
 end.

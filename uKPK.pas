@@ -1,7 +1,11 @@
 unit uKPK;
 
+{$IFDEF FPC}
+  {$MODE Delphi}
+{$ENDIF}
+
 interface
-uses uBitBoards,uBoard;
+uses uBitBoards;
   Type
     TMlKPK = array[0..10] of integer;
 Const
@@ -73,13 +77,13 @@ Procedure KPKMoves(color,pawn,wk,bk:integer;var Ml:TMLKPK);
 var
   Temp : TBitBoard;
 begin
- Ml[0]:=0;// Счетчик
+ Ml[0]:=0;// РЎС‡РµС‚С‡РёРє
  if color=white then
    begin
-     // Королем
+     // РљРѕСЂРѕР»РµРј
      temp:=KingAttacks[wk] and (not(KingAttacks[bk] or Only[pawn]));
      AddKPKMoves(wk,temp,ML);
-     // Пешкой
+     // РџРµС€РєРѕР№
      If (Only[pawn+8] and (Only[wk] or Only[bk]))=0 then
        begin
          inc(Ml[0]);
@@ -92,7 +96,7 @@ begin
        end;
    end else
    begin
-     //  Королем
+     //  РљРѕСЂРѕР»РµРј
      temp:=KingAttacks[bk] and (not(KingAttacks[wk] or PawnAttacks[white,pawn]));
      AddKPKMoves(bk,temp,ML);
    end;
@@ -103,35 +107,36 @@ var
   index,pawn,wk,bk : integer;
   Ml : TMLKPK;
 begin
+  pawn:=0;wk:=0;bk:=0;
   For index:=0 to MaxKPKIndex do
     begin
       KPKW[Index]:=Draw;
       KPKB[Index]:=Draw;
       Index2Pos(Index,pawn,wk,bk);
-      // Невозможная
+      // РќРµРІРѕР·РјРѕР¶РЅР°СЏ
       if (wk=bk) or (wk=pawn) or (bk=pawn) or ((KingAttacks[wk] and Only[bk])<>0) then
         begin
           KPKW[Index]:=Broken;
           KPKB[Index]:=Broken;
           continue;
         end;
-      // Шах черным пешкой при своем ходе
+      // РЁР°С… С‡РµСЂРЅС‹Рј РїРµС€РєРѕР№ РїСЂРё СЃРІРѕРµРј С…РѕРґРµ
       If (PawnAttacks[white,pawn] and Only[bk])<>0 then KPKW[Index]:=Broken;
-      // ход черных
+      // С…РѕРґ С‡РµСЂРЅС‹С…
       KPKMoves(black,pawn,wk,bk,ML);
-      // смотрим пат
+      // СЃРјРѕС‚СЂРёРј РїР°С‚
       If ML[0]=0 then
         KPKB[Index]:=StaleMate else
-       // Черные могут забрать пешку
+       // Р§РµСЂРЅС‹Рµ РјРѕРіСѓС‚ Р·Р°Р±СЂР°С‚СЊ РїРµС€РєСѓ
        if ((KingAttacks[bk] and Only[pawn])<>0) and ((KingAttacks[wk] and Only[pawn])=0) then KPKB[Index]:=DeadDraw;
-      // ход белых
+      // С…РѕРґ Р±РµР»С‹С…
       if KPKW[Index]=Draw then
        begin
         KPKMoves(white,pawn,wk,bk,ML);
-        // смотрим пат
+        // СЃРјРѕС‚СЂРёРј РїР°С‚
         If ML[0]=0 then
            KPKW[Index]:=StaleMate else
-        // Превращение в ферзя(ладью) безопасное
+        // РџСЂРµРІСЂР°С‰РµРЅРёРµ РІ С„РµСЂР·СЏ(Р»Р°РґСЊСЋ) Р±РµР·РѕРїР°СЃРЅРѕРµ
            if (pawn>h6) and ((Only[pawn+8] and (Only[wk] or Only[bk]))=0) and ( ((KingAttacks[bk] and Only[pawn+8])=0) or ((KingAttacks[wk] and Only[pawn+8])<>0) ) then KPKW[Index]:=1;
        end;
     end;
@@ -147,7 +152,8 @@ begin
   rang:=1;nodes:=0;
 while (nodes<>0) or (rang=1) do
  begin
-  // Черный цикл
+  // Р§РµСЂРЅС‹Р№ С†РёРєР»
+  wk:=0;bk:=0;pawn:=0;
   For index:=0 to MaxKPKIndex do
    if KPKB[index]=Draw then
     begin
@@ -162,7 +168,7 @@ while (nodes<>0) or (rang=1) do
         end;
       if (not fl) then KPKB[Index]:=rang;
     end;
-  // Белый цикл
+  // Р‘РµР»С‹Р№ С†РёРєР»
   nodes:=0;inc(rang);
   For index:=0 to MaxKPKIndex do
    if KPKW[index]=Draw then

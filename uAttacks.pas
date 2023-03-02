@@ -1,4 +1,8 @@
-unit uAttacks;
+п»їunit uAttacks;
+
+{$IFDEF FPC}
+  {$MODE Delphi}
+{$ENDIF}
 
 interface
 uses uBitBoards,uMagic,uBoard;
@@ -14,13 +18,14 @@ Function RookAttacksBB(sq:integer;allpieses:TBitBoard):TBitBoard;inline;
 Function QueenAttacksBB(sq:integer;allpieses:TBitBoard):TBitBoard;inline;
 Function PieseAttacksBB(Color:integer;PieseTyp : integer;SQ:integer;AllPieses:TBitBoard):TBitBoard;inline;
 Function SquareAttackedBB(sq:integer;AllPieses:TBitBoard;var Board:Tboard):TBitBoard;
-Procedure FillCheckInfo(var CheckInfo:TCheckInfo;var Board:TBoard);inline;
-Function FindPinners(color:integer;KingColor:integer;var Board:TBoard):TBitBoard; inline;
-Function isMoveCheck(move:integer;var CheckInfo:TCheckInfo;var Board:TBoard):boolean;inline;
-Function isLegal(move:integer;Pinned:TBitBoard; var Board:TBoard):boolean; inline;
-Function isPseudoCorrect(move:integer;var Board:TBoard):boolean;inline;
-Function GoodSee(move:integer;var Board:TBoard;margin:integer):boolean;inline;
+Procedure FillCheckInfo(var CheckInfo:TCheckInfo;var Board:TBoard);
+Function FindPinners(color:integer;KingColor:integer;var Board:TBoard):TBitBoard;
+Function isMoveCheck(move:integer;var CheckInfo:TCheckInfo;var Board:TBoard):boolean;
+Function isLegal(move:integer;Pinned:TBitBoard; var Board:TBoard):boolean;
+Function isPseudoCorrect(move:integer;var Board:TBoard):boolean;
+Function GoodSee(move:integer;var Board:TBoard;margin:integer):boolean;
 implementation
+ uses Unn;
 
 Function KnightAttacksBB(sq:integer):TBitBoard;inline;
  begin
@@ -32,25 +37,37 @@ Function KingAttacksBB(sq:integer):TBitBoard;inline;
  end;
 Function BishopAttacksBB(sq:integer;allpieses:TBitBoard):TBitBoard;inline;
  begin
+   {$IFDEF pext}
+   Result:=BishoppextMM[BishoppextOffset[sq]+ pext(allpieses,BishopMasks[sq]);
+   {$ELSE pext}
    Result:=BishopMM[BishopOffset[sq]+(((allpieses and BishopMasks[sq])*BishopMagics[sq]) shr BishopShifts[sq])];
+   {$ENDIF pext}
  end;
 Function RookAttacksBB(sq:integer;allpieses:TBitBoard):TBitBoard;inline;
  begin
+   {$IFDEF pext}
+    Result:=RookpextMM[RookpextOffset[sq]+ pext(allpieses,RookMasks[sq]);
+   {$ELSE pext}
    Result:=RookMM[RookOffset[sq]+(((allpieses and RookMasks[sq])*RookMagics[sq]) shr RookShifts[sq])];
+   {$ENDIF pext}
  end;
 Function QueenAttacksBB(sq:integer;allpieses:TBitBoard):TBitBoard;inline;
  begin
+   {$IFDEF pext}
+   Result:=RookpextMM[RookpextOffset[sq]+ pext(allpieses,RookMasks[sq]) or BishoppextMM[BishoppextOffset[sq]+ pext(allpieses,BishopMasks[sq]);
+   {$ELSE pext}
    Result:=RookMM[RookOffset[sq]+(((allpieses and RookMasks[sq])*RookMagics[sq]) shr RookShifts[sq])] or BishopMM[BishopOffset[sq]+(((allpieses and BishopMasks[sq])*BishopMagics[sq]) shr BishopShifts[sq])];
+   {$ENDIF pext}
  end;
 
 Function PieseAttacksBB(Color:integer;PieseTyp : integer;SQ:integer;AllPieses:TBitBoard):TBitBoard;inline;
-// Функция определяет битборд атак фигуры с поля.
+// Р¤СѓРЅРєС†РёСЏ РѕРїСЂРµРґРµР»СЏРµС‚ Р±РёС‚Р±РѕСЂРґ Р°С‚Р°Рє С„РёРіСѓСЂС‹ СЃ РїРѕР»СЏ.
 var
    Res:TBitBoard;
 begin
   Res:=0;
   case PieseTyp of
-         Pawn : Res:=PawnAttacks[color,sq];
+         Pawn   : Res:=PawnAttacks[color,sq];
          Knight : Res:=KnightAttacks[sq];
          Bishop : Res:=BishopAttacksBB(sq,AllPieses);
          Rook   : Res:=RookAttacksBB(sq,AllPieses);
@@ -61,7 +78,7 @@ begin
 end;
 
 Function SquareAttackedBB(sq:integer;AllPieses:TBitBoard;var Board:Tboard):TBitBoard;inline;
-// Битборд фигур обоего цевета, атакующих поле sq
+// Р‘РёС‚Р±РѕСЂРґ С„РёРіСѓСЂ РѕР±РѕРµРіРѕ С†РµРІРµС‚Р°, Р°С‚Р°РєСѓСЋС‰РёС… РїРѕР»Рµ sq
  begin
    Result:=((PawnAttacks[black,sq] and Board.Pieses[Pawn] and Board.Occupancy[white]) or
            (PawnAttacks[white,sq] and Board.Pieses[Pawn] and Board.Occupancy[black]) or
@@ -71,15 +88,23 @@ Function SquareAttackedBB(sq:integer;AllPieses:TBitBoard;var Board:Tboard):TBitB
            (RookAttacksBB(sq,AllPieses) and (Board.Pieses[Rook] or Board.Pieses[Queen]))) and AllPieses;
  end;
 
-Function isLegal(move:integer;Pinned:TBitBoard; var Board:TBoard):boolean;inline;
-// Проверяет легальность хода (Не остается ли наш король под шахом после него)
+Function ColorOf(Piese:integer):integer;inline;
+// Р’РѕР·РІСЂР°С‰Р°РµС‚ С†РІРµС‚ С„РёРіСѓСЂС‹ РЅР° РїРѕР»Рµ (РґРѕР»Р¶РЅРѕ Р±С‹С‚СЊ Р·Р°РІРµРґРѕРјРѕ РЅРµРїСѓСЃС‚РѕРµ!)
+begin
+  if Piese>Empty
+   Then Result:=white
+   Else Result:=Black;
+end;
+
+Function isLegal(move:integer;Pinned:TBitBoard; var Board:TBoard):boolean;
+// РџСЂРѕРІРµСЂСЏРµС‚ Р»РµРіР°Р»СЊРЅРѕСЃС‚СЊ С…РѕРґР° (РќРµ РѕСЃС‚Р°РµС‚СЃСЏ Р»Рё РЅР°С€ РєРѕСЂРѕР»СЊ РїРѕРґ С€Р°С…РѕРј РїРѕСЃР»Рµ РЅРµРіРѕ)
 var
   FromSq,DestSq,KingSq,CapSq:integer;
   BB : TBitBoard;
 begin
   FromSq:=move and 63;
   DestSq:=(move shr 6) and 63;
-  // Если взятие на проходе - то более сложная проверка
+  // Р•СЃР»Рё РІР·СЏС‚РёРµ РЅР° РїСЂРѕС…РѕРґРµ - С‚Рѕ Р±РѕР»РµРµ СЃР»РѕР¶РЅР°СЏ РїСЂРѕРІРµСЂРєР°
   if ((move and CaptureFlag)<>0) and (Board.Pos[DestSq]=Empty) then
     begin
       KingSq:=Board.KingSq[Board.SideToMove];
@@ -90,18 +115,18 @@ begin
 
       exit;
     end;
-  // Если Ходит король (включая рокировку), то проверяем конечное поле
+  // Р•СЃР»Рё РҐРѕРґРёС‚ РєРѕСЂРѕР»СЊ (РІРєР»СЋС‡Р°СЏ СЂРѕРєРёСЂРѕРІРєСѓ), С‚Рѕ РїСЂРѕРІРµСЂСЏРµРј РєРѕРЅРµС‡РЅРѕРµ РїРѕР»Рµ
   If (TypOfPiese[Board.Pos[FromSq]]=King)  then
     begin
       Result:=(SquareAttackedBB(DestSq,Board.AllPieses,Board) and Board.Occupancy[Board.SideToMove xor 1])=0;
       exit;
     end;
-  //Иначе проверяем не связана ли ходящая фигура
+  //РРЅР°С‡Рµ РїСЂРѕРІРµСЂСЏРµРј РЅРµ СЃРІСЏР·Р°РЅР° Р»Рё С…РѕРґСЏС‰Р°СЏ С„РёРіСѓСЂР°
   Result:=(Pinned=0) or ((Pinned and Only[FromSq])=0) or ((InterSect[Board.KingSq[Board.SideToMove],DestSq] and Only[FromSq])<>0) or ((InterSect[Board.KingSq[Board.SideToMove],FromSq] and Only[DestSq])<>0);
 end;
 
-Function FindPinners(color:integer;KingColor:integer;var Board:TBoard):TBitBoard; inline;
-// Возвращает связанные фигуры (или кандидаты на вскрытый шах) в зависимости от цвета фигур и цвета короля
+Function FindPinners(color:integer;KingColor:integer;var Board:TBoard):TBitBoard;
+// Р’РѕР·РІСЂР°С‰Р°РµС‚ СЃРІСЏР·Р°РЅРЅС‹Рµ С„РёРіСѓСЂС‹ (РёР»Рё РєР°РЅРґРёРґР°С‚С‹ РЅР° РІСЃРєСЂС‹С‚С‹Р№ С€Р°С…) РІ Р·Р°РІРёСЃРёРјРѕСЃС‚Рё РѕС‚ С†РІРµС‚Р° С„РёРіСѓСЂ Рё С†РІРµС‚Р° РєРѕСЂРѕР»СЏ
 var
   BB,Temp: TBitBoard;
   Kingsq,Sq :integer;
@@ -120,49 +145,49 @@ begin
   Result:=res;
 end;
 
-Function isMoveCheck(move:integer;var CheckInfo:TCheckInfo;var Board:TBoard):boolean; inline;
-// Функция определяет является ли данный псевдоход шахующим
+Function isMoveCheck(move:integer;var CheckInfo:TCheckInfo;var Board:TBoard):boolean;
+// Р¤СѓРЅРєС†РёСЏ РѕРїСЂРµРґРµР»СЏРµС‚ СЏРІР»СЏРµС‚СЃСЏ Р»Рё РґР°РЅРЅС‹Р№ РїСЃРµРІРґРѕС…РѕРґ С€Р°С…СѓСЋС‰РёРј
 var
   fromSq,DestSq,CapSq,RookFromSq,RookDestSq : integer;
   BB :TBitBoard;
 begin
   Result:=false;
-  // Инициализация
+  // РРЅРёС†РёР°Р»РёР·Р°С†РёСЏ
   FromSq := move and 63;
   DestSq := (move shr 6) and 63;
-  // Является ли ход - прямым шахом королю противника?
+  // РЇРІР»СЏРµС‚СЃСЏ Р»Рё С…РѕРґ - РїСЂСЏРјС‹Рј С€Р°С…РѕРј РєРѕСЂРѕР»СЋ РїСЂРѕС‚РёРІРЅРёРєР°?
   If (CheckInfo.DirectCheckBB[TypOfPiese[Board.Pos[FromSq]]] and Only[DestSq])<>0 then
     begin
       Result:=true;
       exit;
     end;
- // Является ли ход - вскрытым шахом?
+ // РЇРІР»СЏРµС‚СЃСЏ Р»Рё С…РѕРґ - РІСЃРєСЂС‹С‚С‹Рј С€Р°С…РѕРј?
  if (CheckInfo.DiscoverCheckBB<>0)  and ((CheckInfo.DiscoverCheckBB and Only[fromSq])<>0) and ((InterSect[FromSQ,CheckInfo.EnemyKingSq] and Only[DestSq])=0) and ((InterSect[DestSQ,CheckInfo.EnemyKingSq] and Only[FromSq])=0)  then
    begin
      Result:=true;
      exit;
    end;
 
- // Превращения
+ // РџСЂРµРІСЂР°С‰РµРЅРёСЏ
  if (move and PromoteFlag)<>0 then
    begin
      Result:=(PieseAttacksBB(Board.SideToMove,(move shr 12) and 7,DestSq,Board.AllPieses xor Only[FromSq]) and Only[CheckInfo.EnemyKingSq])<>0;
      exit;
    end;
- // Вскрытый шах через побитую пешку при взятии на проходе
+ // Р’СЃРєСЂС‹С‚С‹Р№ С€Р°С… С‡РµСЂРµР· РїРѕР±РёС‚СѓСЋ РїРµС€РєСѓ РїСЂРё РІР·СЏС‚РёРё РЅР° РїСЂРѕС…РѕРґРµ
   If ((move and CaptureFlag)<>0) and (Board.Pos[destSq]=Empty) then
     begin
-      // Переставляем фигуры на AllPieses битборде соответствующие этому взятию
+      // РџРµСЂРµСЃС‚Р°РІР»СЏРµРј С„РёРіСѓСЂС‹ РЅР° AllPieses Р±РёС‚Р±РѕСЂРґРµ СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‰РёРµ СЌС‚РѕРјСѓ РІР·СЏС‚РёСЋ
       CapSq:=DestSQ-PawnPush[Board.SideToMove];
       BB:=(Board.AllPieses xor (Only[FromSq] or Only[CapSq])) or Only[DestSq];
       Result:=((BishopAttacksBB(CheckInfo.EnemyKingSq,BB) and ((Board.Pieses[Bishop] or Board.Pieses[Queen]) and Board.Occupancy[Board.SideToMove])) or
                (  RookAttacksBB(CheckInfo.EnemyKingSq,BB) and ((Board.Pieses[Rook]   or Board.Pieses[Queen]) and Board.Occupancy[Board.SideToMove])))<>0;
       exit;
     end;
-  // Рокировка
+  // Р РѕРєРёСЂРѕРІРєР°
   if (TypOfPiese[Board.Pos[FromSq]]=King) and ((FromSQ-DestSQ=2) or (FromSq-DestSq=-2)) then
     begin
-      if (FromSq-DestSq=-2) then // Короткая
+      if (FromSq-DestSq=-2) then // РљРѕСЂРѕС‚РєР°СЏ
         begin
           RookFromSq:=DestSq+1;
           RookDestSq:=FromSq+1;
@@ -176,15 +201,9 @@ begin
       exit;
     end;
 end;
-Function ColorOf(Piese:integer):integer;inline;
-// Возвращает цвет фигуры на поле (должно быть заведомо непустое!)
-begin
-  if Piese>Empty
-   Then Result:=white
-   Else Result:=Black;
-end;
-Function SlowCheck(move:integer;var Board:TBoard):boolean;inline;
-//  Медленная проверка специфических ходов на корректность
+
+Function SlowCheck(move:integer;var Board:TBoard):boolean;
+//  РњРµРґР»РµРЅРЅР°СЏ РїСЂРѕРІРµСЂРєР° СЃРїРµС†РёС„РёС‡РµСЃРєРёС… С…РѕРґРѕРІ РЅР° РєРѕСЂСЂРµРєС‚РЅРѕСЃС‚СЊ
 var
   MoveList:TmoveList;
   i,n:integer;
@@ -198,20 +217,21 @@ begin
         exit;
       end;
 end;
-Function MoveisSpec(move:integer;from:integer;dest:integer;piese:integer;var Board:TBoard):boolean; inline;
+Function MoveisSpec(move:integer;from:integer;dest:integer;piesetyp:integer;var Board:TBoard):boolean;
+// РѕРїСЂРµРґРµР»РµРЅРёРµ "РЅРµСЃС‚Р°РЅРґР°СЂС‚РЅС‹С…"  С…РѕРґРѕРІ : РїСЂРµРІСЂР°С‰РµРЅРёСЏ РїРµС€РєРё, РІР·СЏС‚РёСЏ РЅР° РїСЂРѕС…РѕРґРµ Рё СЂРѕРєРёСЂРѕРІРєРё
 begin
   Result:=false;
-  If (move and PromoteFlag)<>0 then   // Превращения
+  If (move and PromoteFlag)<>0 then   // РџСЂРµРІСЂР°С‰РµРЅРёСЏ РїРµС€РєРё
     begin
       Result:=true;
       exit;
     end;
-  If ((move and CaptureFlag)<>0) and (TypOfPiese[piese]=pawn) and  (Board.Pos[dest]=Empty) and (dest=Board.EnPassSq) then    //  На проходе
+  If ((move and CaptureFlag)<>0) and (piesetyp=pawn) and  (Board.Pos[dest]=Empty) and (dest=Board.EnPassSq) then    //  РќР° РїСЂРѕС…РѕРґРµ
     begin
       Result:=true;
       exit;
     end;
-  If (TypOfPiese[piese]=King) and (abs(from-dest)=2) then  // рокировка
+  If (piesetyp=King) and (abs(from-dest)=2) then  // СЂРѕРєРёСЂРѕРІРєР°
     begin
       Result:=true;
       exit;
@@ -219,9 +239,9 @@ begin
 end;
 
 Function isPseudoCorrect(move:integer;var Board:TBoard):boolean;
-//Проверяет псевдоход на возможность в данной позиции.
+//РџСЂРѕРІРµСЂСЏРµС‚ РїСЃРµРІРґРѕС…РѕРґ РЅР° РІРѕР·РјРѕР¶РЅРѕСЃС‚СЊ РІ РґР°РЅРЅРѕР№ РїРѕР·РёС†РёРё.
 var
-  FromSq,DestSQ,Piese,PieseTyp,MyColor,d,y,CheckSq : integer;
+  FromSq,DestSQ,Piese,CapPiese,PieseTyp,MyColor,d,y,CheckSq : integer;
 begin
   Result:=false;
   MyColor:=Board.SideToMove;
@@ -229,17 +249,21 @@ begin
   DestSq:=(move shr 6) and 63;
   If FromSq=DestSq then exit;
   Piese:=Board.Pos[FromSq];
-  If MoveIsSpec(move,fromsq,destsq,piese,Board) then
+  PieseTyp:=TypOfPiese[Piese];
+  CapPiese:=Board.Pos[Destsq];
+  // Р•СЃР»Рё РЅР° РїРѕР»Рµ РЅРµ С„РёРіСѓСЂР° РЅР°С€РµРіРѕ С†РІРµС‚Р°
+  If (Piese=Empty) or (ColorOf(Piese)<>MyColor) then exit;
+  // Р•СЃР»Рё РєРѕРЅРµС‡РЅРѕРµ РїРѕР»Рµ Р·Р°РЅСЏС‚Рѕ РЅР°С€РµР№ Р¶Рµ С„РёРіСѓСЂРѕР№
+  If ((Only[DestSq] and Board.Occupancy[MyColor])<>0) then exit;
+  // Р»РµРіР°Р»СЊРЅРѕСЃС‚СЊ "СЃРїРµС†РёР°Р»СЊРЅС‹С…" С…РѕРґРѕРІ РІС‹СЏСЃРЅСЏРµРј РѕС‚РґРµР»СЊРЅРѕР№ РїСЂРѕС†РµРґСѓСЂРѕР№
+  If MoveIsSpec(move,fromsq,destsq,piesetyp,Board) then
     begin
       Result:=SlowCheck(move,Board);
       exit;
     end;
-  // Если на поле не фигура нашего цвета
-  If (Piese=Empty) or (ColorOf(Piese)<>MyColor) then exit;
-  // Если конечное поле занято нашей же фигурой
-  If ((Only[DestSq] and Board.Occupancy[MyColor])<>0) then exit;
-  PieseTyp:=TypOfPiese[Piese];
-  // Специфические пешечные случаи
+   //Р•СЃР»Рё РЅРµ СЃРѕРІРїР°РґР°СЋС‚ СЃС‚Р°С‚СѓСЃ "РІР·СЏС‚РёСЏ" РїСЂРѕРІРµСЂСЏРµРјРѕРіРѕ С…РѕРґР° Рё СЃРёС‚СѓР°С†РёРё РЅР° РґРѕСЃРєРµ
+  if (((move and CaptureFlag)<>0) xor (CapPiese<>Empty)) then exit;
+  // РЎРїРµС†РёС„РёС‡РµСЃРєРёРµ РїРµС€РµС‡РЅС‹Рµ СЃР»СѓС‡Р°Рё
   If (PieseTyp=Pawn) then
     begin
       if MyColor=White then
@@ -251,26 +275,26 @@ begin
          d:=7;
          y:=1;
         end;
-      // Пешка не может пойти на последнюю горизонталь
+      // РџРµС€РєР° РЅРµ РјРѕР¶РµС‚ РїРѕР№С‚Рё РЅР° РїРѕСЃР»РµРґРЅСЋСЋ РіРѕСЂРёР·РѕРЅС‚Р°Р»СЊ (РїСЂРµРІСЂР°С‰РµРЅРёСЏ РјС‹ СѓР¶Рµ СЂР°СЃСЃРјРѕС‚СЂРµР»Рё РІ РјРµРґР»РµРЅРЅРѕР№ С„СѓРЅРєС†РёРё)
       If (Only[destSq] and RanksBB[y])<>0 then exit;
       if (move and CaptureFlag)<>0 then
         begin
-          if (PawnAttacks[MyColor,fromSq] and Board.Pieses[MyColor xor 1] and  Only[DestSq])=0 then exit; // не взятие
+          if (PawnAttacks[MyColor,fromSq] and Board.Occupancy[MyColor xor 1] and  Only[DestSq])=0 then exit;// РЅРµ РІР·СЏС‚РёРµ  (РЅРµС‚ С„РёРіСѓСЂС‹ РїСЂРѕС‚РёРІРЅРёРєР° РЅР° Р»СЋР±РѕРј РёР· РІРѕР·РјРѕР¶РЅС‹С… РїРѕР»РµР№ РІР·СЏС‚РёСЏ РїРµС€РєРё)
         end else
         begin
-          If (not((FromSQ+PawnPush[MyColor]=DestSQ) and (Board.Pos[DestSq]=Empty)))  and // не простой ход
-             (not((FromSq+PawnPush[MyColor]+PawnPush[MyColor]=DestSq) and ((Only[FromSQ] and RanksBB[d])<>0) and (Board.Pos[FromSQ+PawnPush[MyColor]]=Empty) and (Board.Pos[DestSq]=Empty)))  // Не двойной ход
+          If (not((FromSQ+PawnPush[MyColor]=DestSQ) and (Board.Pos[DestSq]=Empty)))  and // РЅРµ РїСЂРѕСЃС‚РѕР№ С…РѕРґ
+             (not((FromSq+PawnPush[MyColor]+PawnPush[MyColor]=DestSq) and ((Only[FromSQ] and RanksBB[d])<>0) and (Board.Pos[FromSQ+PawnPush[MyColor]]=Empty) and (Board.Pos[DestSq]=Empty)))  // РќРµ РґРІРѕР№РЅРѕР№ С…РѕРґ
              then exit;
         end;
-    end else If ((PieseAttacksBB(MyColor,PieseTyp,FromSq,Board.AllPieses) and Only[DestSq])=0) then exit; // Нельзя этой фигурой так пойти
-    // Если нам шах, то смотрим еще специфические случаи
+    end else If ((PieseAttacksBB(MyColor,PieseTyp,FromSq,Board.AllPieses) and Only[DestSq])=0) then exit; // РќРµР»СЊР·СЏ СЌС‚РѕР№ С„РёРіСѓСЂРѕР№ С‚Р°Рє РїРѕР№С‚Рё
+    // Р•СЃР»Рё РЅР°Рј С€Р°С…, С‚Рѕ СЃРјРѕС‚СЂРёРј РµС‰Рµ СЃРїРµС†РёС„РёС‡РµСЃРєРёРµ СЃР»СѓС‡Р°Рё
     if Board.CheckersBB<>0 then
       begin
         If PieseTyp<>King then
           begin
-            // Если двойной шах то нужен только ход королем:
+            // Р•СЃР»Рё РґРІРѕР№РЅРѕР№ С€Р°С… С‚Рѕ РЅСѓР¶РµРЅ С‚РѕР»СЊРєРѕ С…РѕРґ РєРѕСЂРѕР»РµРј:
             if (Board.CheckersBB and (Board.CheckersBB-1))<>0 then exit;
-            // Должны этим своим ходом закрыться или побить шахующую (включая на проходе!)
+            // Р”РѕР»Р¶РЅС‹ СЌС‚РёРј СЃРІРѕРёРј С…РѕРґРѕРј Р·Р°РєСЂС‹С‚СЊСЃСЏ РёР»Рё РїРѕР±РёС‚СЊ С€Р°С…СѓСЋС‰СѓСЋ
             CheckSq:=BitScanForward(Board.CheckersBB);
             If (not((((Intersect[Board.KingSq[MyColor],CheckSq]) or Only[CheckSq]) and Only[DestSq])<>0))  then exit;
           end else
@@ -279,7 +303,7 @@ begin
   Result:=true;
 end;
 Procedure FillCheckInfo(var CheckInfo:TCheckInfo;var Board:TBoard);
-// Устанавливаем важную структуру, помогающую быстро определять шахи, как прямые так и вскрытые, а так же  свои связанные фигуры.
+// РЈСЃС‚Р°РЅР°РІР»РёРІР°РµРј РІР°Р¶РЅСѓСЋ СЃС‚СЂСѓРєС‚СѓСЂСѓ, РїРѕРјРѕРіР°СЋС‰СѓСЋ Р±С‹СЃС‚СЂРѕ РѕРїСЂРµРґРµР»СЏС‚СЊ С€Р°С…Рё, РєР°Рє РїСЂСЏРјС‹Рµ С‚Р°Рє Рё РІСЃРєСЂС‹С‚С‹Рµ, Р° С‚Р°Рє Р¶Рµ  СЃРІРѕРё СЃРІСЏР·Р°РЅРЅС‹Рµ С„РёРіСѓСЂС‹.
 var
   MyColor,EnemyColor : integer;
 begin
@@ -295,86 +319,86 @@ begin
   CheckInfo.DirectCheckBB[Queen]:=CheckInfo.DirectCheckBB[Bishop] or CheckInfo.DirectCheckBB[Rook];
   CheckInfo.DirectCheckBB[King]:=0;
 end;
-Function GoodSee(move:integer;var Board:TBoard;margin:integer):boolean;inline;
+Function GoodSee(move:integer;var Board:TBoard;margin:integer):boolean;
 var
   FromSq,DestSq,MyColor,Piese,curr,sq:integer;
   Occupied,Attackers,MyAttackers,DiagBB,LineBB : TBitBoard;
   Swap : integer;
   EnnPass : boolean;
 begin
-  // Инициализация
+  // РРЅРёС†РёР°Р»РёР·Р°С†РёСЏ
   FromSq:=move and 63;
   DestSq:=(move shr 6) and 63;
   Piese:=Board.Pos[FromSq];
   EnnPass:=(((move and CaptureFlag)<>0) and (Board.Pos[DestSq]=Empty));
-  // Если рокировка , то вываливаемся сразу выдавая результат тихого хода
+  // Р•СЃР»Рё СЂРѕРєРёСЂРѕРІРєР° , С‚Рѕ РІС‹РІР°Р»РёРІР°РµРјСЃСЏ СЃСЂР°Р·Сѓ РІС‹РґР°РІР°СЏ СЂРµР·СѓР»СЊС‚Р°С‚ С‚РёС…РѕРіРѕ С…РѕРґР°
   If (TypOfPiese[Piese]=King) and ((FromSq-DestSQ=2) or (FromSq-DestSq=-2)) then
     begin
       Result:=(0>=margin);
       exit;
     end;
-  // Цена хода (величина побитой фигуры или 0 для тихого хода) с поправкой на желаемый уровень margin
+  // Р¦РµРЅР° С…РѕРґР° (РІРµР»РёС‡РёРЅР° РїРѕР±РёС‚РѕР№ С„РёРіСѓСЂС‹ РёР»Рё 0 РґР»СЏ С‚РёС…РѕРіРѕ С…РѕРґР°) СЃ РїРѕРїСЂР°РІРєРѕР№ РЅР° Р¶РµР»Р°РµРјС‹Р№ СѓСЂРѕРІРµРЅСЊ margin
   if EnnPass
    then Swap:=SeeValues[Pawn]-margin
    else Swap:=SeeValues[TypOfPiese[Board.Pos[DestSq]]]-margin;
-  // Если мы заведомо не можем достигнуть своим ходом нужный нам уровень - выходим. Ход "плохой"
+  // Р•СЃР»Рё РјС‹ Р·Р°РІРµРґРѕРјРѕ РЅРµ РјРѕР¶РµРј РґРѕСЃС‚РёРіРЅСѓС‚СЊ СЃРІРѕРёРј С…РѕРґРѕРј РЅСѓР¶РЅС‹Р№ РЅР°Рј СѓСЂРѕРІРµРЅСЊ - РІС‹С…РѕРґРёРј. РҐРѕРґ "РїР»РѕС…РѕР№"
   if swap<0 then
     begin
       Result:=false;
       exit;
     end;
-  // Смотрим теперь худший вариант (ходящую фигуру побьют в ответ бесплатно)
+  // РЎРјРѕС‚СЂРёРј С‚РµРїРµСЂСЊ С…СѓРґС€РёР№ РІР°СЂРёР°РЅС‚ (С…РѕРґСЏС‰СѓСЋ С„РёРіСѓСЂСѓ РїРѕР±СЊСЋС‚ РІ РѕС‚РІРµС‚ Р±РµСЃРїР»Р°С‚РЅРѕ)
   Swap:=Swap-SeeValues[TypOfPiese[Piese]];
-  // Если даже после этого мы достигаем нужный уровень - выходим. Ход "хороший"
+  // Р•СЃР»Рё РґР°Р¶Рµ РїРѕСЃР»Рµ СЌС‚РѕРіРѕ РјС‹ РґРѕСЃС‚РёРіР°РµРј РЅСѓР¶РЅС‹Р№ СѓСЂРѕРІРµРЅСЊ - РІС‹С…РѕРґРёРј. РҐРѕРґ "С…РѕСЂРѕС€РёР№"
   if swap>=0 then
     begin
       Result:=true;
       exit;
     end;
-  // Очередь хода за противником
+  // РћС‡РµСЂРµРґСЊ С…РѕРґР° Р·Р° РїСЂРѕС‚РёРІРЅРёРєРѕРј
   MyColor:=PieseColor[piese] xor 1;
-  // Ставим ход на доске
+  // РЎС‚Р°РІРёРј С…РѕРґ РЅР° РґРѕСЃРєРµ
   Occupied:=(Board.AllPieses xor Only[FromSq]) or (Only[DestSq]);
   If EnnPass then Occupied:=Occupied xor Only[DestSq-PawnPush[MyColor xor 1]];
-  // Ищем все возможные взятия на поле "куда"
+  // РС‰РµРј РІСЃРµ РІРѕР·РјРѕР¶РЅС‹Рµ РІР·СЏС‚РёСЏ РЅР° РїРѕР»Рµ "РєСѓРґР°"
   Attackers:=SquareAttackedBB(DestSq,Occupied,Board);
-  // Константы для поиска рентгенов
+  // РљРѕРЅСЃС‚Р°РЅС‚С‹ РґР»СЏ РїРѕРёСЃРєР° СЂРµРЅС‚РіРµРЅРѕРІ
   DiagBB:=Board.Pieses[bishop] or Board.Pieses[queen];
   LineBB:=Board.Pieses[rook] or Board.Pieses[queen];
-  // Крутим алгоритм поиска минимальных взятий за каждую из сторон по очереди
+  // РљСЂСѓС‚РёРј Р°Р»РіРѕСЂРёС‚Рј РїРѕРёСЃРєР° РјРёРЅРёРјР°Р»СЊРЅС‹С… РІР·СЏС‚РёР№ Р·Р° РєР°Р¶РґСѓСЋ РёР· СЃС‚РѕСЂРѕРЅ РїРѕ РѕС‡РµСЂРµРґРё
   While True do
    begin
-    // Обновляем битборд фигур, которые атакуют поле "куда" за оба цвета
+    // РћР±РЅРѕРІР»СЏРµРј Р±РёС‚Р±РѕСЂРґ С„РёРіСѓСЂ, РєРѕС‚РѕСЂС‹Рµ Р°С‚Р°РєСѓСЋС‚ РїРѕР»Рµ "РєСѓРґР°" Р·Р° РѕР±Р° С†РІРµС‚Р°
     Attackers:=Attackers and Occupied;
-    // Есть ли среди них фигуры нужного цвета?
+    // Р•СЃС‚СЊ Р»Рё СЃСЂРµРґРё РЅРёС… С„РёРіСѓСЂС‹ РЅСѓР¶РЅРѕРіРѕ С†РІРµС‚Р°?
     MyAttackers:=Attackers and Board.Occupancy[MyColor];
-    // Если нет - сдаемся. Сторона, чья сейчас очередь хода "проиграла"
+    // Р•СЃР»Рё РЅРµС‚ - СЃРґР°РµРјСЃСЏ. РЎС‚РѕСЂРѕРЅР°, С‡СЊСЏ СЃРµР№С‡Р°СЃ РѕС‡РµСЂРµРґСЊ С…РѕРґР° "РїСЂРѕРёРіСЂР°Р»Р°"
     If MyAttackers=0 then break;
-    // Ищем нашу фигуру самой меньшей ценности , которая сейчас атакует поле "куда"
+    // РС‰РµРј РЅР°С€Сѓ С„РёРіСѓСЂСѓ СЃР°РјРѕР№ РјРµРЅСЊС€РµР№ С†РµРЅРЅРѕСЃС‚Рё , РєРѕС‚РѕСЂР°СЏ СЃРµР№С‡Р°СЃ Р°С‚Р°РєСѓРµС‚ РїРѕР»Рµ "РєСѓРґР°"
     curr:=Pawn;
     while curr<King do
      begin
       if ((Board.Pieses[curr] and MyAttackers)<>0) then break;
       curr:=curr+1;
      end;
-    // Если только что побили королем, но у противоположной стороны есть еще удары - то мы проиграли - король бить не может а меньших фигур уже нет
+    // Р•СЃР»Рё С‚РѕР»СЊРєРѕ С‡С‚Рѕ РїРѕР±РёР»Рё РєРѕСЂРѕР»РµРј, РЅРѕ Сѓ РїСЂРѕС‚РёРІРѕРїРѕР»РѕР¶РЅРѕР№ СЃС‚РѕСЂРѕРЅС‹ РµСЃС‚СЊ РµС‰Рµ СѓРґР°СЂС‹ - С‚Рѕ РјС‹ РїСЂРѕРёРіСЂР°Р»Рё - РєРѕСЂРѕР»СЊ Р±РёС‚СЊ РЅРµ РјРѕР¶РµС‚ Р° РјРµРЅСЊС€РёС… С„РёРіСѓСЂ СѓР¶Рµ РЅРµС‚
     if (curr=king) and ((Attackers and Board.Occupancy[Mycolor xor 1])<>0) then break;
-    // Нашли взятие - меняем очередь хода для следующей итерации
+    // РќР°С€Р»Рё РІР·СЏС‚РёРµ - РјРµРЅСЏРµРј РѕС‡РµСЂРµРґСЊ С…РѕРґР° РґР»СЏ СЃР»РµРґСѓСЋС‰РµР№ РёС‚РµСЂР°С†РёРё
     MyColor:=MyColor xor 1;
-    // Обновляем текущий материальный баланс, включая в него только что найденную фигуру (предполагаем худший вариант - что ее могут побить следующим ходом бесплатно)
+    // РћР±РЅРѕРІР»СЏРµРј С‚РµРєСѓС‰РёР№ РјР°С‚РµСЂРёР°Р»СЊРЅС‹Р№ Р±Р°Р»Р°РЅСЃ, РІРєР»СЋС‡Р°СЏ РІ РЅРµРіРѕ С‚РѕР»СЊРєРѕ С‡С‚Рѕ РЅР°Р№РґРµРЅРЅСѓСЋ С„РёРіСѓСЂСѓ (РїСЂРµРґРїРѕР»Р°РіР°РµРј С…СѓРґС€РёР№ РІР°СЂРёР°РЅС‚ - С‡С‚Рѕ РµРµ РјРѕРіСѓС‚ РїРѕР±РёС‚СЊ СЃР»РµРґСѓСЋС‰РёРј С…РѕРґРѕРј Р±РµСЃРїР»Р°С‚РЅРѕ)
     swap:=-swap-1-SeeValues[curr];
-    // Если мы даже  в худшем случае превышаем уровень - выходим. мы выиграли
+    // Р•СЃР»Рё РјС‹ РґР°Р¶Рµ  РІ С…СѓРґС€РµРј СЃР»СѓС‡Р°Рµ РїСЂРµРІС‹С€Р°РµРј СѓСЂРѕРІРµРЅСЊ - РІС‹С…РѕРґРёРј. РјС‹ РІС‹РёРіСЂР°Р»Рё
     If swap>=0 then  break;
-    // Убираем только что найденную фигуру с доски
+    // РЈР±РёСЂР°РµРј С‚РѕР»СЊРєРѕ С‡С‚Рѕ РЅР°Р№РґРµРЅРЅСѓСЋ С„РёРіСѓСЂСѓ СЃ РґРѕСЃРєРё
     if curr=king
       then sq:=Board.KingSq[MyColor xor 1]
       else sq:=BitScanForward(MyAttackers and Board.Pieses[curr]);
     Occupied:=Occupied and (not Only[sq]);
-    // Теперь добавляем возможные "рентгены" после того как фигура ушла с доски
+    // РўРµРїРµСЂСЊ РґРѕР±Р°РІР»СЏРµРј РІРѕР·РјРѕР¶РЅС‹Рµ "СЂРµРЅС‚РіРµРЅС‹" РїРѕСЃР»Рµ С‚РѕРіРѕ РєР°Рє С„РёРіСѓСЂР° СѓС€Р»Р° СЃ РґРѕСЃРєРё
     if (curr=pawn) or (curr=bishop) or (curr=queen) then Attackers:=Attackers or (BishopAttacksBB(DestSq,occupied) and DiagBB);
     if (curr=rook) or (curr=queen) then Attackers:=Attackers or (RookAttacksBB(DestSQ,occupied) and LineBB);
    end;
-  // На выходе из цикла - очередь хода стороны, которая "проиграла"
+  // РќР° РІС‹С…РѕРґРµ РёР· С†РёРєР»Р° - РѕС‡РµСЂРµРґСЊ С…РѕРґР° СЃС‚РѕСЂРѕРЅС‹, РєРѕС‚РѕСЂР°СЏ "РїСЂРѕРёРіСЂР°Р»Р°"
   Result:=(PieseColor[piese]<>MyColor);
 end;
 end.
