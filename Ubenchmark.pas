@@ -60,7 +60,7 @@ begin
   game.doLMP:=True;
   // Очищаем хеш (глобальный - находимся внутри движка и используем его )
   ClearHash(TTGlobal,1);
-  ClearHistory(Threads[1].SortUnit,Threads[1].Tree);
+  ClearHistory(SortUnitThread[0],Threads[1].Tree);
   game.StartTime:=now;
   for i:=1 to numbench do
     begin
@@ -71,7 +71,7 @@ begin
       Threads[1].RootMoves:=GenerateLegals(0,Threads[1].Board,Threads[1].RootList);
       Threads[1].Board.Nodes:=0;
       bestmove:=0;
-      RootSearch(TtGlobal,1,-mate,mate,benchdepth,Threads[1].Board,Threads[1].Tree,Threads[1].Sortunit,Threads[1].RootList,Threads[1].RootMoves,Threads[1].PVLine,BestMove);
+      RootSearch(TtGlobal,1,-mate,mate,benchdepth,Threads[1].Board,Threads[1].Tree,SortUnitThread[0],Threads[1].RootList,Threads[1].RootMoves,Threads[1].PVLine,BestMove);
       total:=total+Threads[1].Board.nodes;
      // writeln(i,' ',Threads[1].Board.nodes,' ',game.sw.ElapsedMilliseconds);
     end;

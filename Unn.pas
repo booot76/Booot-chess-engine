@@ -11,11 +11,12 @@ interface
 uses SysUtils,Classes,types,uBitBoards,uBoard,DateUtils;
 
 Const
-  current_version=10;  // что проверяем при загрузке сети
+  current_version=13;  // что проверяем при загрузке сети
   AVX_8=32;            // 8*32=256
   AVX_16=16;           // 16*16=256
   AVX512_8=64;
   AVX512_16=32;
+
   hidden1=512;  // число нейронов в первом слое
   hidden2=8;
   hidden3=8;
@@ -32,10 +33,10 @@ Const
   cycle8=half div(AVX_16*8);
   cycle9=hidden2 div 4;
 
-  step2=8;
-  step3=10;
-  // Макс предел 8 битового числа
-  limit8=255;
+  step2=7;   // множитель квантования для 1 слоя  - всегда степень двойки
+  step3=12;  // множитель квантования для 2 слоя  - всегда степень двойки
+
+  limit8=255;  // Макс предел 8 битового числа
   ones512 : array[0..63] of int16=(1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1);
   RELUlimit : array[0..15] of integer=(limit8,limit8,limit8,limit8,limit8,limit8,limit8,limit8,limit8,limit8,limit8,limit8,limit8,limit8,limit8,limit8);
   Permut1 : array[0..7] of integer=(0,1,4,5,2,3,6,7);
@@ -47,8 +48,9 @@ Const
   WLongCastle =769;
   BShortCastle=770;
   BLongCastle =771;
-  MaxFrameSize=ModelBlockSize*10; // Модель К10
-  K10Block : array[0..63] of integer =(
+  MaxFrameSize=ModelBlockSize*16; // Модель К16 максимальная с точки зрения количества признаков
+
+  K10Block : array[0..63] of integer =(        // Для модели К10
       0*ModelBlockSize,1*ModelBlockSize,2*ModelBlockSize,3*ModelBlockSize,3*ModelBlockSize,2*ModelBlockSize,1*ModelBlockSize,0*ModelBlockSize,
       0*ModelBlockSize,1*ModelBlockSize,2*ModelBlockSize,3*ModelBlockSize,3*ModelBlockSize,2*ModelBlockSize,1*ModelBlockSize,0*ModelBlockSize,
       4*ModelBlockSize,4*ModelBlockSize,5*ModelBlockSize,5*ModelBlockSize,5*ModelBlockSize,5*ModelBlockSize,4*ModelBlockSize,4*ModelBlockSize,
@@ -57,15 +59,24 @@ Const
       6*ModelBlockSize,6*ModelBlockSize,7*ModelBlockSize,7*ModelBlockSize,7*ModelBlockSize,7*ModelBlockSize,6*ModelBlockSize,6*ModelBlockSize,
       8*ModelBlockSize,8*ModelBlockSize,9*ModelBlockSize,9*ModelBlockSize,9*ModelBlockSize,9*ModelBlockSize,8*ModelBlockSize,8*ModelBlockSize,
       8*ModelBlockSize,8*ModelBlockSize,9*ModelBlockSize,9*ModelBlockSize,9*ModelBlockSize,9*ModelBlockSize,8*ModelBlockSize,8*ModelBlockSize);
+  K16Block : array[0..63] of integer =(        // Для модели К16
+      0*ModelBlockSize,1*ModelBlockSize,2*ModelBlockSize,3*ModelBlockSize,3*ModelBlockSize,2*ModelBlockSize,1*ModelBlockSize,0*ModelBlockSize,
+      4*ModelBlockSize,5*ModelBlockSize,6*ModelBlockSize,7*ModelBlockSize,7*ModelBlockSize,6*ModelBlockSize,5*ModelBlockSize,4*ModelBlockSize,
+      8*ModelBlockSize,9*ModelBlockSize,10*ModelBlockSize,11*ModelBlockSize,11*ModelBlockSize,10*ModelBlockSize,9*ModelBlockSize,8*ModelBlockSize,
+      8*ModelBlockSize,9*ModelBlockSize,10*ModelBlockSize,11*ModelBlockSize,11*ModelBlockSize,10*ModelBlockSize,9*ModelBlockSize,8*ModelBlockSize,
+      12*ModelBlockSize,12*ModelBlockSize,13*ModelBlockSize,13*ModelBlockSize,13*ModelBlockSize,13*ModelBlockSize,12*ModelBlockSize,12*ModelBlockSize,
+      12*ModelBlockSize,12*ModelBlockSize,13*ModelBlockSize,13*ModelBlockSize,13*ModelBlockSize,13*ModelBlockSize,12*ModelBlockSize,12*ModelBlockSize,
+      14*ModelBlockSize,14*ModelBlockSize,15*ModelBlockSize,15*ModelBlockSize,15*ModelBlockSize,15*ModelBlockSize,14*ModelBlockSize,14*ModelBlockSize,
+      14*ModelBlockSize,14*ModelBlockSize,15*ModelBlockSize,15*ModelBlockSize,15*ModelBlockSize,15*ModelBlockSize,14*ModelBlockSize,14*ModelBlockSize);
 Type
-  Tbuf=array[1..64] of Pbyte;
-  TF = array[white..black,0..Half-1] of int16;
+  Tbuf=array[1..64] of Pbyte;    // Буфер устанавливаемых фич при полном пересчете аккумулятора
+  Tacc16 = array[white..black,0..Half-1] of int16;
   TNeuralNetWeights =packed record
      model       : integer; //Модель нейросети
-     scale_act   : real;
-     scale_out   : integer;
-     w1          : integer;
-     w2          : integer;
+     scale_act   : real;    // множитель квантования выходов модели [0..2] при обучении соответствует [0..255] после квантования
+     scale_out   : integer; // множитель квантования выходного слоя. Может отличаться от степени двойки
+     w1          : integer;  // справочная информация по множителю квантования 1 слоя. Проверяется с соответствующей константой
+     w2          : integer;  // справочная информация по множителю квантования 2 слоя. Проверяется с соответствующей константой
      ModelSize   : integer;
      FLayer      : array[0..Half*MaxFrameSize-1] of int16;  //[ModelFrameSize,half]
      Fbias       : array[0..Half-1] of int16;
@@ -79,15 +90,15 @@ Type
      MaxSigma    : integer;
   end;
 
-TForwardPass = packed record
-     Acc16     : TF;                                     // Структура для акумулятора 16 бит  с точки зрения хода белых и хода черных отдельно
+   TForwardPass = packed record
+     Acc16     : Tacc16;                                 // Структура для акумулятора 16 бит  с точки зрения хода белых и хода черных отдельно
      Inputs8   : array[0..hidden1-1] of byte;            // То что поступает на вход нейросети после RELU аккумуляторов
      TempFirst : array[0..hidden2+3] of integer;         // результат после прохода первого слоя до RELU - hidden2(+4) int32 элементов
      RELUFirst : array[0..hidden2-1] of integer;         // результат первого слоя после RELU
      TempSecond: array[0..hidden3+3] of integer;         // результат после прохода второго слоя до RELU hidden2(+4) int32 элементов
      RELUSecond: array[0..hidden3-1] of integer;         // результат второго слоя после RELU
      store     : array[0..16*32-1] of byte                // хранилище для 16 регистров AVX2 (256 бит каждый)
-end;
+   end;
 
 var
    Net : TNeuralNetWeights;
@@ -149,7 +160,8 @@ var
 begin
   res:=0;
   if model=0 then res:=ModelBlockSize else       // zero model
-  if model=5 then res:=10*ModelBlockSize;        // K10-model
+  if model=5 then res:=10*ModelBlockSize else    // K10-model
+  if model=6 then res:=16*ModelBlockSize;        // K16-model
   Result:=res;
 end;
 
@@ -1256,12 +1268,22 @@ begin
       Writeln('Cant read a w1 byte!');
       exit;
     end;
+  if w<>1 shl step2 then
+    begin
+      writeln('Wrong constant for w1: ',w,' instead of ',1 shl step2);
+      exit;
+    end;
   Net.w1:=w;
    // Считываем константу w2 - она зависит от процесса обучения и может от версии к версии меняться.
   res:=f.Read(w,2);  // 16 бит целочисленное
   if res<>2 then
     begin
       Writeln('Cant read a w2 byte!');
+      exit;
+    end;
+  if w<>1 shl step3 then
+    begin
+      writeln('Wrong constant for w2: ',w,' instead of ',1 shl step3);
       exit;
     end;
   Net.w2:=w;
@@ -1339,11 +1361,11 @@ begin
       Net.Sigma[i]:=ReSigma((i/Net.scale_out)/Net.scale_act);
   f.Free;
   writeln('NET Version : ',ver);
-  //writeln('Scale_act = ',Net.scale_act:6:2);
-  //writeln('w1 = ',Net.w1);
-  //writeln('w2 = ',Net.w2);
-  //writeln('Scale_out = ',Net.scale_out);
-  //writeln('Model : ',Net.model);
+  {writeln('Scale_act = ',Net.scale_act:6:2);
+  writeln('w1 = ',Net.w1);
+  writeln('w2 = ',Net.w2);
+  writeln('Scale_out = ',Net.scale_out);
+  writeln('Model : ',Net.model);}
   Result:=True;
 end;
 
@@ -1396,8 +1418,9 @@ Function GetWhiteFrameIndex(model:integer;var Board:TBoard):integer;
 var
   res:integer;
 begin
-  res:=0;
-  if model=5 then res:=K10Block[Board.KingSq[white]]; // K10 Model
+  res:=0;                                                 // Zero
+  if model=5 then res:=K10Block[Board.KingSq[white]] else // K10 Model
+  if model=6 then res:=K16Block[Board.KingSq[white]] ;    // K16 Model
   Result:=res;
 end;
 Function GetBlackFrameIndex(model:integer;var Board:TBoard):integer;
@@ -1405,8 +1428,9 @@ Function GetBlackFrameIndex(model:integer;var Board:TBoard):integer;
 var
   res:integer;
 begin
-  res:=0;
-  if model=5 then res:=K10Block[Board.KingSq[black] xor 56]; // K10 Model
+  res:=0;                                                        // Zero
+  if model=5 then res:=K10Block[Board.KingSq[black] xor 56] else // K10 Model
+  if model=6 then res:=K16Block[Board.KingSq[black] xor 56];     // K16 Model
   Result:=res;
 end;
 Procedure FillWhiteAcc16(model:integer;var Board:Tboard;var Pass:TForwardPass);
@@ -1663,7 +1687,7 @@ Procedure speedtest;
 var
   t1,t2 : TDateTime;
   i : integer;
-  f : file of TF;
+  f : file of Tacc16;
 begin
   for i:=0 to hidden1-1 do
     begin
@@ -1677,19 +1701,19 @@ begin
 
  assign(f,'testacc.dat');
  reset(f);
- read(f,Threads[1].pass[1].acc16);
+ read(f,PassThread[0][1].acc16);
  close(f);
 
 
  //FillWhiteAcc16(net.model,Threads[1].Board,Threads[1].Pass[1]);
  //FillBlackAcc16(net.model,Threads[1].Board,Threads[1].Pass[1]);
- AVX2_RELU_ACC(@Threads[1].Pass[1].Acc16[white],@permut1,@Threads[1].Pass[1].Inputs8);
- AVX2_RELU_ACC(@Threads[1].Pass[1].Acc16[black],@permut1,@Threads[1].Pass[1].Inputs8[half]);
- AVX2_FirstLayer_Mul(@Threads[1].Pass[1].Inputs8,@Net.FirstLayer,@outputdata,@Threads[1].Pass[1].store);
+ AVX2_RELU_ACC(@PassThread[0][1].Acc16[white],@permut1,@PassThread[0][1].Inputs8);
+ AVX2_RELU_ACC(@PassThread[0][1].Acc16[black],@permut1,@PassThread[0][1].Inputs8[half]);
+ AVX2_FirstLayer_Mul(@PassThread[0][1].Inputs8,@Net.FirstLayer,@outputdata,@PassThread[0][1].store);
  for i:=0 to 7 do
    writeln(outputdata[i]);
  writeln('------------------------------------');
- SlowFirstLayer(Threads[1].pass[1]);
+ SlowFirstLayer(PassThread[0][1]);
  //AVX2_RELU_3(@outputdata,@outputdata,@RELUlimit,@outputdata2);
  //AVX2_SecondLayer_Mul(@outputdata2,@outputdata3,@outputdata);
 
@@ -1701,7 +1725,7 @@ t1:=now;
    begin
      //AVX2_RELU_ACC(@acc,@permut1,@inputrow); //5.94 for hidden1=512 (Half=256)
      //AVX2_RELU_ACC(@acc[half],@permut1,@inputrow[half]); //5.94 for hidden1=512 (Half=256)
-       AVX2_FirstLayer_Mul(@Threads[1].Pass[1].Inputs8,@Net.FirstLayer,@outputdata,@Threads[1].Pass[1].store); //AVX2 - 56.74 for 512x8 ;AVX512 - 40.65 for 512x8
+       AVX2_FirstLayer_Mul(@PassThread[0][1].Inputs8,@Net.FirstLayer,@outputdata,@PassThread[0][1].store); //AVX2 - 56.74 for 512x8 ;AVX512 - 40.65 for 512x8
      //AVX2_RELU_2(@outputdata,@outputdata,@RELUlimit,@outputdata2); // 1.56 for 8; 3.56 for 32
      //AVX2_SecondLayer_Mul(@outputdata2,@outputdata3,@outputdata); // 6.3 for 8x8
      //AVX2_NNOut(@inputrow,@inputmatrix,@Ones512,@Net.outbias) // 1.84

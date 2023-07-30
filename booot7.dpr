@@ -6,7 +6,9 @@
 
 {$APPTYPE CONSOLE}
 
-{$R resource.res}
+{$R 'resource.res'}
+
+//{$R 'resource.res' 'resource.rc'}
 
 uses
   {$ifdef UNIX}
@@ -33,7 +35,7 @@ var
   i : integer;
 begin
   // грузим нейросеть
-  LoadNet('booot71.nn');
+  LoadNet('booot72.nn');
   writeln(GetFullVersionName(Net.model));
   // Инициализация структуры данных потоков перед запуском
   for i:=1 to MaxThreads do
@@ -41,7 +43,7 @@ begin
       Threads[i].idle:=true;
       Threads[i].isRun:=false;
     end;
-  // По умолчанию работает один поток для перебора - создаем его
+    // По умолчанию работает один поток для перебора - создаем его
   game.Threads:=1;
   InitThreads(game.Threads);
   // Устанавливаем размер глобального хеша по умолчанию
@@ -66,7 +68,7 @@ begin
   //bench;
  // writeln(False xor False);
   //writeln(SizeOf(TThread));
-  //FenGenerator(10,700,32,'book.fen','10d_',128,1024);
+ // FenGenerator(7,2,20,'book.fen','5d_',128,1024);
   //newgame;
   //speedtest;
   //CheckBatch('array2',10000);
