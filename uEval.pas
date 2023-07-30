@@ -1,4 +1,4 @@
-unit uEval;
+﻿unit uEval;
 
 {$IFDEF FPC}
   {$MODE Delphi}
@@ -25,7 +25,7 @@ begin
       Result:=EvaluateSpecialEndgame(EvalFun,QueenValueEnd,Board);
       exit;
     end;
-  score:=NetResigma(ForwardPass(Board.SideToMove,Threads[ThreadID].Pass[ply]));
+  score:=NetResigma(ForwardPass(Board.SideToMove,PassThread[ThreadID-1][ply]));
   If evalfun=f_kbpskw then
     begin
       sf:=64;

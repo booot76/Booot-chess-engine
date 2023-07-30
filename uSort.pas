@@ -1,4 +1,4 @@
-unit uSort;
+﻿unit uSort;
 
 {$IFDEF FPC}
   {$MODE Delphi}
@@ -292,7 +292,8 @@ begin
     dest:=(MoveList[i].move shr 6) and 63;
     piese:=Board.Pos[MoveList[i].move and 63]; // from
     captured:=TypOfPiese[Board.Pos[dest]]; // dest
-    MoveList[i].value:=6*MVV[captured]+SortUnit.CapHistory[piese,dest,captured];
+    if (captured=Empty) and ((MoveList[i].move and CaptureFlag)<>0) then captured:=Pawn;
+    MoveList[i].value:=16*MVV[captured]+SortUnit.CapHistory[piese,dest,captured];
    end;
 end;
 Procedure ScoreMoves(start:integer;stop:integer;ply:integer;var MoveList:TMoveList;var SortUnit:TSortUnit;var Board:TBoard;var Tree:Ttree);
@@ -354,7 +355,7 @@ begin
       while tree[ply].curr<=tree[ply].max-1 do
         begin
           // Выбираем лучший ход
-          move:=TakeBest(MOveList,tree[ply].curr,tree[ply].max-1,(tree[ply].value>=-3000*depth));
+          move:=TakeBest(MOveList,tree[ply].curr,tree[ply].max-1,true);
           tree[ply].value:=MoveList[tree[ply].curr].value;
           inc(tree[ply].curr);
           if move=hashmove then continue;       // Уже рассмотрен
@@ -469,7 +470,7 @@ begin
         inc(tree[ply].Status);
         if Board.CheckersBB<>0 then tree[ply].Status:=GenerateEscapes;
         // Здесь пробуем хешход - пока ничего не генерируем
-        If (hashmove<>0) and (isPseudoCorrect(hashmove,Board)) and ( (Board.CheckersBB<>0) or (depth>-5) or (((hashmove shr 6) and 63)=prevsq))   then
+        If (hashmove<>0) and (isPseudoCorrect(hashmove,Board))   then
          begin
           Result:=hashmove;
           exit;
@@ -492,7 +493,7 @@ begin
       while tree[ply].curr<=tree[ply].max-1 do
         begin
           // Выбираем лучший ход
-          move:=TakeBest(MOveList,tree[ply].curr,tree[ply].max-1,(tree[ply].value>=-3000*depth));
+          move:=TakeBest(MOveList,tree[ply].curr,tree[ply].max-1,true);
           tree[ply].value:=MoveList[tree[ply].curr].value;
           inc(tree[ply].curr);
           if move=hashmove then continue;       // Уже рассмотрен
@@ -503,7 +504,7 @@ begin
       // Если пересмотрели все взятия то идем дальше
       inc(tree[ply].Status);
     end;
-  if (tree[ply].Status=GenerateChecks) and (depth>=0) and (Board.CheckersBB=0) then
+  if (tree[ply].Status=GenerateChecks) and (depth>=0) and (Board.CheckersBB=0) then     // (+)
     begin
       inc(tree[ply].Status);
       // Генерируем тихие шахи
@@ -575,7 +576,7 @@ begin
       while tree[ply].curr<=tree[ply].max-1 do
         begin
           // Выбираем лучший ход
-          move:=TakeBest(MOveList,tree[ply].curr,tree[ply].max-1,(tree[ply].value>=-3000*depth));
+          move:=TakeBest(MOveList,tree[ply].curr,tree[ply].max-1,true);
           tree[ply].value:=MoveList[tree[ply].curr].value;
           inc(tree[ply].curr);
           if (move=hashmove) or ((move and CaptureFlag)=0)  then continue;       // Уже рассмотрен   или это не взятие

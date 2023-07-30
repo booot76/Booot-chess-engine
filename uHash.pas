@@ -106,10 +106,10 @@ Function ValueFromTT(value:integer;ply:integer):integer;
 Function CalcFullKey(var Board:TBoard):int64;
 Procedure InitTT(var TT:TTable;SizeMB:integer);
 Procedure ClearHash(var TT:TTable;cpus:integer);
+Procedure multiclear(ThreadID:integer);
 Function HashProbe(var TT:TTable;Key : int64):int64;
 Procedure HashStore(var TT:TTable;Key:int64;value:integer;depth:integer;typ:integer;move:integer;steval:integer);
 Function FindPonder(var TT:TTable;RootMove:integer;var Board:TBoard):integer;
-Procedure multiclear(ThreadID:integer);
 
 implementation
 uses uSearch,uAttacks,uThread;
@@ -157,6 +157,7 @@ begin
   TT.Mask:=(TT.Size div EntrySize)-1;
   SetLength(TT.data,0);
   SetLength(TT.data,TT.Size);
+
 end;
 
 Procedure multiclear(ThreadID:integer);
@@ -184,7 +185,7 @@ var
 begin
 // game.starttime:=now;
  part:=TT.size div cpus;
- for i:=1 to cpus do
+  for i:=1 to cpus do
     begin
       Threads[i].hashstart:=@TT.data[(i-1)*part];
       Threads[i].clrflag:=true;
