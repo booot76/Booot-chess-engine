@@ -57,6 +57,7 @@ Procedure NewSearch(ThreadId:integer);
 // запускается каждый раз после получения команды go для каждого потока
 begin
   Threads[ThreadId].Board.Nodes:=0;
+   Threads[ThreadId].Board.tbhits:=0;
   Threads[ThreadId].AbortSearch:=false;
   If ThreadId=1 then
     begin
@@ -149,12 +150,12 @@ end;
 Function TakeHashSize(val : integer):integer;
 // Выбирает ближайшее значение хеша, являющееся степенью 2
 const
-  HashSizes : array[1..13] of integer = (16,32,64,128,256,512,1024,2048,4096,8192,16384,32768,65536);
+  HashSizes : array[1..15] of integer = (16,32,64,128,256,512,1024,2048,4096,8192,16384,32768,65536,131072,262144);
 var
   i : integer;
 begin
   i:=1;
-  while (i<=13) and (HashSizes[i]<val) do
+  while (i<=15) and (HashSizes[i]<val) do
     inc(i);
   Result:=HashSizes[i];
 end;
@@ -169,8 +170,8 @@ begin
   if s='' then exit;
   if (pos('eval',s)>0) then
     begin
-      FillWhiteAcc16(Net.model, Threads[1].Board,PassThread[0][1]);
-      FillBlackAcc16(Net.model,Threads[1].Board,PassThread[0][1]);
+      FillWhiteAcc16(Globalmodel, Threads[1].Board,PassThread[0][1]);
+      FillBlackAcc16(Globalmodel,Threads[1].Board,PassThread[0][1]);
       Writeln(' Static Score = '+InttoStr(Evaluate(Threads[1].Board,1,1)));                         // Статическая оценка позиции
       Writeln('FV Score = ',FV(TTGlobal,1,-mate,mate,0,1,Threads[1].Board,SortUnitThread[0],Threads[1].Tree,Threads[1].PVLine));
       Writeln(' Best FV moves : ',MakePVString(Threads[1].PVLine));
@@ -192,10 +193,10 @@ begin
     end;
   if pos('uci',s) = 1  then                                                               //uci
     begin
-     Writeln(Output,'id name ' + GetFullVersionName(Net.model));
+     Writeln(Output,'id name ' + GetFullVersionName);
      Writeln(Output,'id author Alex Morozov (booot76@gmail.com)');
      // Тут вываливаем список параметров движка
-     Writeln(Output,'option name Hash type spin default 128 min 16 max 65536');
+     Writeln(Output,'option name Hash type spin default 128 min 16 max 242144');
      Writeln(Output,'option name Ponder type check default false');
      Writeln(Output,'option name Threads type spin default 1 min 1 max '+inttostr(MaxThreads));
      Writeln(Output,'uciok');

@@ -1,4 +1,4 @@
-unit uEndgame;
+﻿unit uEndgame;
 
 {$IFDEF FPC}
   {$MODE Delphi}
@@ -39,15 +39,12 @@ BN_dark: array[a1..h8] of integer =
                 30, 20, 30, 40, 50, 60, 70, 80,   //7
                 20, 30, 40, 50, 60, 70, 80,100);  //8
 
-F_KXK=1;
-F_KNNK=2;
-F_KBNK=3;
-F_KQKR=4;
-F_KBPsKW=5;
-F_KBPsKB=6;
-F_KPK=7;
-F_KRKP=8;
-F_KQKP=9;
+F_MatDraw=1;
+F_KBNK=2;
+F_KBPsKW=3;
+F_KBPsKB=4;
+F_KPK=5;
+F_Pawnless=6;
 
 
 ScaleNormal=64;
@@ -56,24 +53,14 @@ ScaleDraw=0;
 
 
 Function SpecialCases(var Board:TBoard):integer;
-Function EvaluateSpecialEndgame(funcnum:integer;score:integer;var Board :TBoard):integer;
+Function EvaluateSpecialEndgame(funcnum:integer;var Board :TBoard):integer;
 Procedure KBPSKw(var WScale:integer;var Board:TBoard);
 Procedure KBPSKb(var BScale:integer;var Board:TBoard);
 
 implementation
  uses uKPK;
 
-Function isOppositColor(sq1:integer;sq2:integer):boolean;inline;
-begin
-  If (((Only[sq1] and DarkSquaresBB)<>0) and ((Only[sq2] and LightSquaresBB)<>0)) or  (((Only[sq2] and DarkSquaresBB)<>0) and ((Only[sq1] and LightSquaresBB)<>0))
-    then result:=true
-    else result:=false;
-end;
-Function KNNK:integer;inline;
-// Всегда возвращает ничейную оценку. Случаи мата отслеживаются в переборной функции
-begin
-  result:=0;
-end;
+
 Function KPK(var Board:TBoard):integer;
 var
   wk,bk,paw,color,res:integer;
@@ -103,80 +90,43 @@ begin
   if res>0 then result:=KPKWin-res*5
            else result:=-KPKwin+res*5;
 end;
-Function KXK(score:integer;var Board:TBoard):integer;
-// Мат одинокому королю если у противоположной стороны минимум ладья преимущества. На входе - Эндшпильная материальная оценка которая корректируется
-// Оценка сильнейшей стороны увеличивается если вражеский король в углу и между королями минимальное расстояние.
+Function PawnLess(var Board:TBoard):integer;
+//  Оценка беспешечных эндшпилей.
+var
+   score,bonus:integer;
 begin
-  if (Board.NonPawnMat[black]=0)
-   then result:=score+WeakKingMate[Board.KingSq[black]]+KingDistBonus[SquareDist[Board.KingSq[white],Board.KingSq[black]]]    // Белые ставят мат
-   else result:=score-WeakKingMate[Board.KingSq[white]]-KingDistBonus[SquareDist[Board.KingSq[white],Board.KingSq[black]]];  // Черные ставят мат
-  if Board.SideToMove=black then result:=-result;
+  score:=Board.NonPawnMat[white]-Board.NonPawnMat[black];
+  if score>MinorDif  then bonus:=WeakKingMate[Board.KingSq[black]]+KingDistBonus[SquareDist[Board.KingSq[white],Board.KingSq[black]]] else
+  if score<-MinorDif then bonus:=-WeakKingMate[Board.KingSq[white]]-KingDistBonus[SquareDist[Board.KingSq[white],Board.KingSq[black]]] else
+                          bonus:=WeakKingMate[Board.KingSq[black]]-WeakKingMate[Board.KingSq[white]];
+  // Если недостаточно преимущества - оценка ближе к ничейной.
+  if abs(score)<=PieseTypValue[bishop]
+    then score:=(score+bonus) div 4
+    else score:=score+bonus;
+  if Board.SideToMove=black then score:=-score;
+  result:=score;
 end;
 
 
-Function KBNK(score:integer;var Board:TBoard):integer;
+Function KBNK(var Board:TBoard):integer;
 // Мат слоном и конем используется специальную оценочную функцию подсказывающую в какой угол надо гнать одинокого короля
+var
+  score:integer;
 begin
+  score:=PieseTypValue[bishop]+PieseTypValue[knight];
   if (Board.NonPawnMat[black]=0)  then    // Белые ставят мат
     begin
       if (Board.Pieses[bishop] and DarkSquaresBB)<>0
-        then result:=score+BN_Dark[Board.KingSq[black]]+KingDistBonus[SquareDist[Board.KingSq[white],Board.KingSq[black]]]  // Чернопольный слон
-        else result:=score+BN_Light[Board.KingSq[black]]+KingDistBonus[SquareDist[Board.KingSq[white],Board.KingSq[black]]];  // Белопольный слон
+        then result:=score+2*BN_Dark[Board.KingSq[black]]+KingDistBonus[SquareDist[Board.KingSq[white],Board.KingSq[black]]]  // Чернопольный слон
+        else result:=score+2*BN_Light[Board.KingSq[black]]+KingDistBonus[SquareDist[Board.KingSq[white],Board.KingSq[black]]];  // Белопольный слон
       if Board.SideToMove=black then result:=-result;
     end                           else   // Черные ставят мат
     begin
       if (Board.Pieses[bishop] and DarkSquaresBB)<>0
-        then result:=score-BN_Dark[Board.KingSq[white]]-KingDistBonus[SquareDist[Board.KingSq[white],Board.KingSq[black]]]  // Чернопольный слон
-        else result:=score-BN_Light[Board.KingSq[white]]-KingDistBonus[SquareDist[Board.KingSq[white],Board.KingSq[black]]];  // Белопольный слон
+        then result:=score-2*BN_Dark[Board.KingSq[white]]-KingDistBonus[SquareDist[Board.KingSq[white],Board.KingSq[black]]]  // Чернопольный слон
+        else result:=score-2*BN_Light[Board.KingSq[white]]-KingDistBonus[SquareDist[Board.KingSq[white],Board.KingSq[black]]];  // Белопольный слон
        if Board.SideToMove=white then result:=-result;
     end;
-end;
-
-Function KQKR(score:integer;var Board:TBoard):integer;
-// Ферзь против ладьи использует похожую логику как и матование одинокого короля
-begin
-  if (Board.NonPawnMat[black]=0)
-   then result:=score+WeakKingMate[Board.KingSq[black]]+KingDistBonus[SquareDist[Board.KingSq[white],Board.KingSq[black]]]    // Белые ставят мат
-   else result:=score-WeakKingMate[Board.KingSq[white]]-KingDistBonus[SquareDist[Board.KingSq[white],Board.KingSq[black]]];  // Черные ставят мат
-  if Board.SideToMove=black then result:=-result;
-end;
-
-Procedure KPSKw(var WScale:integer;var Board:TBoard);
-var
-   PawnsBB : TBitBoard;
-   KSq,SQ : integer;
-begin
-  KSq:=Board.KingSq[black];
-  PawnsBB:=Board.Pieses[pawn] and Board.Occupancy[white];
-  if ((PawnsBB and FilesBB[1])<>0) and ((PawnsBB and (not FilesBB[1]))=0) then
-    begin
-      SQ:=BitScanBackWard(PawnsBB and FilesBB[1]);
-      if (Posy[Ksq]>Posy[Sq]) and ((SquareDIst[Sq+8,KSq]<=1) or (SquareDist[a8,Ksq]<=1)) then Wscale:=ScaleDraw;
-    end else
-  if ((PawnsBB and FilesBB[8])<>0) and ((PawnsBB and (not FilesBB[8]))=0) then
-    begin
-      SQ:=BitScanBackWard(PawnsBB and FilesBB[8]);
-      if (Posy[Ksq]>Posy[Sq]) and ((SquareDIst[Sq+8,KSq]<=1) or (SquareDist[h8,Ksq]<=1)) then Wscale:=ScaleDraw;
-    end;
-end;
-
-Procedure KBPKNW(var WScale:integer; var Board:TBoard);
-var
-  wk,pn,bs : integer;
-begin
-  wk:=Board.KingSq[black];
-  pn:=BitScanForward(Board.Pieses[pawn]);
-  bs:=BitScanForward(Board.Pieses[bishop] and Board.Occupancy[white]);
-  If (posx[wk]=posx[pn]) and (posy[wk]>posy[pn]) and ((posy[wk]<=6) or (isOppositColor(wk,bs))) then WScale:=ScaleDraw;
-end;
-Procedure KBPKNB(var BScale:integer; var Board:TBoard);
-var
-  wk,pn,bs : integer;
-begin
-  wk:=Board.KingSq[white];
-  pn:=BitScanForward(Board.Pieses[pawn]);
-  bs:=BitScanForward(Board.Pieses[bishop] and Board.Occupancy[black]);
-  If (posx[wk]=posx[pn]) and (posy[wk]<posy[pn]) and ((posy[wk]>=3) or (isOppositColor(wk,bs))) then BScale:=ScaleDraw;
 end;
 
 
@@ -189,7 +139,6 @@ begin
   PawnsBB:=Board.Pieses[pawn] and Board.Occupancy[white];
   if ((PawnsBB and FilesBB[1])<>0) and ((PawnsBB and (not FilesBB[1]))=0) and (SquareDist[a8,Ksq]<=1) and ((Board.Pieses[bishop] and DarkSquaresBB)<>0)  then Wscale:=ScaleDraw;
   if ((PawnsBB and FilesBB[8])<>0) and ((PawnsBB and (not FilesBB[8]))=0) and (SquareDist[h8,Ksq]<=1) and ((Board.Pieses[bishop] and LightSquaresBB)<>0) then Wscale:=ScaleDraw;
-  If ((Board.Pieses[pawn] and (Board.Pieses[pawn]-1))=0) and (Board.NonPawnMat[black]=PieseTypValue[knight]) then KBPKNW(Wscale,Board);
 end;
 Procedure KBPSKb(var BScale:integer;var Board:TBoard);
 var
@@ -200,101 +149,8 @@ begin
   PawnsBB:=Board.Pieses[pawn] and Board.Occupancy[black];
   if ((PawnsBB and FilesBB[1])<>0) and ((PawnsBB and (not FilesBB[1]))=0) and (SquareDist[a1,Ksq]<=1) and ((Board.Pieses[bishop] and LightSquaresBB)<>0) then Bscale:=ScaleDraw;
   if ((PawnsBB and FilesBB[8])<>0) and ((PawnsBB and (not FilesBB[8]))=0) and (SquareDist[h1,Ksq]<=1) and ((Board.Pieses[bishop] and DarkSquaresBB)<>0)  then Bscale:=ScaleDraw;
-  If ((Board.Pieses[pawn] and (Board.Pieses[pawn]-1))=0) and (Board.NonPawnMat[white]=PieseTypValue[knight]) then KBPKNB(BScale,Board);
 end;
 
-
-Function KRKP(var Board:TBoard):integer;
-var
-   StrongKing,WeakKing,Rk,pn,QSquare,pawndist,rookdist : integer;
-begin
-  rk:=BitScanForward(Board.Pieses[rook]);
-  pn:=BitScanForward(Board.Pieses[pawn]);
-  If (Board.Pieses[pawn] and Board.Occupancy[black])<>0 then
-    begin
-      // Белые - сильнейшая сторона
-      StrongKing:=Board.KingSq[white];
-      WeakKing:=Board.KingSq[black];
-      QSquare:=Posx[pn]-1;
-      // Если король сильнейшей стороны успел встать перед пешкой - это победа
-      If (StrongKing<pn) and (Posx[StrongKing]=Posx[pn]) then
-        begin
-          Result:=RookValueEnd-SquareDist[StrongKing,Pn];
-        end else
-        begin
-         // Если слабейший король далеко от пешки и ее можно забрать - то выигрыш
-         PawnDist:=SquareDist[Pn,WeakKing];
-         RookDist:=SquareDist[Rk,WeakKing];
-         IF Board.SideToMove=black then dec(PawnDist);
-         If (PawnDist>=3) and (RookDist>=3) then
-           begin
-             Result:=RookValueEnd-SquareDist[StrongKing,Pn];
-           end else
-           begin
-            // Если пешка далеко продвинута и сильнейший король далеко - ничья
-            PawnDist:=SquareDist[StrongKing,Pn];
-            If Board.SideToMove=white then dec(PawnDist);
-            If (Posy[WeakKing]<=3) and (Posy[StrongKing]>=4) and (SquareDist[Pn,WeakKing]=1) and (PawnDist>2)
-              then Result:=32-4*PawnDist
-              else Result:=80-4*(SquareDist[StrongKing,Pn-8]-SquareDist[WeakKing,Pn-8]-SquareDist[Pn,QSquare]);
-           end;
-        end;
-    end else
-    begin
-      // Черные - сильнейшая сторона
-      StrongKing:=Board.KingSq[black];
-      WeakKing:=Board.KingSq[white];
-      QSquare:=56+(Posx[pn]-1);
-      // Если король сильнейшей стороны успел встать перед пешкой - это победа
-      If (StrongKing>pn) and (Posx[StrongKing]=Posx[pn]) then
-        begin
-          Result:=RookValueEnd-SquareDist[StrongKing,Pn];
-        end else
-        begin
-         // Если слабейший король далеко от пешки и ее можно забрать - то выигрыш
-         PawnDist:=SquareDist[Pn,WeakKing];
-         RookDist:=SquareDist[Rk,WeakKing];
-         IF Board.SideToMove=white then dec(PawnDist);
-         If (PawnDist>=3) and (RookDist>=3) then
-           begin
-             Result:=RookValueEnd-SquareDist[StrongKing,Pn];
-           end else
-           begin
-            // Если пешка далеко продвинута и сильнейший король далеко - ничья
-            PawnDist:=SquareDist[StrongKing,Pn];
-            If Board.SideToMove=black then dec(PawnDist);
-            If (Posy[WeakKing]>=6) and (Posy[StrongKing]<=5) and (SquareDist[Pn,WeakKing]=1) and (PawnDist>2)
-              then Result:=32-4*PawnDist
-              else Result:=80-4*(SquareDist[StrongKing,Pn+8]-SquareDist[WeakKing,Pn+8]-SquareDist[Pn,QSquare]);
-           end;
-        end;
-      Result:=-Result;
-    end;
- IF Board.SideToMove=black then result:=-result;
-end;
-Function KQKP(var Board:TBoard):integer;
-var
-  pn,WeakKing,StrongKing:integer;
-begin
-  pn:=BitScanForward(Board.Pieses[pawn]);
-  If (Board.Pieses[pawn] and Board.Occupancy[black])<>0 then
-    begin
-      // Белые - сильнейшая сторона
-      StrongKing:=Board.KingSq[white];
-      WeakKing:=Board.KingSq[black];
-      Result:=KingDistBonus[SquareDist[StrongKing,WeakKing]];
-      If (Posy[Pn]<>2) or (SquareDist[pn,WeakKing]<>1) or (Posx[pn] in [2,4,5,7]) then Result:=Result+QueenValueEnd-PawnValueEnd;
-    end else
-    begin
-      // Черные - сильнейшая сторона
-      StrongKing:=Board.KingSq[black];
-      WeakKing:=Board.KingSq[white];
-      Result:=KingDistBonus[SquareDist[StrongKing,WeakKing]];
-      If (Posy[Pn]<>7) or (SquareDist[pn,WeakKing]<>1) or (Posx[pn] in [2,4,5,7]) then Result:=Result+QueenValueEnd-PawnValueEnd;
-      Result:=-Result;
-    end;
-  If Board.SideToMove=black then Result:=-result;
-end;
 
 Function SpecialCases(var Board:TBoard):integer;
 // Быстрая оценка материала и специальных случаев на доске
@@ -310,9 +166,10 @@ begin
   // Ищем возможные внешние функции оценки и масштабирования
   if wp+bp=0 then  // беспешечные эндшпили
     begin
-     If ((Board.NonPawnMat[white]=0) and (Board.NonPawnMat[black]=(PieseTypValue[knight]+PieseTypValue[knight]))) or ((Board.NonPawnMat[black]=0) and (Board.NonPawnMat[white]=(PieseTypValue[knight]+PieseTypValue[knight]))) then evalfun:=f_knnk else   //KNNK
+     evalfun:=F_PawnLess;
      If ((Board.NonPawnMat[white]=0) and (Board.NonPawnMat[black]=(PieseTypValue[knight]+PieseTypValue[bishop]))) or ((Board.NonPawnMat[black]=0) and (Board.NonPawnMat[white]=(PieseTypValue[knight]+PieseTypValue[bishop]))) then evalfun:=f_kbnk else   //KBNK
-     If (Board.NonPawnMat[white]<PieseTypValue[rook]) and (Board.NonPawnMat[black]<PieseTypValue[rook]) then evalfun:=f_knnk;
+     If ((Board.NonPawnMat[white]=0) and (Board.NonPawnMat[black]=(PieseTypValue[knight]+PieseTypValue[knight]))) or ((Board.NonPawnMat[black]=0) and (Board.NonPawnMat[white]=(PieseTypValue[knight]+PieseTypValue[knight]))) then evalfun:=f_MatDraw else   //KNNK
+     If (Board.NonPawnMat[white]<PieseTypValue[rook]) and (Board.NonPawnMat[black]<PieseTypValue[rook]) then evalfun:=f_MatDraw;
     end;
   if (NPW=0) and (NPB=0) then // Пешечный эндшпиль
     begin
@@ -323,17 +180,15 @@ begin
   Result:=evalfun;
 end;
 
-Function EvaluateSpecialEndgame(funcnum:integer;score:integer;var Board :TBoard):integer;
+Function EvaluateSpecialEndgame(funcnum:integer;var Board :TBoard):integer;
 // Функция входная
 begin
   result:=0;
-  if FuncNum=F_KXK then result:=KXK(score,Board) else
-  if FuncNum=F_KNNK then result:=KNNK else
-  if FuncNum=F_KBNK then result:=KBNK(score,Board) else
+  if FuncNum=F_KBNK then result:=KBNK(Board) else
   if Funcnum=f_KPK then result:=KPK(Board) else
-  if FuncNum=F_KQKR then result:=KQKR(score,Board) else
-  if FuncNum=F_KRKP then result:=KRKP(Board) else
-  if FuncNum=F_KQKP then result:=KQKP(Board) else exit;
+  if FuncNum=F_PawnLess then result:=PawnLess(Board) else
+  if FuncNum=F_MatDraw then  result:=0;
+
 end;
 
 

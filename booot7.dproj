@@ -179,13 +179,7 @@
         <DCCReference Include="uUci.pas"/>
         <DCCReference Include="uKPK.pas"/>
         <DCCReference Include="Unn.pas"/>
-        <DCCReference Include="Ubenchmark.pas">
-            <Form>,windows;
-var
-  handle</Form>
-            <DesignClass>handle;
-  prcinit :function (path: PAnsiChar): boolean;cdecl</DesignClass>
-        </DCCReference>
+        <DCCReference Include="Ubenchmark.pas"/>
         <RcCompile Include="resource.rc">
             <Form>resource.res</Form>
         </RcCompile>

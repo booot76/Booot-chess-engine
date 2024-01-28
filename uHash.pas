@@ -130,14 +130,14 @@ begin
 end;
 Function ValueToTT(value:integer;ply:integer):integer;
 begin
-  if value>=Mate-MaxPly  then result:=value+ply else
-  if (value<>-inf) and (value<=-Mate+MaxPly) then result:=value-ply else
+  if value>=WinScore  then result:=value+ply else
+  if (value<>-inf) and (value<=-WinScore) then result:=value-ply else
    result:=value;
 end;
 Function ValueFromTT(value:integer;ply:integer):integer;
 begin
-  if value>=Mate-MaxPly  then result:=value-ply else
-  if (value<>-inf) and (value<=-Mate+MaxPly) then result:=value+ply else
+  if value>=WinScore  then result:=value-ply else
+  if (value<>-inf) and (value<=-WinScore) then result:=value+ply else
    result:=value;
 end;
 Function ScoreEntry(Age:integer;typage:integer;depth:integer):integer;inline;

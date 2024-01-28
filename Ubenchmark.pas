@@ -46,11 +46,13 @@ implementation
 
 Procedure Bench();
 var
-   i,bestmove,total : integer;
+   i,bestmove,total,tempsyzygy : integer;
    StopTime : Tdatetime;
 begin
   writeln('Benchmark started ... ');
   total:=0;
+  tempsyzygy:=game.syzygyman;
+  game.syzygyman:=0;
   game.showtext:=false;
   game.time:=48*3600*1000;
   game.rezerv:=48*3600*1000;
@@ -79,6 +81,7 @@ begin
   writeln('Time - ',MilliSecondsBetween(game.StartTime,StopTime),'ms. Total nodes - ',total,' NPS- ',round(total/MilliSecondsBetween(game.StartTime,StopTime)),' Knod/s');
   SetBoard(startpositionfen,Threads[1].Board);
   game.showtext:=true;
+  game.syzygyman:=tempsyzygy;
 end;
 
 end.

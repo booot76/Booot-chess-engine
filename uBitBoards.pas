@@ -4,6 +4,7 @@
   {$MODE Delphi}
 {$ENDIF}
 
+{$Define pext}
  // Все что связано с работой битбордов - тут.
 
 interface
@@ -14,7 +15,7 @@ interface
   T256 = array[0..255] of integer;
 
  Const
-  VersionName='Booot 7.2';          // Номер версии движка
+  VersionName='Booot 7.3';          // Номер версии движка
 
   BitCountTable8 :T256 =                // Количество установленных в единицу битов в единичном байте от 0 до 255. Используется в системах где нет ассемблерной команды подсчета
    (0,1,1,2,1,2,2,3,1,2,2,3,2,3,3,4,
@@ -148,7 +149,7 @@ $0002000000000000,$0005000000000000,$000A000000000000,$0014000000000000,$0028000
   IsolatedBB : array[a1..h8] of TBitBoard;
   OutPostBB,SpaceBB,BishopBLockedBB : array[white..black] of TBitBoard;
 
- function pext(BB:TBitBoard;mask : TBitBoard):integer;
+ {$IFDEF pext} function pext(BB:TBitBoard;mask : TBitBoard):integer; {$ENDIF pext}
  function BitCount(BB:TBitBoard): Integer;
  function BitScanForward(BB:TBitBoard): Integer;
  function BitScanBackward(BB:TBitBoard): Integer;
@@ -156,7 +157,7 @@ $0002000000000000,$0005000000000000,$000A000000000000,$0014000000000000,$0028000
 
 implementation
  uses uMagic,uBoard,uHash,uKPK;
-
+{$IFDEF pext}
 function pext(BB:TBitBoard;mask : TBitBoard):integer;{$IFDEF FPC} nostackframe assembler;{$ENDIF}
 //               rcx (rdi)           rdx(rsi)
 asm
@@ -170,6 +171,7 @@ asm
   db 0c4h,0e2h,0f2h,0f5h,0c2h             // pext rax,rcx,rdx
  {$ENDIF UNIX}
 end;
+ {$ENDIF pext}
 function BitCount(BB:TBitBoard): Integer;{$IFDEF FPC} nostackframe assembler;{$ENDIF}
   // Функция подсчета "1"- битов в битборде.
   // На входе - битбоард, на выходе - число битов, установленных в "1"

@@ -4,6 +4,8 @@
   {$MODE Delphi}
 {$ENDIF}
 
+{$Define pext}
+
 interface
 uses uBitBoards,uMagic,uBoard;
 
@@ -38,7 +40,7 @@ Function KingAttacksBB(sq:integer):TBitBoard;inline;
 Function BishopAttacksBB(sq:integer;allpieses:TBitBoard):TBitBoard;inline;
  begin
    {$IFDEF pext}
-   Result:=BishoppextMM[BishoppextOffset[sq]+ pext(allpieses,BishopMasks[sq]);
+   Result:=BishoppextMM[BishoppextOffset[sq]+ pext(allpieses,BishopMasks[sq])];
    {$ELSE pext}
    Result:=BishopMM[BishopOffset[sq]+(((allpieses and BishopMasks[sq])*BishopMagics[sq]) shr BishopShifts[sq])];
    {$ENDIF pext}
@@ -46,7 +48,7 @@ Function BishopAttacksBB(sq:integer;allpieses:TBitBoard):TBitBoard;inline;
 Function RookAttacksBB(sq:integer;allpieses:TBitBoard):TBitBoard;inline;
  begin
    {$IFDEF pext}
-    Result:=RookpextMM[RookpextOffset[sq]+ pext(allpieses,RookMasks[sq]);
+   Result:=RookpextMM[RookpextOffset[sq]+ pext(allpieses,RookMasks[sq])];
    {$ELSE pext}
    Result:=RookMM[RookOffset[sq]+(((allpieses and RookMasks[sq])*RookMagics[sq]) shr RookShifts[sq])];
    {$ENDIF pext}
@@ -54,7 +56,7 @@ Function RookAttacksBB(sq:integer;allpieses:TBitBoard):TBitBoard;inline;
 Function QueenAttacksBB(sq:integer;allpieses:TBitBoard):TBitBoard;inline;
  begin
    {$IFDEF pext}
-   Result:=RookpextMM[RookpextOffset[sq]+ pext(allpieses,RookMasks[sq]) or BishoppextMM[BishoppextOffset[sq]+ pext(allpieses,BishopMasks[sq]);
+   Result:=RookpextMM[RookpextOffset[sq]+ pext(allpieses,RookMasks[sq])] or BishoppextMM[BishoppextOffset[sq]+ pext(allpieses,BishopMasks[sq])];
    {$ELSE pext}
    Result:=RookMM[RookOffset[sq]+(((allpieses and RookMasks[sq])*RookMagics[sq]) shr RookShifts[sq])] or BishopMM[BishopOffset[sq]+(((allpieses and BishopMasks[sq])*BishopMagics[sq]) shr BishopShifts[sq])];
    {$ENDIF pext}
