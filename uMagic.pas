@@ -1,8 +1,10 @@
-unit uMagic;
+﻿unit uMagic;
 
 {$IFDEF FPC}
   {$MODE Delphi}
 {$ENDIF}
+
+{$Define pext}
 
 interface
    uses uBitBoards,SysUtils,DateUtils;
@@ -67,11 +69,12 @@ var
     BishopMasks,RookMasks   : array[a1..h8] of TBitBoard;
     BishopMM                : array[0..4799] of TBitBoard;
     RookMM                  : array[0..88575] of TBitBoard;
+    BishopOffset,RookOffset : array[a1..h8] of integer;
+    {$IFDEF pext}
     BishoppextMM            : array[0..5247] of TBitBoard;
     RookpextMM              : array[0..102399] of TBitBoard;
-    BishopOffset,RookOffset : array[a1..h8] of integer;
     Bishoppextoffset,Rookpextoffset : array[a1..h8] of integer;
-
+    {$ENDIF pext}
   Procedure FindMagicForSquare(sq:integer;isRook:boolean;mode:integer;initbits:integer;best:boolean);
   Procedure MagicsInit;
   Function GetRandom64:int64;
@@ -236,7 +239,10 @@ Function HiBitRandom:int64;
  // Функция поиска magic номера
   var
    MullBB,AttackBB,Occupancy,ii,maxii,nodes : int64;
-   i,index,shift,bit,collisions,mincol,shiftsize,useful,j,ind:integer;
+   i,index,shift,bit,collisions,mincol,shiftsize,useful,j:integer;
+   {$IFDEF pext}
+     ind:integer;
+   {$ENDIF pext}
    s:string;
    AttackSets,OccupancySets: array of TBitBoard;
    Temp : array of TTempMagic;
@@ -266,6 +272,7 @@ Function HiBitRandom:int64;
           else AttackBB:=PboardBishopMovesBB(Occupancy,sq);
         AttackSets[i]:=AttackBB;
         OccupancySets[i]:=Occupancy;
+        {$IFDEF pext}
         // pext
         if isRook then
           begin
@@ -282,6 +289,7 @@ Function HiBitRandom:int64;
               then Rookpextoffset[pboard[sq]+1]:= Rookpextoffset[pboard[sq]]+ n
               else Bishoppextoffset[pboard[sq]+1]:= Bishoppextoffset[pboard[sq]]+n;
           end;
+        {$ENDIF pext}
       end;
    // Для брутфорса крутим цикл количества единичных битов  - просто цикл. Для остальных типов это просто пустой бесконечный почти цикл
     for bit:=initbits to 64 do
@@ -431,7 +439,7 @@ Procedure MagicsInit;
   i,j : integer;
  begin
    BishopOffset[a1]:=0;RookOffset[a1]:=0;
-   BishoppextOffset[a1]:=0;RookpextOffset[a1]:=0;
+   {$IFDEF pext}BishoppextOffset[a1]:=0;RookpextOffset[a1]:=0; {$ENDIF pext}
    for i:=1 to 8 do
    for j:=1 to 8 do
     begin

@@ -4,20 +4,17 @@
   {$MODE Delphi}
 {$ENDIF}
 
-{$Define AVX2}   // Удалить или заккоментировать если компилируем для AVX512
 {$Define pext}
 
 interface
 uses SysUtils,Classes,types,uBitBoards,uBoard,DateUtils;
 
 Const
-  current_version=13;  // что проверяем при загрузке сети
+  current_version=20;  // что проверяем при загрузке сети
   AVX_8=32;            // 8*32=256
   AVX_16=16;           // 16*16=256
-  AVX512_8=64;
-  AVX512_16=32;
 
-  hidden1=512;  // число нейронов в первом слое
+  hidden1=1024;  // число нейронов в первом слое
   hidden2=8;
   hidden3=8;
   half=hidden1 div 2;
@@ -28,13 +25,9 @@ Const
   cycle4=hidden1*8;
   cycle5=hidden3 div 4;
   cycle6=half div AVX_16;
-
-  cycle7=half div AVX512_16;
   cycle8=half div(AVX_16*8);
   cycle9=hidden2 div 4;
 
-  step2=7;   // множитель квантования для 1 слоя  - всегда степень двойки
-  step3=12;  // множитель квантования для 2 слоя  - всегда степень двойки
 
   limit8=255;  // Макс предел 8 битового числа
   ones512 : array[0..63] of int16=(1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1);
@@ -59,17 +52,18 @@ Const
       6*ModelBlockSize,6*ModelBlockSize,7*ModelBlockSize,7*ModelBlockSize,7*ModelBlockSize,7*ModelBlockSize,6*ModelBlockSize,6*ModelBlockSize,
       8*ModelBlockSize,8*ModelBlockSize,9*ModelBlockSize,9*ModelBlockSize,9*ModelBlockSize,9*ModelBlockSize,8*ModelBlockSize,8*ModelBlockSize,
       8*ModelBlockSize,8*ModelBlockSize,9*ModelBlockSize,9*ModelBlockSize,9*ModelBlockSize,9*ModelBlockSize,8*ModelBlockSize,8*ModelBlockSize);
-  K16Block : array[0..63] of integer =(        // Для модели К16
+  K12Block : array[0..63] of integer =(        // Для модели К12
       0*ModelBlockSize,1*ModelBlockSize,2*ModelBlockSize,3*ModelBlockSize,3*ModelBlockSize,2*ModelBlockSize,1*ModelBlockSize,0*ModelBlockSize,
-      4*ModelBlockSize,5*ModelBlockSize,6*ModelBlockSize,7*ModelBlockSize,7*ModelBlockSize,6*ModelBlockSize,5*ModelBlockSize,4*ModelBlockSize,
-      8*ModelBlockSize,9*ModelBlockSize,10*ModelBlockSize,11*ModelBlockSize,11*ModelBlockSize,10*ModelBlockSize,9*ModelBlockSize,8*ModelBlockSize,
-      8*ModelBlockSize,9*ModelBlockSize,10*ModelBlockSize,11*ModelBlockSize,11*ModelBlockSize,10*ModelBlockSize,9*ModelBlockSize,8*ModelBlockSize,
-      12*ModelBlockSize,12*ModelBlockSize,13*ModelBlockSize,13*ModelBlockSize,13*ModelBlockSize,13*ModelBlockSize,12*ModelBlockSize,12*ModelBlockSize,
-      12*ModelBlockSize,12*ModelBlockSize,13*ModelBlockSize,13*ModelBlockSize,13*ModelBlockSize,13*ModelBlockSize,12*ModelBlockSize,12*ModelBlockSize,
-      14*ModelBlockSize,14*ModelBlockSize,15*ModelBlockSize,15*ModelBlockSize,15*ModelBlockSize,15*ModelBlockSize,14*ModelBlockSize,14*ModelBlockSize,
-      14*ModelBlockSize,14*ModelBlockSize,15*ModelBlockSize,15*ModelBlockSize,15*ModelBlockSize,15*ModelBlockSize,14*ModelBlockSize,14*ModelBlockSize);
+      4*ModelBlockSize,4*ModelBlockSize,5*ModelBlockSize,5*ModelBlockSize,5*ModelBlockSize,5*ModelBlockSize,4*ModelBlockSize,4*ModelBlockSize,
+      6*ModelBlockSize,6*ModelBlockSize,7*ModelBlockSize,7*ModelBlockSize,7*ModelBlockSize,7*ModelBlockSize,6*ModelBlockSize,6*ModelBlockSize,
+      6*ModelBlockSize,6*ModelBlockSize,7*ModelBlockSize,7*ModelBlockSize,7*ModelBlockSize,7*ModelBlockSize,6*ModelBlockSize,6*ModelBlockSize,
+      8*ModelBlockSize,8*ModelBlockSize,9*ModelBlockSize,9*ModelBlockSize,9*ModelBlockSize,9*ModelBlockSize,8*ModelBlockSize,8*ModelBlockSize,
+      8*ModelBlockSize,8*ModelBlockSize,9*ModelBlockSize,9*ModelBlockSize,9*ModelBlockSize,9*ModelBlockSize,8*ModelBlockSize,8*ModelBlockSize,
+      10*ModelBlockSize,10*ModelBlockSize,11*ModelBlockSize,11*ModelBlockSize,11*ModelBlockSize,11*ModelBlockSize,10*ModelBlockSize,10*ModelBlockSize,
+      10*ModelBlockSize,10*ModelBlockSize,11*ModelBlockSize,11*ModelBlockSize,11*ModelBlockSize,11*ModelBlockSize,10*ModelBlockSize,10*ModelBlockSize);
 Type
-  Tbuf=array[1..64] of Pbyte;    // Буфер устанавливаемых фич при полном пересчете аккумулятора
+  Tbuf=array[0..64] of Pbyte;    // Буфер устанавливаемых фич при полном пересчете аккумулятора
+  Tbuf4=array[0..3] of Pbyte;
   Tacc16 = array[white..black,0..Half-1] of int16;
   TNeuralNetWeights =packed record
      model       : integer; //Модель нейросети
@@ -89,30 +83,25 @@ Type
      Sigma       : array of integer;
      MaxSigma    : integer;
   end;
-
-   TForwardPass = packed record
+   PNeuralNet = ^TNeuralNetWeights;
+   TForwardPass =packed record
      Acc16     : Tacc16;                                 // Структура для акумулятора 16 бит  с точки зрения хода белых и хода черных отдельно
      Inputs8   : array[0..hidden1-1] of byte;            // То что поступает на вход нейросети после RELU аккумуляторов
      TempFirst : array[0..hidden2+3] of integer;         // результат после прохода первого слоя до RELU - hidden2(+4) int32 элементов
      RELUFirst : array[0..hidden2-1] of integer;         // результат первого слоя после RELU
      TempSecond: array[0..hidden3+3] of integer;         // результат после прохода второго слоя до RELU hidden2(+4) int32 элементов
      RELUSecond: array[0..hidden3-1] of integer;         // результат второго слоя после RELU
-     store     : array[0..16*32-1] of byte                // хранилище для 16 регистров AVX2 (256 бит каждый)
+     store     : array[0..16*32-1] of byte;              // хранилище для 16 регистров AVX2 (256 бит каждый)
+     Net       : PNeuralNet;                             //  Указатель на текущую сетку
    end;
 
 var
-   Net : TNeuralNetWeights;
-   // Для тестирования
-   acc      : array[0..hidden1-1] of int16;
-   inputrow : array[0..hidden1-1] of byte;
-   inputmatrix : array[0..hidden1*hidden2-1] of int8;
-   outputdata,outputdata2,outputdata3: array[0..hidden1+3] of integer;
-   store     : array[0..5*32-1] of byte;
-   arr : array of integer;
-
-function GetFullVersionName(modelnum:integer) :ansistring;
-Function loadnet(filename:string):boolean;
-Function NetReSigma(y:integer):integer;
+   Nets : array[0..3] of  TNeuralNetWeights;
+   GlobalModel :integer;
+  
+function GetFullVersionName:ansistring;
+Function loadnet(name:shortstring;var CurrNet:TNeuralNetWeights):boolean;
+Function NetReSigma(CurrNet:PNeuralNet;y:integer):integer;
 Function ForwardPass(SideToMove:integer;var Pass:TForwardPass):integer;
 Procedure UpdAcc16(move:integer;var Board:Tboard;var Undo:Tundo;var OldPass:TForwardPass;var NewPass:TForwardPass);
 Procedure CopyAcc16(var OldPass:TForwardPass;var NewPass:TForwardPass);
@@ -120,25 +109,19 @@ Function GetWhiteFrameIndex(model:integer;var Board:TBoard):integer;
 Function GetBlackFrameIndex(model:integer;var Board:TBoard):integer;
 Procedure FillWhiteAcc16(model:integer;var Board:Tboard;var Pass:TForwardPass);
 Procedure FillBlackAcc16(model:integer;var Board:Tboard;var Pass:TForwardPass);
-Procedure AVX2_CopyAcc(Source,Dest : Pbyte); //7.59 for AVX2, 6.4 for AVX512
-Procedure speedtest;
-Procedure CheckBatch(filename : ansistring; batchsize : integer);
+Function ChooseNNIndex(var Board:Tboard):integer;
+
+
 implementation
 uses uThread;
 
-function GetFullVersionName(modelnum:integer) :ansistring;
+function GetFullVersionName:ansistring;
    begin
-     if modelnum=0
-      then Result:=VersionName+'_zeroblock'
-      else Result:=VersionName;
-     {$IFDEF AVX2}
-       Result:=Result+'_AVX2';
-       {$IFDEF pext}
-         Result:=Result+'_PEXT';
-       {$ENDIF pext}
-     {$ELSE AVX2}
-       Result:=Result+'_AVX512';
-     {$ENDIF AVX2}
+    Result:=VersionName;
+    Result:=Result+'_AVX2';
+    {$IFDEF pext}
+      Result:=Result+'_PEXT';
+    {$ENDIF pext}
    end;
 Function ReSigma(y:real):integer;
 // По значению вероятности [0..1] восстанавливает оценку позиции
@@ -147,12 +130,12 @@ begin
   if y>0.999 then y:=0.999;
   result:=round(-400*ln((1/y)-1));
 end;
-Function NetReSigma(y:integer):integer;
+Function NetReSigma(CurrNet:PNeuralNet;y:integer):integer;
 // Быстрый поиск значения оценки по сырому выходу из нейросети
 begin
   If y<0 then y:=0;
-  if y>Net.MaxSigma then y:=Net.MaxSigma;
-  result:=Net.Sigma[y];
+  if y>CurrNet.MaxSigma then y:=CurrNet.MaxSigma;
+  result:=CurrNet.Sigma[y];
 end;
 Function ModelFrameSize(model:integer):integer;
 var
@@ -161,10 +144,23 @@ begin
   res:=0;
   if model=0 then res:=ModelBlockSize else       // zero model
   if model=5 then res:=10*ModelBlockSize else    // K10-model
-  if model=6 then res:=16*ModelBlockSize;        // K16-model
+  if model=6 then res:=12*ModelBlockSize;        // K12-model
   Result:=res;
 end;
-
+Function ChooseNNIndex(var Board:Tboard):integer;
+var
+   AllPiesesBB: TBitBoard;
+   wpieses,bpieses,res:integer;
+begin
+  AllPiesesBB:=Board.Pieses[knight] or Board.Pieses[bishop] or Board.Pieses[rook] or Board.Pieses[queen];
+  wpieses:=BitCount(AllPiesesBB and Board.Occupancy[white]);
+  bpieses:=BitCount(AllPiesesBB and Board.Occupancy[black]);
+  if (wpieses<=1) and (bpieses<=1) then res:=0 else
+    if (wpieses<=2) and (bpieses<=2) then res:=1 else
+      if (wpieses<=4) and (bpieses<=4) then res:=2
+                                       else res:=3;
+  Result:=res;
+end;
 Procedure AVX2_RELU_ACC(Acc16,Permut,Dest : Pbyte); {$IFDEF FPC} nostackframe assembler;{$ENDIF} // 5,94c  на hidden1=512 (half=256), 11.97 for both
 //                      rcx(rdi),rdx(rsi),r8(rdx)
 // Получая на вход   аккумулятор за выбранный цвет (256 элементов int16) реализует RELU и  сжимает выход  до int8.Использует SIMD AVX2
@@ -201,22 +197,7 @@ asm
   // очищаем "верхний флаг"
   db 0c5h,0f8h,77h                       // AVX vzeroupper
 end;
-procedure slowFirstLayer(var Pass:TforwardPass);
-var
-   i,j:integer;
-   sums : integer;
-begin
-  for j:=0 to hidden2-1 do
-  begin
-   sums:=0;
-   for i:=0 to hidden1-1 do
-    begin
-      sums:=sums+Net.FirstLayer[j*hidden1+i]*Pass.Inputs8[i];
-    end;
-    Pass.TempFirst[j]:=sums;
-  end;
 
-end;
 Procedure AVX2_FirstLayer_mul(inputs8,weights,Dest,store : Pbyte); {$IFDEF FPC} nostackframe assembler;{$ENDIF}  //AVX2 - 56.74 for 512x8 ;AVX512 - 40.65 for 512x8
 //                             rcx(rdi), rdx(rsi), r8(rdx),r9(rcx)
 // Перемножаем матрицу [1xhidden1] элементов  int8 на матрицу [hidden1xhidden2] елементов int8 используя SIMD AVX2
@@ -233,7 +214,6 @@ asm
      mov rcx,rdi
   {$endif}
 
-    {$IFDEF AVX2}
  // сохраняем все регистры, необходимые для корректной работы
      mov r10,r9
      db 0c4h,0c1h,07eh,07fh,2ah       // AVX  vmovdqu [r10],ymm5
@@ -364,258 +344,10 @@ asm
      db 0c4h,041h,07eh,06fh,0ah       // AVX  ymm9,vmovdqu [r10]
      add r10,32
      db 0c4h,041h,07eh,06fh,12h       // AVX  ymm9,vmovdqu [r10]
-   {$ELSE AVX2}
-     // Единичный столбец
-    lea r10,[rip+ones512]
-    db 62h,041h,7eh,48h,6fh,02h                   // AVX512 vmovdqu32 zmm24,[r10]
-    // Кешируем аккумулятор в 8 регистрах
-    db 62h,0e1h,7eh,48h,6fh,01h                   // AVX512 vmovdqu32 zmm16,[rcx]
-    add rcx,64
-    db 62h,0e1h,7eh,48h,6fh,09h                   // AVX512 vmovdqu32 zmm17,[rcx]
-    add rcx,64
-    db 62h,0e1h,7eh,48h,6fh,11h                   // AVX512 vmovdqu32 zmm18,[rcx]
-    add rcx,64
-    db 62h,0e1h,7eh,48h,6fh,19h                   // AVX512 vmovdqu32 zmm19,[rcx]
-    add rcx,64
-    db 62h,0e1h,7eh,48h,6fh,21h                   // AVX512 vmovdqu32 zmm20,[rcx]
-    add rcx,64
-    db 62h,0e1h,7eh,48h,6fh,29h                   // AVX512 vmovdqu32 zmm21,[rcx]
-    add rcx,64
-    db 62h,0e1h,7eh,48h,6fh,31h                   // AVX512 vmovdqu32 zmm22,[rcx]
-    add rcx,64
-    db 62h,0e1h,7eh,48h,6fh,39h                   // AVX512 vmovdqu32 zmm23,[rcx]
-    mov r10, cycle9
-@@3:
-    // Обнуляем накопители столбцов
-    db 62h,0f1h,0f5h,48h,0efh,0c9h                 // AVX512 vpxorq zmm1,zmm1,zmm1
-    db 62h,0f1h,0edh,48h,0efh,0d2h                 // AVX512 vpxorq zmm2,zmm2,zmm2
-    db 62h,0f1h,0e5h,48h,0efh,0dbh                 // AVX512 vpxorq zmm3,zmm3,zmm3
-    db 62h,0f1h,0ddh,48h,0efh,0e4h                 // AVX512 vpxorq zmm4,zmm4,zmm4
-    // По кусочкам проходим по всей строке
-    // 1 столбец
-    db 62h,0f1h,7eh,48h,6fh,02h                   // AVX512 vmovdqu32 zmm0,[rdx]
-    db 62h,0f2h,7dh,40h,04h,0c0h                  // AVX512 vpmaddubsw zmm0,zmm16,zmm0
-    //умножаем полученные столбцы на единичный и приводим к int32
-    db 62h,091h,7dh,48h,0f5h,0c0h                 // AVX512 vpmaddwd zmm0,zmm0,zmm24
-    db 62h,0f1h,7dh,48h,0feh,0c9h                 // AVX512 vpaddd zmm1,zmm0,zmm1
-    add rdx,64
-    db 62h,0f1h,7eh,48h,6fh,02h                   // AVX512 vmovdqu32 zmm0,[rdx]
-    db 62h,0f2h,75h,40h,04h,0c0h                   // AVX512 vpmaddubsw zmm0,zmm17,zmm0
-    //умножаем полученные столбцы на единичный и приводим к int32
-    db 62h,091h,7dh,48h,0f5h,0c0h                 // AVX512 vpmaddwd zmm0,zmm0,zmm24
-    db 62h,0f1h,7dh,48h,0feh,0c9h                   // AVX512 vpaddd zmm1,zmm0,zmm1
-    add rdx,64
-    db 62h,0f1h,7eh,48h,6fh,02h                   // AVX512 vmovdqu32 zmm0,[rdx]
-    db 62h,0f2h,6dh,40h,04h,0c0h                   // AVX512 vpmaddubsw zmm0,zmm18,zmm0
-    //умножаем полученные столбцы на единичный и приводим к int32
-    db 62h,091h,7dh,48h,0f5h,0c0h                 // AVX512 vpmaddwd zmm0,zmm0,zmm24
-    db 62h,0f1h,7dh,48h,0feh,0c9h                   // AVX512 vpaddd zmm1,zmm0,zmm1
-    add rdx,64
-    db 62h,0f1h,7eh,48h,6fh,02h                   // AVX512 vmovdqu32 zmm0,[rdx]
-    db 62h,0f2h,65h,40h,04h,0c0h                   // AVX512 vpmaddubsw zmm0,zmm19,zmm0
-    //умножаем полученные столбцы на единичный и приводим к int32
-    db 62h,091h,7dh,48h,0f5h,0c0h                 // AVX512 vpmaddwd zmm0,zmm0,zmm24
-    db 62h,0f1h,7dh,48h,0feh,0c9h                   // AVX512 vpaddd zmm1,zmm0,zmm1
-    add rdx,64
-    db 62h,0f1h,7eh,48h,6fh,02h                   // AVX512 vmovdqu32 zmm0,[rdx]
-    db 62h,0f2h,5dh,40h,04h,0c0h                   // AVX512 vpmaddubsw zmm0,zmm20,zmm0
-    //умножаем полученные столбцы на единичный и приводим к int32
-    db 62h,091h,7dh,48h,0f5h,0c0h                 // AVX512 vpmaddwd zmm0,zmm0,zmm24
-    db 62h,0f1h,7dh,48h,0feh,0c9h                   // AVX512 vpaddd zmm1,zmm0,zmm1
-    add rdx,64
-    db 62h,0f1h,7eh,48h,6fh,02h                   // AVX512 vmovdqu32 zmm0,[rdx]
-    db 62h,0f2h,55h,40h,04h,0c0h                   // AVX512 vpmaddubsw zmm0,zmm21,zmm0
-    //умножаем полученные столбцы на единичный и приводим к int32
-    db 62h,091h,7dh,48h,0f5h,0c0h                 // AVX512 vpmaddwd zmm0,zmm0,zmm24
-    db 62h,0f1h,7dh,48h,0feh,0c9h                   // AVX512 vpaddd zmm1,zmm0,zmm1
-    add rdx,64
-    db 62h,0f1h,7eh,48h,6fh,02h                   // AVX512 vmovdqu32 zmm0,[rdx]
-    db 62h,0f2h,4dh,40h,04h,0c0h                   // AVX512 vpmaddubsw zmm0,zmm22,zmm0
-    //умножаем полученные столбцы на единичный и приводим к int32
-    db 62h,091h,7dh,48h,0f5h,0c0h                 // AVX512 vpmaddwd zmm0,zmm0,zmm24
-    db 62h,0f1h,7dh,48h,0feh,0c9h                   // AVX512 vpaddd zmm1,zmm0,zmm1
-    add rdx,64
-    db 62h,0f1h,7eh,48h,6fh,02h                   // AVX512 vmovdqu32 zmm0,[rdx]
-    db 62h,0f2h,45h,40h,04h,0c0h                   // AVX512 vpmaddubsw zmm0,zmm23,zmm0
-    //умножаем полученные столбцы на единичный и приводим к int32
-    db 62h,091h,7dh,48h,0f5h,0c0h                 // AVX512 vpmaddwd zmm0,zmm0,zmm24
-    db 62h,0f1h,7dh,48h,0feh,0c9h                   // AVX512 vpaddd zmm1,zmm0,zmm1
-    add rdx,64
-    // 2 столбец
-    db 62h,0f1h,7eh,48h,6fh,02h                   // AVX512 vmovdqu32 zmm0,[rdx]
-    db 62h,0f2h,7dh,40h,04h,0c0h                   // AVX512 vpmaddubsw zmm0,zmm16,zmm0
-    //умножаем полученные столбцы на единичный и приводим к int32
-    db 62h,091h,7dh,48h,0f5h,0c0h                 // AVX512 vpmaddwd zmm0,zmm0,zmm24
-    db 62h,0f1h,7dh,48h,0feh,0d2h                   // AVX512 vpaddd zmm2,zmm0,zmm2
-    add rdx,64
-    db 62h,0f1h,7eh,48h,6fh,02h                   // AVX512 vmovdqu32 zmm0,[rdx]
-    db 62h,0f2h,75h,40h,04h,0c0h                   // AVX512 vpmaddubsw zmm0,zmm17,zmm0
-    //умножаем полученные столбцы на единичный и приводим к int32
-    db 62h,091h,7dh,48h,0f5h,0c0h                 // AVX512 vpmaddwd zmm0,zmm0,zmm24
-    db 62h,0f1h,7dh,48h,0feh,0d2h                   // AVX512 vpaddd zmm2,zmm0,zmm2
-    add rdx,64
-    db 62h,0f1h,7eh,48h,6fh,02h                   // AVX512 vmovdqu32 zmm0,[rdx]
-    db 62h,0f2h,6dh,40h,04h,0c0h                   // AVX512 vpmaddubsw zmm0,zmm18,zmm0
-    //умножаем полученные столбцы на единичный и приводим к int32
-    db 62h,091h,7dh,48h,0f5h,0c0h                 // AVX512 vpmaddwd zmm0,zmm0,zmm24
-    db 62h,0f1h,7dh,48h,0feh,0d2h                   // AVX512 vpaddd zmm2,zmm0,zmm2
-    add rdx,64
-    db 62h,0f1h,7eh,48h,6fh,02h                   // AVX512 vmovdqu32 zmm0,[rdx]
-    db 62h,0f2h,65h,40h,04h,0c0h                   // AVX512 vpmaddubsw zmm0,zmm19,zmm0
-    //умножаем полученные столбцы на единичный и приводим к int32
-    db 62h,091h,7dh,48h,0f5h,0c0h                 // AVX512 vpmaddwd zmm0,zmm0,zmm24
-    db 62h,0f1h,7dh,48h,0feh,0d2h                   // AVX512 vpaddd zmm2,zmm0,zmm2
-    add rdx,64
-    db 62h,0f1h,7eh,48h,6fh,02h                   // AVX512 vmovdqu32 zmm0,[rdx]
-    db 62h,0f2h,5dh,40h,04h,0c0h                   // AVX512 vpmaddubsw zmm0,zmm20,zmm0
-    //умножаем полученные столбцы на единичный и приводим к int32
-    db 62h,091h,7dh,48h,0f5h,0c0h                 // AVX512 vpmaddwd zmm0,zmm0,zmm24
-    db 62h,0f1h,7dh,48h,0feh,0d2h                   // AVX512 vpaddd zmm2,zmm0,zmm2
-    add rdx,64
-    db 62h,0f1h,7eh,48h,6fh,02h                   // AVX512 vmovdqu32 zmm0,[rdx]
-    db 62h,0f2h,55h,40h,04h,0c0h                   // AVX512 vpmaddubsw zmm0,zmm21,zmm0
-    //умножаем полученные столбцы на единичный и приводим к int32
-    db 62h,091h,7dh,48h,0f5h,0c0h                 // AVX512 vpmaddwd zmm0,zmm0,zmm24
-    db 62h,0f1h,7dh,48h,0feh,0d2h                   // AVX512 vpaddd zmm2,zmm0,zmm2
-    add rdx,64
-    db 62h,0f1h,7eh,48h,6fh,02h                   // AVX512 vmovdqu32 zmm0,[rdx]
-    db 62h,0f2h,4dh,40h,04h,0c0h                   // AVX512 vpmaddubsw zmm0,zmm22,zmm0
-    //умножаем полученные столбцы на единичный и приводим к int32
-    db 62h,091h,7dh,48h,0f5h,0c0h                 // AVX512 vpmaddwd zmm0,zmm0,zmm24
-    db 62h,0f1h,7dh,48h,0feh,0d2h                   // AVX512 vpaddd zmm2,zmm0,zmm2
-    add rdx,64
-    db 62h,0f1h,7eh,48h,6fh,02h                   // AVX512 vmovdqu32 zmm0,[rdx]
-    db 62h,0f2h,45h,40h,04h,0c0h                   // AVX512 vpmaddubsw zmm0,zmm23,zmm0
-    //умножаем полученные столбцы на единичный и приводим к int32
-    db 62h,091h,7dh,48h,0f5h,0c0h                 // AVX512 vpmaddwd zmm0,zmm0,zmm24
-    db 62h,0f1h,7dh,48h,0feh,0d2h                   // AVX512 vpaddd zmm2,zmm0,zmm2
-    add rdx,64
-    // 3 столбец
-    db 62h,0f1h,7eh,48h,6fh,02h                   // AVX512 vmovdqu32 zmm0,[rdx]
-    db 62h,0f2h,7dh,40h,04h,0c0h                   // AVX512 vpmaddubsw zmm0,zmm16,zmm0
-    //умножаем полученные столбцы на единичный и приводим к int32
-    db 62h,091h,7dh,48h,0f5h,0c0h                 // AVX512 vpmaddwd zmm0,zmm0,zmm24
-    db 62h,0f1h,7dh,48h,0feh,0dbh                   // AVX512 vpaddd zmm3,zmm0,zmm3
-    add rdx,64
-    db 62h,0f1h,7eh,48h,6fh,02h                   // AVX512 vmovdqu32 zmm0,[rdx]
-    db 62h,0f2h,75h,40h,04h,0c0h                   // AVX512 vpmaddubsw zmm0,zmm17,zmm0
-    //умножаем полученные столбцы на единичный и приводим к int32
-    db 62h,091h,7dh,48h,0f5h,0c0h                 // AVX512 vpmaddwd zmm0,zmm0,zmm24
-    db 62h,0f1h,7dh,48h,0feh,0dbh                   // AVX512 vpaddd zmm3,zmm0,zmm3
-    add rdx,64
-    db 62h,0f1h,7eh,48h,6fh,02h                   // AVX512 vmovdqu32 zmm0,[rdx]
-    db 62h,0f2h,6dh,40h,04h,0c0h                   // AVX512 vpmaddubsw zmm0,zmm18,zmm0
-    //умножаем полученные столбцы на единичный и приводим к int32
-    db 62h,091h,7dh,48h,0f5h,0c0h                 // AVX512 vpmaddwd zmm0,zmm0,zmm24
-    db 62h,0f1h,7dh,48h,0feh,0dbh                   // AVX512 vpaddd zmm3,zmm0,zmm3
-    add rdx,64
-    db 62h,0f1h,7eh,48h,6fh,02h                   // AVX512 vmovdqu32 zmm0,[rdx]
-    db 62h,0f2h,65h,40h,04h,0c0h                   // AVX512 vpmaddubsw zmm0,zmm19,zmm0
-    //умножаем полученные столбцы на единичный и приводим к int32
-    db 62h,091h,7dh,48h,0f5h,0c0h                 // AVX512 vpmaddwd zmm0,zmm0,zmm24
-    db 62h,0f1h,7dh,48h,0feh,0dbh                   // AVX512 vpaddd zmm3,zmm0,zmm3
-    add rdx,64
-    db 62h,0f1h,7eh,48h,6fh,02h                   // AVX512 vmovdqu32 zmm0,[rdx]
-    db 62h,0f2h,5dh,40h,04h,0c0h                   // AVX512 vpmaddubsw zmm0,zmm20,zmm0
-    //умножаем полученные столбцы на единичный и приводим к int32
-    db 62h,091h,7dh,48h,0f5h,0c0h                 // AVX512 vpmaddwd zmm0,zmm0,zmm24
-    db 62h,0f1h,7dh,48h,0feh,0dbh                   // AVX512 vpaddd zmm3,zmm0,zmm3
-    add rdx,64
-    db 62h,0f1h,7eh,48h,6fh,02h                   // AVX512 vmovdqu32 zmm0,[rdx]
-    db 62h,0f2h,55h,40h,04h,0c0h                   // AVX512 vpmaddubsw zmm0,zmm21,zmm0
-    //умножаем полученные столбцы на единичный и приводим к int32
-    db 62h,091h,7dh,48h,0f5h,0c0h                 // AVX512 vpmaddwd zmm0,zmm0,zmm24
-    db 62h,0f1h,7dh,48h,0feh,0dbh                   // AVX512 vpaddd zmm3,zmm0,zmm3
-    add rdx,64
-    db 62h,0f1h,7eh,48h,6fh,02h                   // AVX512 vmovdqu32 zmm0,[rdx]
-    db 62h,0f2h,4dh,40h,04h,0c0h                   // AVX512 vpmaddubsw zmm0,zmm22,zmm0
-    //умножаем полученные столбцы на единичный и приводим к int32
-    db 62h,091h,7dh,48h,0f5h,0c0h                 // AVX512 vpmaddwd zmm0,zmm0,zmm24
-    db 62h,0f1h,7dh,48h,0feh,0dbh                   // AVX512 vpaddd zmm3,zmm0,zmm3
-    add rdx,64
-    db 62h,0f1h,7eh,48h,6fh,02h                   // AVX512 vmovdqu32 zmm0,[rdx]
-    db 62h,0f2h,45h,40h,04h,0c0h                   // AVX512 vpmaddubsw zmm0,zmm23,zmm0
-    //умножаем полученные столбцы на единичный и приводим к int32
-    db 62h,091h,7dh,48h,0f5h,0c0h                 // AVX512 vpmaddwd zmm0,zmm0,zmm24
-    db 62h,0f1h,7dh,48h,0feh,0dbh                   // AVX512 vpaddd zmm3,zmm0,zmm3
-    add rdx,64
-    // 4 столбец
-    db 62h,0f1h,7eh,48h,6fh,02h                   // AVX512 vmovdqu32 zmm0,[rdx]
-    db 62h,0f2h,7dh,40h,04h,0c0h                   // AVX512 vpmaddubsw zmm0,zmm16,zmm0
-    //умножаем полученные столбцы на единичный и приводим к int32
-    db 62h,091h,7dh,48h,0f5h,0c0h                 // AVX512 vpmaddwd zmm0,zmm0,zmm24
-    db 62h,0f1h,7dh,48h,0feh,0e4h                   // AVX512 vpaddd zmm4,zmm0,zmm4
-    add rdx,64
-    db 62h,0f1h,7eh,48h,6fh,02h                   // AVX512 vmovdqu32 zmm0,[rdx]
-    db 62h,0f2h,75h,40h,04h,0c0h                   // AVX512 vpmaddubsw zmm0,zmm17,zmm0
-    //умножаем полученные столбцы на единичный и приводим к int32
-    db 62h,091h,7dh,48h,0f5h,0c0h                 // AVX512 vpmaddwd zmm0,zmm0,zmm24
-    db 62h,0f1h,7dh,48h,0feh,0e4h                   // AVX512 vpaddd zmm4,zmm0,zmm4
-    add rdx,64
-    db 62h,0f1h,7eh,48h,6fh,02h                   // AVX512 vmovdqu32 zmm0,[rdx]
-    db 62h,0f2h,6dh,40h,04h,0c0h                   // AVX512 vpmaddubsw zmm0,zmm18,zmm0
-    //умножаем полученные столбцы на единичный и приводим к int32
-    db 62h,091h,7dh,48h,0f5h,0c0h                 // AVX512 vpmaddwd zmm0,zmm0,zmm24
-    db 62h,0f1h,7dh,48h,0feh,0e4h                   // AVX512 vpaddd zmm4,zmm0,zmm4
-    add rdx,64
-    db 62h,0f1h,7eh,48h,6fh,02h                   // AVX512 vmovdqu32 zmm0,[rdx]
-    db 62h,0f2h,65h,40h,04h,0c0h                   // AVX512 vpmaddubsw zmm0,zmm19,zmm0
-    //умножаем полученные столбцы на единичный и приводим к int32
-    db 62h,091h,7dh,48h,0f5h,0c0h                 // AVX512 vpmaddwd zmm0,zmm0,zmm24
-    db 62h,0f1h,7dh,48h,0feh,0e4h                   // AVX512 vpaddd zmm4,zmm0,zmm4
-    add rdx,64
-    db 62h,0f1h,7eh,48h,6fh,02h                   // AVX512 vmovdqu32 zmm0,[rdx]
-    db 62h,0f2h,5dh,40h,04h,0c0h                   // AVX512 vpmaddubsw zmm0,zmm20,zmm0
-    //умножаем полученные столбцы на единичный и приводим к int32
-    db 62h,091h,7dh,48h,0f5h,0c0h                 // AVX512 vpmaddwd zmm0,zmm0,zmm24
-    db 62h,0f1h,7dh,48h,0feh,0e4h                   // AVX512 vpaddd zmm4,zmm0,zmm4
-    add rdx,64
-    db 62h,0f1h,7eh,48h,6fh,02h                   // AVX512 vmovdqu32 zmm0,[rdx]
-    db 62h,0f2h,55h,40h,04h,0c0h                   // AVX512 vpmaddubsw zmm0,zmm21,zmm0
-    //умножаем полученные столбцы на единичный и приводим к int32
-    db 62h,091h,7dh,48h,0f5h,0c0h                 // AVX512 vpmaddwd zmm0,zmm0,zmm24
-    db 62h,0f1h,7dh,48h,0feh,0e4h                   // AVX512 vpaddd zmm4,zmm0,zmm4
-    add rdx,64
-    db 62h,0f1h,7eh,48h,6fh,02h                   // AVX512 vmovdqu32 zmm0,[rdx]
-    db 62h,0f2h,4dh,40h,04h,0c0h                   // AVX512 vpmaddubsw zmm0,zmm22,zmm0
-    //умножаем полученные столбцы на единичный и приводим к int32
-    db 62h,091h,7dh,48h,0f5h,0c0h                 // AVX512 vpmaddwd zmm0,zmm0,zmm24
-    db 62h,0f1h,7dh,48h,0feh,0e4h                   // AVX512 vpaddd zmm4,zmm0,zmm4
-    add rdx,64
-    db 62h,0f1h,7eh,48h,6fh,02h                   // AVX512 vmovdqu32 zmm0,[rdx]
-    db 62h,0f2h,45h,40h,04h,0c0h                   // AVX512 vpmaddubsw zmm0,zmm23,zmm0
-    //умножаем полученные столбцы на единичный и приводим к int32
-    db 62h,091h,7dh,48h,0f5h,0c0h                 // AVX512 vpmaddwd zmm0,zmm0,zmm24
-    db 62h,0f1h,7dh,48h,0feh,0e4h                   // AVX512 vpaddd zmm4,zmm0,zmm4
-    add rdx,64
-    // Складываем пополам и приводим к 256 бит
-    db 62h,0f3h,7dh,48h,3bh,0c8h,01h               // AVX512 vextracti32x8 ymm0,zmm1,1
-    db 0c5h,0fdh,0feh,0c9h                          // AVX5 vpaddd ymm1,ymm0,ymm1
-    db 62h,0f3h,7dh,48h,3bh,0d0h,01h               // AVX512 vextracti32x8 ymm0,zmm2,1
-    db 0c5h,0fdh,0feh,0d2h                          // AVX5 vpaddd ymm2,ymm0,ymm2
-    db 62h,0f3h,7dh,48h,3bh,0d8h,01h               // AVX512 vextracti32x8 ymm0,zmm3,1
-    db 0c5h,0fdh,0feh,0dbh                          // AVX5 vpaddd ymm3,ymm0,ymm3
-    db 62h,0f3h,7dh,48h,3bh,0e0h,01h               // AVX512 vextracti32x8 ymm0,zmm4,1
-    db 0c5h,0fdh,0feh,0e4h                          // AVX5 vpaddd ymm4,ymm0,ymm4
-    // Мы получили векторы для 4-х столбцов. Теперь горизонтально суммируем их, чтобы в итоге получить 4 32-разрядных результата
-    db 0c4h,0e2h,75h,02h,0cah          // AVX2 vphaddd ymm1,ymm1,ymm2
-    db 0c4h,0e2h,65h,02h,0dch          // AVX2 vphaddd ymm3,ymm3,ymm4
-    db 0c4h,0e2h,75h,02h,0cbh          // AVX2 vphaddd ymm1,ymm1,ymm3
-    // Полученный вектор складываем пополам
-    db 0c4h,0e3h,7dh,39h,0cah,01       // AVX2 vextracti128 xmm2,ymm1,0x1
-    db 0c5h,0f5h,0feh,0cah             // AVX2 vpaddd ymm1,ymm1,ymm2
-     // сохраняем результат для очередных четырех обработанных столбцов (младшая часть)
-    db 0c4h,0c1h,7eh,7fh,08h           // AVX vmovdqu [r8],ymm1
-    add r8,16
-    // крутим цикл
-    sub r10,1
-    jnz @@3
-  {$ENDIF AVX2}
      // очищаем "верхний флаг"
      db 0c5h,0f8h,77h                 // AVX vzeroupper
 end;
-
-Procedure AVX2_RELU_2(Summs,Biases,limits,Res : Pbyte);{$IFDEF FPC} nostackframe assembler;{$ENDIF}  // 1.34 for 8;
+Procedure AVX2_RELU_2_64(Summs,Biases,limits,Res : Pbyte);{$IFDEF FPC} nostackframe assembler;{$ENDIF}  // 1.34 for 8;
 //                     rcx(rdi),rdx(rsi),r8(rdx),r9(rcx)
 // Получая на вход строку из hidden2 выходов нейронов (int32)  + hidden2 биаса (int32) реализует RELU. Использует SIMD AVX2
 asm
@@ -639,7 +371,7 @@ asm
     db 0c5h,0feh,6fh,0Ah                    // AVX vmovdqu ymm1,[rdx]
     db 0c5h,0f5h,0feh,0c0h                  // AVX2 vpaddd ymm0,ymm1,ymm0
     // множитель квантования
-    db 0c5h,0fdh,72h,0e0h,step2             // AVX2 vpsraw ymm0,ymm0,step2
+    db 0c5h,0fdh,72h,0e0h,6                 // AVX2 vpsraw ymm0,ymm0,6      для 64
      // Делаем RELU c 0
     db 0c4h,0e2h,7dh,3dh,0c2h               // AVX2 vpmaxsd ymm0,ymm0,ymm2
     // Делаем Clipped_RELU
@@ -649,7 +381,108 @@ asm
     // очищаем "верхний флаг"
     db 0c5h,0f8h,77h                       // AVX vzeroupper
 end;
+Procedure AVX2_RELU_2_128(Summs,Biases,limits,Res : Pbyte);{$IFDEF FPC} nostackframe assembler;{$ENDIF}  // 1.34 for 8;
+//                     rcx(rdi),rdx(rsi),r8(rdx),r9(rcx)
+// Получая на вход строку из hidden2 выходов нейронов (int32)  + hidden2 биаса (int32) реализует RELU. Использует SIMD AVX2
+asm
+  {$IFNDEF FPC}
+  .noframe
+  {$ENDIF}
 
+  {$ifdef UNIX}
+     mov r9,rcx
+     mov r8,rdx
+     mov rdx,rsi
+     mov rcx,rdi
+  {$endif}
+    // Строка нулей
+    db 0c5h,0edh,0efh,0d2h                   // AVX2  vpxor ymm2,ymm2,ymm2
+    // Строка лимитов для RELU
+    db 0c4h,0c1h,07eh,06fh,18h              // AVX  vmovdqu ymm3,[r8]
+    //  8 int32 элементов
+    db 0c5h,0feh,6fh,01h                    // AVX vmovdqu ymm0,[rcx]
+    // суммируем с первыми 8 биасами
+    db 0c5h,0feh,6fh,0Ah                    // AVX vmovdqu ymm1,[rdx]
+    db 0c5h,0f5h,0feh,0c0h                  // AVX2 vpaddd ymm0,ymm1,ymm0
+    // множитель квантования
+    db 0c5h,0fdh,72h,0e0h,7                 // AVX2 vpsraw ymm0,ymm0,7      для 128
+     // Делаем RELU c 0
+    db 0c4h,0e2h,7dh,3dh,0c2h               // AVX2 vpmaxsd ymm0,ymm0,ymm2
+    // Делаем Clipped_RELU
+    db 0c4h,0e2h,7dh,39h,0c3h              // AVX2 vpminsd ymm0,ymm0,ymm3
+    // Сохраняем результат
+    db 0c4h,0c1h,7eh,7fh,01h               // AVX vmovdqu [r9],ymm0
+    // очищаем "верхний флаг"
+    db 0c5h,0f8h,77h                       // AVX vzeroupper
+end;
+Procedure AVX2_RELU_2_256(Summs,Biases,limits,Res : Pbyte);{$IFDEF FPC} nostackframe assembler;{$ENDIF}  // 1.34 for 8;
+//                     rcx(rdi),rdx(rsi),r8(rdx),r9(rcx)
+// Получая на вход строку из hidden2 выходов нейронов (int32)  + hidden2 биаса (int32) реализует RELU. Использует SIMD AVX2
+asm
+  {$IFNDEF FPC}
+  .noframe
+  {$ENDIF}
+
+  {$ifdef UNIX}
+     mov r9,rcx
+     mov r8,rdx
+     mov rdx,rsi
+     mov rcx,rdi
+  {$endif}
+    // Строка нулей
+    db 0c5h,0edh,0efh,0d2h                   // AVX2  vpxor ymm2,ymm2,ymm2
+    // Строка лимитов для RELU
+    db 0c4h,0c1h,07eh,06fh,18h              // AVX  vmovdqu ymm3,[r8]
+    //  8 int32 элементов
+    db 0c5h,0feh,6fh,01h                    // AVX vmovdqu ymm0,[rcx]
+    // суммируем с первыми 8 биасами
+    db 0c5h,0feh,6fh,0Ah                    // AVX vmovdqu ymm1,[rdx]
+    db 0c5h,0f5h,0feh,0c0h                  // AVX2 vpaddd ymm0,ymm1,ymm0
+    // множитель квантования
+    db 0c5h,0fdh,72h,0e0h,8                 // AVX2 vpsraw ymm0,ymm0,8      для 256
+     // Делаем RELU c 0
+    db 0c4h,0e2h,7dh,3dh,0c2h               // AVX2 vpmaxsd ymm0,ymm0,ymm2
+    // Делаем Clipped_RELU
+    db 0c4h,0e2h,7dh,39h,0c3h              // AVX2 vpminsd ymm0,ymm0,ymm3
+    // Сохраняем результат
+    db 0c4h,0c1h,7eh,7fh,01h               // AVX vmovdqu [r9],ymm0
+    // очищаем "верхний флаг"
+    db 0c5h,0f8h,77h                       // AVX vzeroupper
+end;
+Procedure AVX2_RELU_2_512(Summs,Biases,limits,Res : Pbyte);{$IFDEF FPC} nostackframe assembler;{$ENDIF}  // 1.34 for 8;
+//                     rcx(rdi),rdx(rsi),r8(rdx),r9(rcx)
+// Получая на вход строку из hidden2 выходов нейронов (int32)  + hidden2 биаса (int32) реализует RELU. Использует SIMD AVX2
+asm
+  {$IFNDEF FPC}
+  .noframe
+  {$ENDIF}
+
+  {$ifdef UNIX}
+     mov r9,rcx
+     mov r8,rdx
+     mov rdx,rsi
+     mov rcx,rdi
+  {$endif}
+    // Строка нулей
+    db 0c5h,0edh,0efh,0d2h                   // AVX2  vpxor ymm2,ymm2,ymm2
+    // Строка лимитов для RELU
+    db 0c4h,0c1h,07eh,06fh,18h              // AVX  vmovdqu ymm3,[r8]
+    //  8 int32 элементов
+    db 0c5h,0feh,6fh,01h                    // AVX vmovdqu ymm0,[rcx]
+    // суммируем с первыми 8 биасами
+    db 0c5h,0feh,6fh,0Ah                    // AVX vmovdqu ymm1,[rdx]
+    db 0c5h,0f5h,0feh,0c0h                  // AVX2 vpaddd ymm0,ymm1,ymm0
+    // множитель квантования
+    db 0c5h,0fdh,72h,0e0h,9                 // AVX2 vpsraw ymm0,ymm0,9      для 256
+     // Делаем RELU c 0
+    db 0c4h,0e2h,7dh,3dh,0c2h               // AVX2 vpmaxsd ymm0,ymm0,ymm2
+    // Делаем Clipped_RELU
+    db 0c4h,0e2h,7dh,39h,0c3h              // AVX2 vpminsd ymm0,ymm0,ymm3
+    // Сохраняем результат
+    db 0c4h,0c1h,7eh,7fh,01h               // AVX vmovdqu [r9],ymm0
+    // очищаем "верхний флаг"
+    db 0c5h,0f8h,77h                       // AVX vzeroupper
+end;
 Procedure AVX2_SecondLayer_Mul(inprow,Matrix,dest : Pbyte);{$IFDEF FPC} nostackframe assembler;{$ENDIF}  //6.3 for 8x8
 //                              rcx(rdi),rdx(rsi),r8(rdx)
 // Перемножает матрицу [1xhidden2] элемента  int32 на матрицу [hidden2xhidden3] элемента int32 используя SIMD AVX2
@@ -702,7 +535,7 @@ asm
      // очищаем "верхний флаг"
      db 0c5h,0f8h,77h                       // AVX vzeroupper
 end;
-Procedure AVX2_RELU_3(Summs,Biases,limits,Res : Pbyte);{$IFDEF FPC} nostackframe assembler;{$ENDIF}  // 1.34 for 8;
+Procedure AVX2_RELU_3_4096(Summs,Biases,limits,Res : Pbyte);{$IFDEF FPC} nostackframe assembler;{$ENDIF}  // 1.34 for 8;
 //                     rcx(rdi),rdx(rsi),r8(rdx),r9(rcx)
 // Получая на вход строку из hidden3 выходов нейронов (int32)  + hidden3 биаса (int32) реализует RELU. Использует SIMD AVX2
 asm
@@ -727,7 +560,42 @@ asm
     db 0c5h,0feh,6fh,0Ah                   // AVX vmovdqu ymm1,[rdx]
     db 0c5h,0f5h,0feh,0c0h                 // AVX2 vpaddd ymm0,ymm1,ymm0
     // множитель квантования
-    db 0c5h,0fdh,72h,0e0h,step3            // AVX2 vpsraw ymm0,ymm0,step3
+    db 0c5h,0fdh,72h,0e0h,12               // AVX2 vpsraw ymm0,ymm0,12  - для 4096
+     // Делаем RELU c 0
+    db 0c4h,0e2h,7dh,3dh,0c2h              // AVX2 vpmaxsd ymm0,ymm0,ymm2
+    // Делаем Clipped_RELU
+    db 0c4h,0e2h,7dh,39h,0c3h              // AVX2 vpminsd ymm0,ymm0,ymm3
+    // Сохраняем результат
+    db 0c4h,0c1h,7eh,7fh,01h               // AVX vmovdqu [r9],ymm0
+    // очищаем "верхний флаг"
+    db 0c5h,0f8h,77h                       // AVX vzeroupper
+end;
+Procedure AVX2_RELU_3_8192(Summs,Biases,limits,Res : Pbyte);{$IFDEF FPC} nostackframe assembler;{$ENDIF}  // 1.34 for 8;
+//                     rcx(rdi),rdx(rsi),r8(rdx),r9(rcx)
+// Получая на вход строку из hidden3 выходов нейронов (int32)  + hidden3 биаса (int32) реализует RELU. Использует SIMD AVX2
+asm
+  {$IFNDEF FPC}
+  .noframe
+  {$ENDIF}
+
+  {$ifdef UNIX}
+     mov r9,rcx
+     mov r8,rdx
+     mov rdx,rsi
+     mov rcx,rdi
+  {$endif}
+
+    // Строка нулей
+    db 0c5h,0edh,0efh,0d2h                 // AVX2  vpxor ymm2,ymm2,ymm2
+    // Строка лимитов для RELU
+    db 0c4h,0c1h,07eh,06fh,18h             // AVX  vmovdqu ymm3,[r8]
+    //  8 int32 элементов
+    db 0c5h,0feh,6fh,01h                   // AVX vmovdqu ymm0,[rcx]
+    // суммируем с первыми 8 биасами
+    db 0c5h,0feh,6fh,0Ah                   // AVX vmovdqu ymm1,[rdx]
+    db 0c5h,0f5h,0feh,0c0h                 // AVX2 vpaddd ymm0,ymm1,ymm0
+    // множитель квантования
+    db 0c5h,0fdh,72h,0e0h,13               // AVX2 vpsraw ymm0,ymm0,13  - для 8192
      // Делаем RELU c 0
     db 0c4h,0e2h,7dh,3dh,0c2h              // AVX2 vpmaxsd ymm0,ymm0,ymm2
     // Делаем Clipped_RELU
@@ -788,8 +656,6 @@ asm
      mov rdx,rsi
      mov rcx,rdi
   {$endif}
-
-  {$IFDEF AVX2}
     mov r10,cycle6                          // счетчик   AVX_16*cycle6=half
 @@1:
    // читаем строку источника (16 элементов int16)
@@ -804,21 +670,6 @@ asm
     jnz @@1
     // очищаем "верхний флаг"
     db 0c5h,0f8h,77h                       // AVX vzeroupper
-  {$ELSE AVX2}
-    mov r10,cycle7                        // счетчик   AVX512_16*cycle7=half
-@@2:
-    // читаем строку источника (32 элементов int16)
-    db 62h,0e1h,7eh,48h,6fh,01h           // AVX512 vmovdqu32 zmm16,[rcx]
-    // Сохраняем обновленные данные
-    db 62h,0e1h,7eh,48h,7fh,02h           // AVX512 vmovdqu32 [rdx],zmm16
-    // Следующие 32 int16 элементов
-    add rcx,64
-    add rdx,64
-    // Крутим цикл
-    sub r10,1
-    jnz @@2
-  {$ENDIF AVX2}
-
 end;
 Procedure AVX2_SetFeauture(Source,NetIndex,Dest : Pbyte);{$IFDEF FPC} nostackframe assembler;{$ENDIF}  // 8.64 for AVX2, 8.98 for AVX512
 //                          rcx(rdi),rdx(rsi),r8(rdx)
@@ -834,7 +685,6 @@ asm
      mov rcx,rdi
   {$endif}
 
-  {$IFDEF AVX2}
     mov r10,cycle6                          // счетчик   AVX_16*cycle6=half
 @@1:
    // читаем строку источника (16 элементов int16)
@@ -854,26 +704,6 @@ asm
     jnz @@1
     // очищаем "верхний флаг"
     db 0c5h,0f8h,77h                       // AVX vzeroupper
-  {$ELSE AVX2}
-    mov r10,cycle7                        // счетчик   AVX512_16*cycle7=half
-@@2:
-    // читаем строку источника (32 элементов int16)
-    db 62h,0e1h,7eh,48h,6fh,01h           // AVX512 vmovdqu32 zmm16,[rcx]
-    // читаем строку весов (32 элементов int16)
-    db 62h,0e1h,7eh,48h,6fh,0ah           // AVX512 vmovdqu32 zmm17,[rdx]
-    // Устанавливаем (складываем)
-    db 62h,0a1h,7dh,40h,0fdh,0c1h         // AVX512 vpaddw zmm16,zmm16,zmm17
-    // Сохраняем обновленные данные
-    db 62h,0c1h,7eh,48h,7fh,00h           // AVX512 vmovdqu32 [r8],zmm16
-    // Следующие 32 int16 элементов
-    add rcx,64
-    add rdx,64
-    add r8, 64
-    // Крутим цикл
-    sub r10,1
-    jnz @@2
-  {$ENDIF AVX2}
-
 end;
 
 Procedure AVX2_ReSetFeauture(Source,NetIndex,Dest : Pbyte);{$IFDEF FPC} nostackframe assembler;{$ENDIF} // 8.64 for AVX2, 7.25 for AVX512
@@ -890,7 +720,6 @@ asm
      mov rcx,rdi
   {$endif}
 
-  {$IFDEF AVX2}
     mov r10,cycle6                          // счетчик   AVX_16*cycle6=half
 @@1:
    // читаем строку источника (16 элементов int16)
@@ -910,25 +739,46 @@ asm
     jnz @@1
     // очищаем "верхний флаг"
     db 0c5h,0f8h,77h                       // AVX vzeroupper
-  {$ELSE AVX2}
-    mov r10,cycle7                        // счетчик   AVX512_16*cycle7=half
-@@2:
-    // читаем строку источника (32 элементов int16)
-    db 62h,0e1h,7eh,48h,6fh,01h           // AVX512 vmovdqu32 zmm16,[rcx]
-    // читаем строку весов (32 элементов int16)
-    db 62h,0e1h,7eh,48h,6fh,0ah           // AVX512 vmovdqu32 zmm17,[rdx]
-    // Устанавливаем (вычитаем)
-    db 62h,0a1h,7dh,40h,0f9h,0c1h         // AVX512 vpsubw zmm16,zmm16,zmm17
+end;
+Procedure AVX2_DBlReSetFeauture(Source,NetIndex1,NetIndex2,Dest : Pbyte);{$IFDEF FPC} nostackframe assembler;{$ENDIF} // 8.64 for AVX2, 7.25 for AVX512
+//                               rcx(rdi),rdx(rsi),r8(rdx),r9(rcx)
+// Обновляет (убирает 2 фичи)  int16 аккумулятора за 1 цвет. Сохраняет по адресу  DEST ( может совпадать с SOURCE)
+asm
+  {$IFNDEF FPC}
+  .noframe
+  {$ENDIF}
+
+  {$ifdef UNIX}
+     mov r9,rcx
+     mov r8,rdx
+     mov rdx,rsi
+     mov rcx,rdi
+  {$endif}
+
+    mov r10,cycle6                          // счетчик   AVX_16*cycle6=half
+@@1:
+   // читаем строку источника (16 элементов int16)
+    db 0c5h,0feh,6fh,01h                   // AVX vmovdqu ymm0,[rcx]
+   // читаем строку весов1 (16 элементов int16)
+    db 0c5h,0feh,6fh,0Ah                   // AVX vmovdqu ymm1,[rdx]
+    // читаем строку весов2 (16 элементов int16)
+    db 0c4h,0c1h,7eh,6fh,10h               // AVX vmovdqu ymm2,[r8]
+    // Устанавливаем (вычитаем)1
+    db 0c5h,0fdh,0f9h,0c1h                 // AVX2 vpsubw ymm0,ymm0,ymm1
+    // Устанавливаем (вычитаем)2
+    db 0c5h,0fdh,0f9h,0c2h                 // AVX2 vpsubw ymm0,ymm0,ymm2
     // Сохраняем обновленные данные
-    db 62h,0c1h,7eh,48h,7fh,00h           // AVX512 vmovdqu32 [r8],zmm16
-    // Следующие 32 int16 элементов
-    add rcx,64
-    add rdx,64
-    add r8, 64
+    db 0c4h,0c1h,7eh,7fh,01h               // AVX vmovdqu [r9],ymm0
+    // Следующие 16 int16 элементов
+    add rcx,32
+    add rdx,32
+    add r8, 32
+    add r9, 32
     // Крутим цикл
     sub r10,1
-    jnz @@2
-  {$ENDIF AVX2}
+    jnz @@1
+    // очищаем "верхний флаг"
+    db 0c5h,0f8h,77h                       // AVX vzeroupper
 end;
 Procedure AVX2_UpdFeauture(Source,NetIndexAdd,NetIndexSUB,Dest : Pbyte);{$IFDEF FPC} nostackframe assembler;{$ENDIF}   // 10.26 for AVX2, 8.76 for AVX512
 //                          rcx(rdi),rdx(rsi),r8(rdx),r9(rcx)
@@ -945,7 +795,6 @@ asm
      mov rcx,rdi
   {$endif}
 
-  {$IFDEF AVX2}
     mov r10,cycle6                          // счетчик   AVX_16*cycle6=half
 @@1:
    // читаем строку источника (16 элементов int16)
@@ -970,33 +819,119 @@ asm
     jnz @@1
     // очищаем "верхний флаг"
     db 0c5h,0f8h,77h                       // AVX vzeroupper
-  {$ELSE AVX2}
-    mov r10,cycle7                        // счетчик   AVX512_16*cycle7=half
-@@2:
-    // читаем строку источника (32 элементов int16)
-    db 62h,0e1h,7eh,48h,6fh,01h           // AVX512 vmovdqu32 zmm16,[rcx]
-    // читаем строку весов1 (32 элементов int16)
-    db 62h,0e1h,7eh,48h,6fh,0ah           // AVX512 vmovdqu32 zmm17,[rdx]
-    // читаем строку весов2 (32 элементов int16)
-    db 62h,0c1h,7eh,48h,6fh,10h           // AVX512 vmovdqu32 zmm18,[r8]
-    // Устанавливаем1 (складываем)
-    db 62h,0a1h,7dh,40h,0fdh,0c1h         // AVX512 vpaddw zmm16,zmm16,zmm17
-    // Устанавливаем2 (вычитаем)
-    db 62h,0a1h,7dh,40h,0f9h,0c2h         // AVX512 vpsubw zmm16,zmm16,zmm18
-    // Сохраняем обновленные данные
-    db 62h,0c1h,7eh,48h,7fh,01h           // AVX512 vmovdqu32 [r9],zmm16
-    // Следующие 32 int16 элементов
-    add rcx,64
-    add rdx,64
-    add r8, 64
-    add r9, 64
-    // Крутим цикл
-    sub r10,1
-    jnz @@2
-  {$ENDIF AVX2}
 end;
-Procedure AVX2_UpdBufFeauture(acc,cnt,Buf,store : Pbyte); {$IFDEF FPC} nostackframe assembler;{$ENDIF}
-//                             rcx(rdi),rdx(rsi),r8(rdx),r9(rcx)
+Procedure AVX2_UpdCaptureFeauture(Source,Buf,Dest : Pbyte);{$IFDEF FPC} nostackframe assembler;{$ENDIF}
+//                               rcx(rdi),rdx(rsi),r8(rdx)
+// Обновляет при взятии (добавляет + убирает фичи) половину int16 аккумулятора (за 1 цвет). Фичи хранятся в буфере. Сохраняет половинку аккумулятора по адресу  DEST ( может совпадать с SOURCE)
+asm
+   {$IFNDEF FPC}
+    .noframe
+    {$ENDIF}
+
+    {$ifdef UNIX}
+     mov r9,rcx
+     mov r8,rdx
+     mov rdx,rsi
+     mov rcx,rdi
+   {$endif}
+
+    // Выбираем фичи из буфера
+    mov rax,[rdx]                           // адрес фичи add
+    add rdx,8
+    mov r9,[rdx]                            // адрес фичи sub1
+    add rdx,8
+    mov r10,[rdx]                           // адрес фичи sub2
+    mov rdx,cycle6                          // счетчик   AVX_16*cycle6=half
+@@1:
+    // читаем строку источника (16 элементов int16)
+    db 0c5h,0feh,6fh,01h                   // AVX vmovdqu ymm0,[rcx]
+   // читаем строку весов1 (16 элементов int16)
+    db 0c5h,0feh,6fh,08h                   // AVX vmovdqu ymm1,[rax]
+    // читаем строку весов2 (16 элементов int16)
+    db 0c4h,0c1h,7eh,6fh,11h               // AVX vmovdqu ymm2,[r9]
+    // читаем строку весов3 (16 элементов int16)
+    db 0c4h,0c1h,7eh,6fh,1Ah               // AVX vmovdqu ymm3,[r10]
+    // Устанавливаем1  (складываем)
+    db 0c5h,0fdh,0fdh,0c1h                 // AVX2 vpaddw ymm0,ymm0,ymm1
+    // Устанавливаем2 (вычитаем)
+    db 0c5h,0fdh,0f9h,0c2h                 // AVX2 vpsubw ymm0,ymm0,ymm2
+    // Устанавливаем3 (вычитаем)
+    db 0c5h,0fdh,0f9h,0c3h                 // AVX2 vpsubw ymm0,ymm0,ymm3
+    // Сохраняем обновленные данные
+    db 0c4h,0c1h,7eh,7fh,00h               // AVX vmovdqu [r8],ymm0
+    // Следующие 16 int16 элементов
+    add rcx,32
+    add rax,32
+    add r8, 32
+    add r9, 32
+    add r10,32
+    // Крутим цикл
+    sub rdx,1
+    jnz @@1
+    // очищаем "верхний флаг"
+    db 0c5h,0f8h,77h                       // AVX vzeroupper
+end;
+
+Procedure AVX2_UpdCastleFeauture(Source,Buf,Dest : Pbyte);{$IFDEF FPC} nostackframe assembler;{$ENDIF}
+//                               rcx(rdi),rdx(rsi),r8(rdx)
+// Обновляет при взятии (добавляет + убирает фичи) половину int16 аккумулятора (за 1 цвет). Фичи хранятся в буфере. Сохраняет половинку аккумулятора по адресу  DEST ( может совпадать с SOURCE)
+asm
+   {$IFNDEF FPC}
+    .noframe
+    {$ENDIF}
+
+    {$ifdef UNIX}
+     mov r9,rcx
+     mov r8,rdx
+     mov rdx,rsi
+     mov rcx,rdi
+   {$endif}
+
+    // Выбираем фичи из буфера
+    mov rax,[rdx]                           // адрес фичи add
+    add rdx,8
+    mov r9,[rdx]                            // адрес фичи sub1
+    add rdx,8
+    mov r10,[rdx]                           // адрес фичи sub2
+    add rdx,8
+    mov r11,[rdx]                           // адрес фичи add2
+    mov rdx,cycle6                          // счетчик   AVX_16*cycle6=half
+@@1:
+    // читаем строку источника (16 элементов int16)
+    db 0c5h,0feh,6fh,01h                   // AVX vmovdqu ymm0,[rcx]
+   // читаем строку весов1 (16 элементов int16)
+    db 0c5h,0feh,6fh,08h                   // AVX vmovdqu ymm1,[rax]
+    // читаем строку весов2 (16 элементов int16)
+    db 0c4h,0c1h,7eh,6fh,11h               // AVX vmovdqu ymm2,[r9]
+    // читаем строку весов3 (16 элементов int16)
+    db 0c4h,0c1h,7eh,6fh,1Ah               // AVX vmovdqu ymm3,[r10]
+    // читаем строку весов4 (16 элементов int16)
+    db 0c4h,0c1h,7eh,6fh,23h               // AVX vmovdqu ymm4,[r11]
+    // Устанавливаем1  (складываем)
+    db 0c5h,0fdh,0fdh,0c1h                 // AVX2 vpaddw ymm0,ymm0,ymm1
+    // Устанавливаем2 (вычитаем)
+    db 0c5h,0fdh,0f9h,0c2h                 // AVX2 vpsubw ymm0,ymm0,ymm2
+    // Устанавливаем3 (вычитаем)
+    db 0c5h,0fdh,0f9h,0c3h                 // AVX2 vpsubw ymm0,ymm0,ymm3
+    // Устанавливаем4  (складываем)
+    db 0c5h,0fdh,0fdh,0c4h                 // AVX2 vpaddw ymm0,ymm0,ymm4
+    // Сохраняем обновленные данные
+    db 0c4h,0c1h,7eh,7fh,00h               // AVX vmovdqu [r8],ymm0
+    // Следующие 16 int16 элементов
+    add rcx,32
+    add rax,32
+    add r8, 32
+    add r9, 32
+    add r10,32
+    add r11,32
+    // Крутим цикл
+    sub rdx,1
+    jnz @@1
+    // очищаем "верхний флаг"
+    db 0c5h,0f8h,77h                       // AVX vzeroupper
+end;
+Procedure AVX2_UpdBufFeauture(acc,cnt,Buf,Flayer_Bias : Pbyte); {$IFDEF FPC} nostackframe assembler;{$ENDIF}
+//                           rcx(rdi),rdx(rsi),r8(rdx),r9(rcx)
 // Добавялет фичи в аккумулятор из списка
 asm
     {$IFNDEF FPC}
@@ -1010,9 +945,10 @@ asm
      mov rcx,rdi
    {$endif}
 
-    {$IFDEF AVX2}
+    push r8
     // сохраняем все регистры, необходимые для корректной работы Windows
-    mov r10,r9
+    mov r10,[r8]                           //  В нулевой ячейке - store adress
+    add r8,8                               //  1-я фича
     db 0c4h,0c1h,07eh,07fh,2ah             // AVX  vmovdqu [r10],ymm5
     add r10,32
     db 0c4h,0c1h,07eh,07fh,32h             // AVX  vmovdqu [r10],ymm6
@@ -1027,9 +963,9 @@ asm
     mov r12,0                              // первый кусочек имеет смещение 0
     mov r13,rcx
     mov r14,r8
-    lea rcx,[rip+net.Fbias];
+    mov rcx,r9;
 @@1:
-    // Кешируем часть аккумулятора в 8 регистрах
+    // Кешируем bias Flayer в 8 регистрах  (128 16-битных ячеек )
     db 0c5h,0feh,6fh,09h                   // AVX vmovdqu ymm1,[rcx]
     add rcx,32
     db 0c5h,0feh,6fh,11h                   // AVX vmovdqu ymm2,[rcx]
@@ -1103,14 +1039,15 @@ asm
     db 0c4h,041h,07eh,7fh,45h,00h          // AVX [r13],vmovdqu ymm8
     add r13,32
     mov r8,r14
-    add r12,256                            // смещение для следующего кусочка
+    add r12,256                            // смещение для следующего кусочка фичи
     sub r10,1
     jnz @@1
     // Восстанавливаем регистры
     pop r14
     pop r13
     pop r12
-    mov r10,r9
+    pop r8
+    mov r10,[r8]
     db 0c4h,0c1h,07eh,06fh,2ah             // AVX  ymm5,vmovdqu [r10]
     add r10,32
     db 0c4h,0c1h,07eh,06fh,32h             // AVX  ymm6,vmovdqu [r10]
@@ -1120,82 +1057,8 @@ asm
     db 0c4h,041h,07eh,06fh,02h             // AVX  ymm8,vmovdqu [r10]
     // очищаем "верхний флаг"
     db 0c5h,0f8h,77h                       // AVX vzeroupper
-    {$ELSE AVX2}
-    mov r11,rcx
-    lea rcx,[rip+net.Fbias]
-    // Кешируем аккумулятор в 8 регистрах
-    db 62h,0e1h,7eh,48h,6fh,01h                   // AVX vmovdqu32 zmm16,[rcx]
-    add rcx,64
-    db 62h,0e1h,7eh,48h,6fh,09h                   // AVX vmovdqu32 zmm17,[rcx]
-    add rcx,64
-    db 62h,0e1h,7eh,48h,6fh,11h                   // AVX vmovdqu32 zmm18,[rcx]
-    add rcx,64
-    db 62h,0e1h,7eh,48h,6fh,19h                   // AVX vmovdqu32 zmm19,[rcx]
-    add rcx,64
-    db 62h,0e1h,7eh,48h,6fh,21h                   // AVX vmovdqu32 zmm20,[rcx]
-    add rcx,64
-    db 62h,0e1h,7eh,48h,6fh,29h                   // AVX vmovdqu32 zmm21,[rcx]
-    add rcx,64
-    db 62h,0e1h,7eh,48h,6fh,31h                   // AVX vmovdqu32 zmm22,[rcx]
-    add rcx,64
-    db 62h,0e1h,7eh,48h,6fh,39h                   // AVX vmovdqu32 zmm23,[rcx]
-    // Прогоняем все фичи из буфера
-    mov r10,[rdx]
-@@3:
-    mov rax,[r8]
-    // 1 регистр
-    db 62h,61h,7eh,48h,6fh,00h                    // AVX vmovdqu32 ymm24,[rax]
-    db 62h,0a1h,3dh,40h,0fdh,0c0h                 // AVX2 vpaddw zmm16,zmm24,zmm16
-    add rax,64
-    // 2 регистр
-    db 62h,61h,7eh,48h,6fh,00h                    // AVX vmovdqu32 ymm24,[rax]
-    db 62h,0a1h,3dh,40h,0fdh,0c9h                 // AVX2 vpaddw zmm17,zmm24,zmm17
-    add rax,64
-    // 3 регистр
-    db 62h,61h,7eh,48h,6fh,00h                    // AVX vmovdqu32 ymm24,[rax]
-    db 62h,0a1h,3dh,40h,0fdh,0d2h                 // AVX2 vpaddw zmm18,zmm24,zmm18
-    add rax,64
-    // 4 регистр
-    db 62h,61h,7eh,48h,6fh,00h                    // AVX vmovdqu32 ymm24,[rax]
-    db 62h,0a1h,3dh,40h,0fdh,0dbh                 // AVX2 vpaddw zmm19,zmm24,zmm19
-    add rax,64
-    // 5 регистр
-    db 62h,61h,7eh,48h,6fh,00h                    // AVX vmovdqu32 ymm24,[rax]
-    db 62h,0a1h,3dh,40h,0fdh,0e4h                 // AVX2 vpaddw zmm20,zmm24,zmm20
-    add rax,64
-    // 6 регистр
-    db 62h,61h,7eh,48h,6fh,00h                    // AVX vmovdqu32 ymm24,[rax]
-    db 62h,0a1h,3dh,40h,0fdh,0edh                 // AVX2 vpaddw zmm21,zmm24,zmm21
-    add rax,64
-    // 7 регистр
-    db 62h,61h,7eh,48h,6fh,00h                    // AVX vmovdqu32 ymm24,[rax]
-    db 62h,0a1h,3dh,40h,0fdh,0f6h                 // AVX2 vpaddw zmm22,zmm24,zmm22
-    add rax,64
-    // 8 регистр
-    db 62h,61h,7eh,48h,6fh,00h                    // AVX vmovdqu32 ymm24,[rax]
-    db 62h,0a1h,3dh,40h,0fdh,0ffh                 // AVX2 vpaddw zmm23,zmm24,zmm23
-    add r8,8                                      // следующая фича
-    sub r10,1
-    jnz @@3
-    // сохраняем обработанный  аккумулятор
-    db 62h,0c1h,7eh,48h,7fh,03h                   // AVX vmovdqu32 [r11],zmm16
-    add r11,64
-    db 62h,0c1h,7eh,48h,7fh,0bh                   // AVX vmovdqu32 [r11],zmm17
-    add r11,64
-    db 62h,0c1h,7eh,48h,7fh,13h                   // AVX vmovdqu32 [r11],zmm18
-    add r11,64
-    db 62h,0c1h,7eh,48h,7fh,1bh                   // AVX vmovdqu32 [r11],zmm19
-    add r11,64
-    db 62h,0c1h,7eh,48h,7fh,23h                   // AVX vmovdqu32 [r11],zmm20
-    add r11,64
-    db 62h,0c1h,7eh,48h,7fh,2bh                   // AVX vmovdqu32 [r11],zmm21
-    add r11,64
-    db 62h,0c1h,7eh,48h,7fh,33h                   // AVX vmovdqu32 [r11],zmm22
-    add r11,64
-    db 62h,0c1h,7eh,48h,7fh,3bh                   // AVX vmovdqu32 [r11],zmm23
-    {$ENDIF AVX2}
 end;
- 
+
 
 Function ForwardPass(SideToMove:integer;var Pass:TForwardPass):integer;
 // Проход по нейросети. На входе загруженная сеть, очередь хода и структура аккумулятора, на выходе - Оценка позции
@@ -1204,24 +1067,30 @@ begin
   AVX2_RELU_ACC(@Pass.Acc16[SideToMove],@permut1,@Pass.Inputs8);
   AVX2_RELU_ACC(@Pass.Acc16[SideToMove xor 1],@permut1,@Pass.Inputs8[half]);
   //1
-  AVX2_FirstLayer_Mul(@Pass.Inputs8,@Net.FirstLayer,@Pass.TempFirst,@Pass.store);
-  AVX2_RELU_2(@Pass.TempFirst,@Net.biasFirst,@RELUlimit,@Pass.RELUFirst);
+  AVX2_FirstLayer_Mul(@Pass.Inputs8,@Pass.Net.FirstLayer,@Pass.TempFirst,@Pass.store);
+  case Pass.Net.w1 of
+    64 : AVX2_RELU_2_64 (@Pass.TempFirst,@Pass.Net.biasFirst,@RELUlimit,@Pass.RELUFirst);
+   128 : AVX2_RELU_2_128(@Pass.TempFirst,@Pass.Net.biasFirst,@RELUlimit,@Pass.RELUFirst);
+   256 : AVX2_RELU_2_256(@Pass.TempFirst,@Pass.Net.biasFirst,@RELUlimit,@Pass.RELUFirst);
+   512 : AVX2_RELU_2_512(@Pass.TempFirst,@Pass.Net.biasFirst,@RELUlimit,@Pass.RELUFirst);
+  end;
   //2
-  AVX2_SecondLayer_Mul(@Pass.RELUFirst,@Net.SecondLayer,@Pass.TempSecond);
-  AVX2_RELU_3(@Pass.TempSecond,@Net.biasSecond,@RELUlimit,@Pass.RELUSecond);
+  AVX2_SecondLayer_Mul(@Pass.RELUFirst,@Pass.Net.SecondLayer,@Pass.TempSecond);
+  if Pass.Net.w2=4096
+    then AVX2_RELU_3_4096(@Pass.TempSecond,@Pass.Net.biasSecond,@RELUlimit,@Pass.RELUSecond)
+    else AVX2_RELU_3_8192(@Pass.TempSecond,@Pass.Net.biasSecond,@RELUlimit,@Pass.RELUSecond);
   // output
-  Result:=AVX2_NNOut(@Pass.RELUSecond,@Net.outlayer,@Ones512,@Net.outbias);
+  Result:=NetResigma(Pass.Net,AVX2_NNOut(@Pass.RELUSecond,@Pass.Net.outlayer,@Ones512,@Pass.Net.outbias));
 end;
 
-Function loadnet(filename:string):boolean;
+Function loadnet(name:shortstring;var CurrNet:TNeuralNetWeights):boolean;
 var
   res,size,i,j : integer;
   ver,w   : int16;
   f: TResourceStream;
- // f   :TFileStream;
 begin
   // Открываем файл и проверяем верисю нейросети
-  f := TResourceStream.Create(HInstance, 'MYDATA', RT_RCDATA);
+  f := TResourceStream.Create(HInstance,name,RT_RCDATA);
   w:=0;ver:=0;
   Result:=false;
   res:=f.Read(ver,2); // 16-бит целочисленное
@@ -1236,31 +1105,32 @@ begin
      exit;
     end;
   // Считываем константу scale_act - она зависит от процесса обучения и может от версии к версии меняться.
-  Net.scale_act:=0;
+  CurrNet.scale_act:=0;
   res:=f.Read(w,2);  // 16 бит целочисленное  = scale_act*100
   if res<>2 then
     begin
       Writeln('Cant read a scale_act byte!');
       exit;
     end;
-  Net.scale_act:=w/100; // может быть и дробным
+  CurrNet.scale_act:=w/100; // может быть и дробным
   // Считываем константу scale_out - она зависит от процесса обучения и может от версии к версии меняться.
-  Net.scale_out:=0;
+  CurrNet.scale_out:=0;
   res:=f.Read(w,2);  // 16 бит целочисленное
   if res<>2 then
     begin
       Writeln('Cant read a scale_out byte!');
       exit;
     end;
-  Net.scale_out:=w;
+  CurrNet.scale_out:=w;
   // Считываем номер модели нейросети
-   res:=f.Read(Net.model,2);
+   res:=f.Read(CurrNet.model,2);
    if res<>2 then
     begin
      Writeln('Cant read a model number!');
      exit;
     end;
-  Net.ModelSize:=ModelFrameSize(Net.model);
+  CurrNet.ModelSize:=ModelFrameSize(CurrNet.model);
+  GlobalModel:=CurrNet.model;
   // Считываем константу w1 - она зависит от процесса обучения и может от версии к версии меняться.
   res:=f.Read(w,2);  // 16 бит целочисленное
   if res<>2 then
@@ -1268,12 +1138,7 @@ begin
       Writeln('Cant read a w1 byte!');
       exit;
     end;
-  if w<>1 shl step2 then
-    begin
-      writeln('Wrong constant for w1: ',w,' instead of ',1 shl step2);
-      exit;
-    end;
-  Net.w1:=w;
+  CurrNet.w1:=w;
    // Считываем константу w2 - она зависит от процесса обучения и может от версии к версии меняться.
   res:=f.Read(w,2);  // 16 бит целочисленное
   if res<>2 then
@@ -1281,14 +1146,9 @@ begin
       Writeln('Cant read a w2 byte!');
       exit;
     end;
-  if w<>1 shl step3 then
-    begin
-      writeln('Wrong constant for w2: ',w,' instead of ',1 shl step3);
-      exit;
-    end;
-  Net.w2:=w;
+  CurrNet.w2:=w;
   // Вычисляем размер модели и считываем сеть в память
-  size:=ModelFrameSize(Net.model);
+  size:=ModelFrameSize(CurrNet.model);
   if size=0 then
     begin
       Writeln('Unknown model!');
@@ -1296,7 +1156,7 @@ begin
     end;
   size:=size*half*2; // Размер считываемых байтов весов Flayer (int16=2 байта)
   // Считываем Flayer weights int16
-  res:=f.Read(Net.Flayer,size);
+  res:=f.Read(CurrNet.Flayer,size);
   if res<>size then
     begin
      Writeln('Cant read Flayer weights!');
@@ -1304,68 +1164,68 @@ begin
     end;
 
   // Считываем FirstLayer weights int8
-  res:=f.Read(Net.FirstLayer,hidden1*hidden2);
+  res:=f.Read(CurrNet.FirstLayer,hidden1*hidden2);
   if res<>hidden1*hidden2 then
     begin
      Writeln('Cant read a FirstLayer weights!');
      exit;
     end;
   // Считываем SecondLayer weights integer
-  res:=f.Read(Net.SecondLayer,hidden2*hidden3*4); // int32=4 байта
+  res:=f.Read(CurrNet.SecondLayer,hidden2*hidden3*4); // int32=4 байта
   if res<>hidden2*hidden3*4 then
     begin
      Writeln('Cant read a SecondLayer weights!');
      exit;
     end;
   // Считываем OutLayer weights integer
-  res:=f.Read(Net.outlayer,hidden3*4); // int32=4 байта
+  res:=f.Read(CurrNet.outlayer,hidden3*4); // int32=4 байта
   if res<>hidden3*4 then
     begin
      Writeln('Cant read a OutLayer weights!');
      exit;
     end;
   // Считываем Flayer biases int16
-  res:=f.Read(Net.Fbias,half*2); // (int16=2 байта)
+  res:=f.Read(CurrNet.Fbias,half*2); // (int16=2 байта)
   if res<>half*2 then
     begin
      Writeln('Cant read a Flayer biases!');
      exit;
     end;
   // Считываем FirstLayer biases int32
-  res:=f.Read(Net.biasFirst,4*hidden2);
+  res:=f.Read(CurrNet.biasFirst,4*hidden2);
   if res<>4*hidden2 then
     begin
      Writeln('Cant read a FirstLayer biases!');
      exit;
     end;
   // Считываем SecondLayer biases int32
-  res:=f.Read(Net.biasSecond,4*hidden3);
+  res:=f.Read(CurrNet.biasSecond,4*hidden3);
   if res<>4*hidden3 then
     begin
      Writeln('Cant read a SecondLayer biases!');
      exit;
     end;
   // Считываем OutLayer biases int32
-  res:=f.Read(Net.outbias,4);
+  res:=f.Read(CurrNet.outbias,4);
   if res<>4 then
     begin
      Writeln('Cant read a OutLayer biases!');
      exit;
     end;
   // Заполняем таблицу сигм для быстрого их потом вычисления
-  j:=round(Net.scale_act*Net.scale_out);
-  Setlength(Net.Sigma,0);
-  Setlength(Net.Sigma,j+1);
-  Net.MaxSigma:=j;
+  j:=round(CurrNet.scale_act*CurrNet.scale_out);
+  Setlength(CurrNet.Sigma,0);
+  Setlength(CurrNet.Sigma,j+1);
+  CurrNet.MaxSigma:=j;
   for i:=0 to j do
-      Net.Sigma[i]:=ReSigma((i/Net.scale_out)/Net.scale_act);
+      CurrNet.Sigma[i]:=ReSigma((i/CurrNet.scale_out)/CurrNet.scale_act);
   f.Free;
-  writeln('NET Version : ',ver);
-  {writeln('Scale_act = ',Net.scale_act:6:2);
-  writeln('w1 = ',Net.w1);
-  writeln('w2 = ',Net.w2);
-  writeln('Scale_out = ',Net.scale_out);
-  writeln('Model : ',Net.model);}
+  {writeln('NET Version : ',ver);
+  writeln('Scale_act = ',CurrNet.scale_act:6:2);
+  writeln('w1 = ',CurrNet.w1);
+  writeln('w2 = ',CurrNet.w2);
+  writeln('Scale_out = ',CurrNet.scale_out);
+  writeln('Model : ',CurrNet.model);}
   Result:=True;
 end;
 
@@ -1375,7 +1235,7 @@ begin
   Result:=PieseBlock[Piese]+sq;
 end;
 
-Procedure SetPiesesWhiteAcc(WhiteFrameStartIndex:integer;Piese:integer;var Board:TBoard;var buf:TBuf;var cnt:int64);
+Procedure SetPiesesWhiteAcc(WhiteFrameStartIndex:integer;Piese:integer;var Board:TBoard;var buf:TBuf;var cnt:int64;CurrNet:PNeuralNet);
 // Устанавливает фичи фигур выбранного типа (любого  цвета) в белый акумулятор. На входе - начальный адрес белого фрейма в который устанавливаются фигуры
 var
   Temp : int64;
@@ -1391,10 +1251,10 @@ begin
         else p:=-Piese;
       Whiteindex:=(WhiteFrameStartIndex+GetBlockIndex(P,sq))*half;
       inc(cnt);
-      buf[cnt]:=@Net.Flayer[WhiteIndex];
+      buf[cnt]:=@CurrNet.Flayer[WhiteIndex];
     end;
 end;
-Procedure SetPiesesBlackAcc(BlackFrameStartIndex:integer;Piese:integer;var Board:TBoard;var buf:TBuf;var cnt:int64);
+Procedure SetPiesesBlackAcc(BlackFrameStartIndex:integer;Piese:integer;var Board:TBoard;var buf:TBuf;var cnt:int64;CurrNet:PNeuralNet);
 // Устанавливает фичи фигур выбранного типа (любого  цвета) в черный акумулятор. На входе - начальный адрес черного фрейма в который устанавливаются фигуры
 var
   Temp : int64;
@@ -1410,7 +1270,7 @@ begin
         else p:=-Piese;
       Blackindex:=(BlackFrameStartIndex+GetBlockIndex(-P,sq xor 56))*half;
       inc(cnt);
-      buf[cnt]:=@Net.Flayer[BlackIndex];
+      buf[cnt]:=@CurrNet.Flayer[BlackIndex];
     end;
 end;
 Function GetWhiteFrameIndex(model:integer;var Board:TBoard):integer;
@@ -1420,7 +1280,7 @@ var
 begin
   res:=0;                                                 // Zero
   if model=5 then res:=K10Block[Board.KingSq[white]] else // K10 Model
-  if model=6 then res:=K16Block[Board.KingSq[white]] ;    // K16 Model
+  if model=6 then res:=K12Block[Board.KingSq[white]] ;    // K12 Model
   Result:=res;
 end;
 Function GetBlackFrameIndex(model:integer;var Board:TBoard):integer;
@@ -1430,104 +1290,125 @@ var
 begin
   res:=0;                                                        // Zero
   if model=5 then res:=K10Block[Board.KingSq[black] xor 56] else // K10 Model
-  if model=6 then res:=K16Block[Board.KingSq[black] xor 56];     // K16 Model
+  if model=6 then res:=K12Block[Board.KingSq[black] xor 56];     // K12 Model
   Result:=res;
 end;
 Procedure FillWhiteAcc16(model:integer;var Board:Tboard;var Pass:TForwardPass);
 // Заполняет структуру белого аккумулятора  по позиции на доске
 var
-  WhiteFrameStartIndex : integer;
-  cnt : int64;
+  WhiteFrameStartIndex,NetIndex : integer;
+  cnt : int64;   // Чтобы поместиться полностью в регистр
   cr : Tbuf;
+  CurrNet:PNeuralNet;
 begin
+  // Блок выбора нужной нейросети
+  NetIndex:=ChooseNNIndex(Board);
+  CurrNet:=@Nets[NetIndex];
+  Pass.Net:=CurrNet;
   WhiteFrameStartIndex:=GetWhiteFrameIndex(model,Board);
+  cr[0]:=@Pass.store;
   // Устанавливаем королей
-  cr[1]:=@Net.Flayer[(WhiteFrameStartIndex+GetBlockIndex(King,Board.KingSq[white]))*half];
-  cr[2]:=@Net.Flayer[(WhiteFrameStartIndex+GetBlockIndex(-King,Board.KingSq[black]))*half];
+  cr[1]:=@CurrNet.Flayer[(WhiteFrameStartIndex+GetBlockIndex(King,Board.KingSq[white]))*half];
+  cr[2]:=@CurrNet.Flayer[(WhiteFrameStartIndex+GetBlockIndex(-King,Board.KingSq[black]))*half];
   cnt:=2;
   //  Теперь устанавливаем фигуры
-  SetPiesesWhiteAcc(WhiteFrameStartIndex,Queen,Board,cr,cnt);
-  SetPiesesWhiteAcc(WhiteFrameStartIndex,Rook,Board,cr,cnt);
-  SetPiesesWhiteAcc(WhiteFrameStartIndex,Bishop,Board,cr,cnt);
-  SetPiesesWhiteAcc(WhiteFrameStartIndex,Knight,Board,cr,cnt);
-  SetPiesesWhiteAcc(WhiteFrameStartIndex,Pawn,Board,cr,cnt);
+  SetPiesesWhiteAcc(WhiteFrameStartIndex,Queen,Board,cr,cnt,CurrNet);
+  SetPiesesWhiteAcc(WhiteFrameStartIndex,Rook,Board,cr,cnt,CurrNet);
+  SetPiesesWhiteAcc(WhiteFrameStartIndex,Bishop,Board,cr,cnt,CurrNet);
+  SetPiesesWhiteAcc(WhiteFrameStartIndex,Knight,Board,cr,cnt,CurrNet);
+  SetPiesesWhiteAcc(WhiteFrameStartIndex,Pawn,Board,cr,cnt,CurrNet);
   // Устанавливаем рокировки
   If (Board.CastleRights and 1)<>0 then
     begin
       inc(cnt);
-      cr[cnt]:=@Net.Flayer[(WhiteFrameStartIndex+WShortCastle)*half];
+      cr[cnt]:=@CurrNet.Flayer[(WhiteFrameStartIndex+WShortCastle)*half];
     end;
   If (Board.CastleRights and 2)<>0 then
     begin
       inc(cnt);
-      cr[cnt]:=@Net.Flayer[(WhiteFrameStartIndex+WLongCastle)*half];
+      cr[cnt]:=@CurrNet.Flayer[(WhiteFrameStartIndex+WLongCastle)*half];
     end;
   If (Board.CastleRights and 4)<>0 then
     begin
       inc(cnt);
-      cr[cnt]:=@Net.Flayer[(WhiteFrameStartIndex+BShortCastle)*half];
+      cr[cnt]:=@CurrNet.Flayer[(WhiteFrameStartIndex+BShortCastle)*half];
     end;
   If (Board.CastleRights and 8)<>0 then
     begin
       inc(cnt);
-      cr[cnt]:=@Net.Flayer[(WhiteFrameStartIndex+BlongCastle)*half];
+      cr[cnt]:=@CurrNet.Flayer[(WhiteFrameStartIndex+BlongCastle)*half];
     end;
-  AVX2_UpdBufFeauture(@Pass.Acc16[white],@cnt,@cr,@Pass.store);
+  AVX2_UpdBufFeauture(@Pass.Acc16[white],@cnt,@cr,@CurrNet.Fbias);
 end;
 Procedure FillBlackAcc16(model:integer;var Board:Tboard;var Pass:TForwardPass);
 // Заполняет структуру черного аккумулятора  по позиции на доске
 var
-  BlackFrameStartIndex : integer;
+  BlackFrameStartIndex,NetIndex : integer;
   cnt : int64;
   cr : Tbuf;
+  CurrNet:PNeuralNet;
 begin
+  // Блок выбора нужной нейросети
+  NetIndex:=ChooseNNIndex(Board);
+  CurrNet:=@Nets[NetIndex];
+  Pass.Net:=CurrNet;
   BlackFrameStartIndex:=GetBlackFrameIndex(model,Board);
+  cr[0]:=@Pass.store;
   // Устанавливаем королей
-  cr[1]:=@Net.Flayer[(BlackFrameStartIndex+GetBlockIndex(-King,(Board.KingSq[white] xor 56)))*half];
-  cr[2]:=@Net.Flayer[(BlackFrameStartIndex+GetBlockIndex(King,(Board.KingSq[black] xor 56)))*half];
+  cr[1]:=@CurrNet.Flayer[(BlackFrameStartIndex+GetBlockIndex(-King,(Board.KingSq[white] xor 56)))*half];
+  cr[2]:=@CurrNet.Flayer[(BlackFrameStartIndex+GetBlockIndex(King,(Board.KingSq[black] xor 56)))*half];
   cnt:=2;
   //  Теперь устанавливаем фигуры
-  SetPiesesBlackAcc(BlackFrameStartIndex,Queen,Board,cr,cnt);
-  SetPiesesBlackAcc(BlackFrameStartIndex,Rook,Board,cr,cnt);
-  SetPiesesBlackAcc(BlackFrameStartIndex,Bishop,Board,cr,cnt);
-  SetPiesesBlackAcc(BlackFrameStartIndex,Knight,Board,cr,cnt);
-  SetPiesesBlackAcc(BlackFrameStartIndex,Pawn,Board,cr,cnt);
+  SetPiesesBlackAcc(BlackFrameStartIndex,Queen,Board,cr,cnt,CurrNet);
+  SetPiesesBlackAcc(BlackFrameStartIndex,Rook,Board,cr,cnt,CurrNet);
+  SetPiesesBlackAcc(BlackFrameStartIndex,Bishop,Board,cr,cnt,CurrNet);
+  SetPiesesBlackAcc(BlackFrameStartIndex,Knight,Board,cr,cnt,CurrNet);
+  SetPiesesBlackAcc(BlackFrameStartIndex,Pawn,Board,cr,cnt,CurrNet);
    //Устанавливаем рокировки
   If (Board.CastleRights and 1)<>0 then
     begin
       inc(cnt);
-      cr[cnt]:=@Net.Flayer[(BlackFrameStartIndex+BShortCastle)*half];
+      cr[cnt]:=@CurrNet.Flayer[(BlackFrameStartIndex+BShortCastle)*half];
     end;
   If (Board.CastleRights and 2)<>0 then
     begin
       inc(cnt);
-      cr[cnt]:=@Net.Flayer[(BlackFrameStartIndex+BLongCastle)*half];
+      cr[cnt]:=@CurrNet.Flayer[(BlackFrameStartIndex+BLongCastle)*half];
     end;
   If (Board.CastleRights and 4)<>0 then
     begin
       inc(cnt);
-      cr[cnt]:=@Net.Flayer[(BlackFrameStartIndex+WShortCastle)*half];
+      cr[cnt]:=@CurrNet.Flayer[(BlackFrameStartIndex+WShortCastle)*half];
     end;
   If (Board.CastleRights and 8)<>0 then
     begin
       inc(cnt);
-      cr[cnt]:=@Net.Flayer[(BlackFrameStartIndex+WlongCastle)*half];
+      cr[cnt]:=@CurrNet.Flayer[(BlackFrameStartIndex+WlongCastle)*half];
     end;
-  AVX2_UpdBufFeauture(@Pass.Acc16[black],@cnt,@cr,@Pass.store);
+  AVX2_UpdBufFeauture(@Pass.Acc16[black],@cnt,@cr,@CurrNet.Fbias);
 end;
 
 Procedure CopyAcc16(var OldPass:TForwardPass;var NewPass:TForwardPass);
 begin
   AVX2_CopyAcc(@OldPass.Acc16[white],@NewPass.Acc16[white]);
   AVX2_CopyAcc(@OldPass.Acc16[black],@NewPass.Acc16[black]);
+  NewPass.Net:=OldPass.Net;
 end;
 
 Procedure UpdAcc16(move:integer;var Board:Tboard;var Undo:Tundo;var OldPass:TForwardPass;var NewPass:TForwardPass);
 // Обновляем аккумуляторы. Единая процедура для обновления обоих аккумуляторов.
 var
-   Piese,FromPiese,from,dest,capsq,rookfrom,rookdest,myrook,stm,WhiteFrameStartIndex,BlackFrameStartIndex : integer;
-   AddwhiteIndex,RemwhiteIndex,AddblackIndex,RemblackIndex : integer;
+   Piese,FromPiese,from,dest,capsq,rookfrom,rookdest,myrook,stm,WhiteFrameStartIndex,BlackFrameStartIndex,NetIndex,cnt : integer;
+   cr:Tbuf4;
 begin
+  NetIndex:=ChooseNNIndex(Board);
+  if (NetIndex<>Undo.NetIndex) then
+    begin
+      FillWhiteAcc16(Globalmodel,Board,NewPass);
+      FillBlackAcc16(Globalmodel,Board,NewPass);
+      exit;
+    end;
+  NewPass.Net:=@Nets[NetIndex];
   from:=move and 63;
   dest:=(move shr 6) and 63;
   Piese:=Board.Pos[dest];       // Процедура должна вызывать ПОСЛЕ MakeMove
@@ -1539,15 +1420,14 @@ begin
         then FromPiese:=Pawn
         else FromPiese:=-Pawn;
     end else FromPiese:=Piese;
+  
   // Обновляем белый аккумулятор
-  WhiteFrameStartIndex:=GetWhiteFrameIndex(Net.model,Board);
-  If WhiteFrameStartIndex<>Undo.WFrame  then FillWhiteAcc16(Net.model,Board,NewPass) else     // Пересчитываем весь аккумулятор с нуля если изменился индекс фрейма
+  WhiteFrameStartIndex:=GetWhiteFrameIndex(Globalmodel,Board);
+  If (WhiteFrameStartIndex<>Undo.WFrame) then FillWhiteAcc16(Globalmodel,Board,NewPass) else     // Пересчитываем весь аккумулятор с нуля если изменился индекс фрейма
     begin
       // Переставляем ходившую фигуру
-      AddWhiteIndex:=(WhiteFrameStartIndex+GetBlockIndex(Piese,dest))*half;
-      RemWhiteIndex:=(WhiteFrameStartIndex+GetBlockIndex(Frompiese,from))*half;
-      // Для первого апдейта в виде источника  берем предыдущий аккумулятор
-      AVX2_UPdFeauture(@OldPass.Acc16[white],@Net.Flayer[AddWhiteindex],@Net.Flayer[REMWhiteindex],@NewPass.Acc16[white]);
+      cr[0]:=@OldPass.Net.Flayer[(WhiteFrameStartIndex+GetBlockIndex(Piese,dest))*half];
+      cr[1]:=@OldPass.Net.Flayer[(WhiteFrameStartIndex+GetBlockIndex(Frompiese,from))*half];
       // Если была рокировка, то делаем второй виртуальных ход - перемещаем ладью
       if Undo.isCastle then
         begin
@@ -1561,36 +1441,62 @@ begin
              rookfrom:=rookdest-3;
             end;
           Myrook:=Board.Pos[rookdest];
-          AddWhiteIndex:=(WhiteFrameStartIndex+GetBlockIndex(MyRook,rookdest))*half;
-          RemWhiteIndex:=(WhiteFrameStartIndex+GetBlockIndex(MyRook,rookfrom))*half;
-          AVX2_UPdFeauture(@NewPass.Acc16[white],@Net.Flayer[AddWhiteindex],@Net.Flayer[REMWhiteindex],@NewPass.Acc16[white]);
+          cr[3]:=@OldPass.Net.Flayer[(WhiteFrameStartIndex+GetBlockIndex(MyRook,rookdest))*half];
+          cr[2]:=@OldPass.Net.Flayer[(WhiteFrameStartIndex+GetBlockIndex(MyRook,rookfrom))*half];
+          AVX2_UPdCastleFeauture(@OldPass.Acc16[white],@cr,@NewPass.Acc16[white]);
         end else
       // Если было взятие (в том числе на проходе) - убираем побитую фигуру
       if ((move and CaptureFlag)<>0) then
         begin
           capsq:=dest;
           If Undo.isEnnPass then capsq:=capsq-PawnPush[stm];
-          RemWhiteIndex:=(WhiteFrameStartIndex+GetBlockIndex(Board.CapturedPiese,capsq))*half;
-          AVX2_ReSetFeauture(@NewPass.Acc16[white],@Net.Flayer[RemWhiteIndex],@NewPass.Acc16[white]);
-        end;
+          cr[2]:=@OldPass.Net.Flayer[(WhiteFrameStartIndex+GetBlockIndex(Board.CapturedPiese,capsq))*half];
+          AVX2_UpdCaptureFeauture(@OldPass.Acc16[white],@cr,@NewPass.Acc16[white]);
+        end else AVX2_UPdFeauture(@OldPass.Acc16[white],cr[0],cr[1],@NewPass.Acc16[white]);
       // Если в результате хода поменялись права на рокировку (какая-то из сторон потеряла их) - обновляем
       if Undo.CastleRights<>Board.CastleRights then
         begin
-          if (Undo.CastleRights and 1)<>(Board.CastleRights and 1) then AVX2_ReSetFeauture(@NewPass.Acc16[white],@Net.Flayer[(WhiteFrameStartIndex+WShortCastle)*half],@NewPass.Acc16[white]);
-          if (Undo.CastleRights and 2)<>(Board.CastleRights and 2) then AVX2_ReSetFeauture(@NewPass.Acc16[white],@Net.Flayer[(WhiteFrameStartIndex+WLongCastle)*half],@NewPass.Acc16[white]);
-          if (Undo.CastleRights and 4)<>(Board.CastleRights and 4) then AVX2_ReSetFeauture(@NewPass.Acc16[white],@Net.Flayer[(WhiteFrameStartIndex+BShortCastle)*half],@NewPass.Acc16[white]);
-          if (Undo.CastleRights and 8)<>(Board.CastleRights and 8) then AVX2_ReSetFeauture(@NewPass.Acc16[white],@Net.Flayer[(WhiteFrameStartIndex+BLongCastle)*half] ,@NewPass.Acc16[white]);
+          cnt:=0;
+          if (Undo.CastleRights and 1)<>(Board.CastleRights and 1) then
+            begin
+              cr[cnt]:=@NewPass.Net.Flayer[(WhiteFrameStartIndex+WShortCastle)*half];
+              inc(cnt);
+            end;
+          if (Undo.CastleRights and 2)<>(Board.CastleRights and 2) then
+            begin
+              cr[cnt]:=@NewPass.Net.Flayer[(WhiteFrameStartIndex+WLongCastle)*half];
+              inc(cnt);
+            end;
+          if (Undo.CastleRights and 4)<>(Board.CastleRights and 4) then
+            begin
+             cr[cnt]:=@NewPass.Net.Flayer[(WhiteFrameStartIndex+BShortCastle)*half];
+             inc(cnt);
+            end;
+          if (Undo.CastleRights and 8)<>(Board.CastleRights and 8) then
+            begin
+             cr[cnt]:=@NewPass.Net.Flayer[(WhiteFrameStartIndex+BLongCastle)*half];
+             inc(cnt);
+            end;
+          if cnt=1 then AVX2_ReSetFeauture(@NewPass.Acc16[white],cr[0],@NewPass.Acc16[white]) else
+          if cnt=2 then AVX2_DBLReSetFeauture(@NewPass.Acc16[white],cr[0],cr[1],@NewPass.Acc16[white]) else
+          if cnt=3 then begin
+                          AVX2_DBLReSetFeauture(@NewPass.Acc16[white],cr[0],cr[1],@NewPass.Acc16[white]);
+                          AVX2_ReSetFeauture(@NewPass.Acc16[white],cr[2],@NewPass.Acc16[white])
+                        end
+                   else begin
+                          AVX2_DBLReSetFeauture(@NewPass.Acc16[white],cr[0],cr[1],@NewPass.Acc16[white]);
+                          AVX2_DBLReSetFeauture(@NewPass.Acc16[white],cr[2],cr[3],@NewPass.Acc16[white]);
+                        end;
+
         end;
     end;
 // Обновляем черный аккумулятор
-  BlackFrameStartIndex:=GetBlackFrameIndex(Net.model,Board);
-  If BlackFrameStartIndex<>Undo.BFrame then FillBlackAcc16(Net.model,Board,NewPass) else     // Пересчитываем весь аккумулятор с нуля если изменился индекс фрейма
+  BlackFrameStartIndex:=GetBlackFrameIndex(Globalmodel,Board);
+  If (BlackFrameStartIndex<>Undo.BFrame)then FillBlackAcc16(Globalmodel,Board,NewPass) else     // Пересчитываем весь аккумулятор с нуля если изменился индекс фрейма
     begin
       // Переставляем ходившую фигуру
-      AddBlackIndex:=(BlackFrameStartIndex+GetBlockIndex(-Piese,dest xor 56))*half;
-      RemBlackIndex:=(BlackFrameStartIndex+GetBlockIndex(-Frompiese,from xor 56))*half;
-      // Для первого апдейта  в виже источника  берем предыдущий аккумулятор
-      AVX2_UPdFeauture(@OldPass.Acc16[black],@Net.Flayer[AddBlackindex],@Net.Flayer[REMBlackindex],@NewPass.Acc16[black]);
+      cr[0]:=@OldPass.Net.Flayer[(BlackFrameStartIndex+GetBlockIndex(-Piese,dest xor 56))*half];
+      cr[1]:=@OldPass.Net.Flayer[(BlackFrameStartIndex+GetBlockIndex(-Frompiese,from xor 56))*half];
       // Если была рокировка, то делаем второй виртуальных ход - перемещаем ладью
       if Undo.isCastle then
         begin
@@ -1604,141 +1510,53 @@ begin
              rookfrom:=rookdest-3;
             end;
           MyRook:=Board.Pos[rookdest];
-          AddBlackIndex:=(BlackFrameStartIndex+GetBlockIndex(-MyRook,rookdest xor 56))*half;
-          RemBlackIndex:=(BlackFrameStartIndex+GetBlockIndex(-MyRook,rookfrom xor 56))*half;
-          AVX2_UPdFeauture(@NewPass.Acc16[black],@Net.Flayer[AddBlackindex],@Net.Flayer[REMBlackindex],@NewPass.Acc16[black]);
+          cr[3]:=@OldPass.Net.Flayer[(BlackFrameStartIndex+GetBlockIndex(-MyRook,rookdest xor 56))*half];
+          cr[2]:=@OldPass.Net.Flayer[(BlackFrameStartIndex+GetBlockIndex(-MyRook,rookfrom xor 56))*half];
+          AVX2_UPdCastleFeauture(@OldPass.Acc16[black],@cr,@NewPass.Acc16[black]);
         end else
       // Если было взятие (в том числе на проходе) - убираем побитую фигуру
       if ((move and CaptureFlag)<>0) then
         begin
           capsq:=dest;
           If Undo.isEnnPass then capsq:=capsq-PawnPush[stm];
-          RemBlackIndex:=(BlackFrameStartIndex+GetBlockIndex(-Board.CapturedPiese,capsq xor 56))*half;
-          AVX2_ReSetFeauture(@NewPass.Acc16[black],@Net.Flayer[RemBlackIndex],@NewPass.Acc16[black]);
-        end;
+          cr[2]:=@OldPass.Net.Flayer[(BlackFrameStartIndex+GetBlockIndex(-Board.CapturedPiese,capsq xor 56))*half];
+          AVX2_UPdCaptureFeauture(@OldPass.Acc16[black],@cr,@NewPass.Acc16[black]);
+        end else AVX2_UPdFeauture(@OldPass.Acc16[black],cr[0],cr[1],@NewPass.Acc16[black]);
       // Если в результате хода поменялись права на рокировку (какая-то из сторон потеряла их) - обновляем
       if Undo.CastleRights<>Board.CastleRights then
         begin
-          if (Undo.CastleRights and 1)<>(Board.CastleRights and 1) then AVX2_ReSetFeauture(@NewPass.Acc16[black],@Net.Flayer[(BlackFrameStartIndex+BShortCastle)*half],@NewPass.Acc16[black]);
-          if (Undo.CastleRights and 2)<>(Board.CastleRights and 2) then AVX2_ReSetFeauture(@NewPass.Acc16[black],@Net.Flayer[(BlackFrameStartIndex+BLongCastle)*half],@NewPass.Acc16[black]);
-          if (Undo.CastleRights and 4)<>(Board.CastleRights and 4) then AVX2_ReSetFeauture(@NewPass.Acc16[black],@Net.Flayer[(BlackFrameStartIndex+WShortCastle)*half],@NewPass.Acc16[black]);
-          if (Undo.CastleRights and 8)<>(Board.CastleRights and 8) then AVX2_ReSetFeauture(@NewPass.Acc16[black],@Net.Flayer[(BlackFrameStartIndex+WLongCastle)*half] ,@NewPass.Acc16[black]);
+          cnt:=0;
+          if (Undo.CastleRights and 1)<>(Board.CastleRights and 1) then
+            begin
+              cr[cnt]:=@NewPass.Net.Flayer[(BlackFrameStartIndex+BShortCastle)*half];
+              inc(cnt);
+            end;
+          if (Undo.CastleRights and 2)<>(Board.CastleRights and 2) then
+            begin
+              cr[cnt]:=@NewPass.Net.Flayer[(BlackFrameStartIndex+BLongCastle)*half];
+              inc(cnt);
+            end;
+          if (Undo.CastleRights and 4)<>(Board.CastleRights and 4) then
+            begin
+             cr[cnt]:=@NewPass.Net.Flayer[(BlackFrameStartIndex+WShortCastle)*half];
+             inc(cnt);
+            end;
+          if (Undo.CastleRights and 8)<>(Board.CastleRights and 8) then
+            begin
+             cr[cnt]:=@NewPass.Net.Flayer[(BlackFrameStartIndex+WLongCastle)*half];
+             inc(cnt);
+            end;
+          if cnt=1 then AVX2_ReSetFeauture(@NewPass.Acc16[black],cr[0],@NewPass.Acc16[black]) else
+          if cnt=2 then AVX2_DBLReSetFeauture(@NewPass.Acc16[black],cr[0],cr[1],@NewPass.Acc16[black]) else
+          if cnt=3 then begin
+                          AVX2_DBLReSetFeauture(@NewPass.Acc16[black],cr[0],cr[1],@NewPass.Acc16[black]);
+                          AVX2_ReSetFeauture(@NewPass.Acc16[black],cr[2],@NewPass.Acc16[black])
+                        end
+                   else begin
+                          AVX2_DBLReSetFeauture(@NewPass.Acc16[black],cr[0],cr[1],@NewPass.Acc16[black]);
+                          AVX2_DBLReSetFeauture(@NewPass.Acc16[black],cr[2],cr[3],@NewPass.Acc16[black]);
+                        end;
         end;
-
     end;
 end;
-Procedure SlowCalcAcc(var Pass:TForwardPass;row:integer;framesize:integer);
-var
-   i,j,sumstm,sumsnon,cell : integer;
-begin
- for j:=0 to half-1 do
-  begin
-   sumstm:=Net.Fbias[j];
-   sumsnon:=Net.Fbias[j];
-   for i:=0 to framesize-1 do
-    begin
-      cell:=row*(2*framesize+1)+i;
-      sumstm:=sumstm+Net.FLayer[i*half+j]*Arr[cell];
-      cell:=row*(2*framesize+1)+i+framesize;
-      sumsnon:=sumsnon+Net.FLayer[i*half+j]*Arr[cell];
-    end;
-    Pass.Acc16[white,j]:=sumstm;
-    Pass.Acc16[black,j]:=sumsnon;
-  end;
-
-end;
-Procedure CheckBatch(filename : ansistring; batchsize : integer);
-var
-  i,res : integer;
-  framesize,total,rowsize,evalrow : integer;
-  proc,ss,dd : extended;
-  f : TFileStream;
-  Pass : TForwardPass;
-begin
-  writeln('Выделяем память под массив');
-  framesize:=ModelFrameSize(Net.model);
-  rowsize:=2*framesize+1;
-  total:=rowsize*batchsize;
-  writeln('Size of array - ',total,' integer');
-  Setlength(arr,total);
-  writeln('Array ready');
-  f:=TFileStream.Create(filename+'.dat',fmOpenRead);
-  res:=f.Read(arr[0],total*4);
-  writeln('Array Loaded - ',res,' bytes');
-  f.free;
-
-  proc:=0;
-  for i:=0 to batchsize-1 do
-    begin
-      SlowCalcAcc(Pass,i,framesize);
-      evalrow:=ForwardPass(white,Pass);
-      ss:=(evalrow/Net.scale_out)/Net.scale_act;
-      dd:=arr[i*rowsize+rowsize-1]/1E9;
-      //dd:=round(dd*1e8)/1e8;
-      proc:=proc+abs(dd-ss);
-      //writeln(i,' ',proc,' ',ss,' ',dd);
-      //readln;
-    end;
-  writeln(proc);
-  writeln(proc/batchsize);
-end;
-
-Procedure speedtest;
-var
-  t1,t2 : TDateTime;
-  i : integer;
-  f : file of Tacc16;
-begin
-  for i:=0 to hidden1-1 do
-    begin
-     acc[i]:=3;
-     inputrow[i]:=2;
-    end;
- for i:=0 to hidden1*hidden2-1 do
-    inputmatrix[i]:=2;
- for i:=0 to 63 do
-    outputdata3[i]:=1;
-
- assign(f,'testacc.dat');
- reset(f);
- read(f,PassThread[0][1].acc16);
- close(f);
-
-
- //FillWhiteAcc16(net.model,Threads[1].Board,Threads[1].Pass[1]);
- //FillBlackAcc16(net.model,Threads[1].Board,Threads[1].Pass[1]);
- AVX2_RELU_ACC(@PassThread[0][1].Acc16[white],@permut1,@PassThread[0][1].Inputs8);
- AVX2_RELU_ACC(@PassThread[0][1].Acc16[black],@permut1,@PassThread[0][1].Inputs8[half]);
- AVX2_FirstLayer_Mul(@PassThread[0][1].Inputs8,@Net.FirstLayer,@outputdata,@PassThread[0][1].store);
- for i:=0 to 7 do
-   writeln(outputdata[i]);
- writeln('------------------------------------');
- SlowFirstLayer(PassThread[0][1]);
- //AVX2_RELU_3(@outputdata,@outputdata,@RELUlimit,@outputdata2);
- //AVX2_SecondLayer_Mul(@outputdata2,@outputdata3,@outputdata);
-
- //PrintBoard(Threads[1].board);
-
-
-t1:=now;
- for i:=1 to 1000000000 do
-   begin
-     //AVX2_RELU_ACC(@acc,@permut1,@inputrow); //5.94 for hidden1=512 (Half=256)
-     //AVX2_RELU_ACC(@acc[half],@permut1,@inputrow[half]); //5.94 for hidden1=512 (Half=256)
-       AVX2_FirstLayer_Mul(@PassThread[0][1].Inputs8,@Net.FirstLayer,@outputdata,@PassThread[0][1].store); //AVX2 - 56.74 for 512x8 ;AVX512 - 40.65 for 512x8
-     //AVX2_RELU_2(@outputdata,@outputdata,@RELUlimit,@outputdata2); // 1.56 for 8; 3.56 for 32
-     //AVX2_SecondLayer_Mul(@outputdata2,@outputdata3,@outputdata); // 6.3 for 8x8
-     //AVX2_NNOut(@inputrow,@inputmatrix,@Ones512,@Net.outbias) // 1.84
-     //AVX2_CopyAcc(@inputrow,@inputmatrix); //7.59 for AVX2, 6.4 for AVX512
-     //AVX2_SetFeauture(@inputrow,@inputmatrix,@outputdata); // 8.64 for AVX2, 8.98 for AVX512
-     //AVX2_DoubleSetFeauture(@inputrow,@inputmatrix,@inputmatrix,@outputdata); // 10.64 for AVX2, 8.25 for AVX512
-     //AVX2_TripleSetFeauture(@inputrow,@inputmatrix,@outputdata,@outputdata2); // 12.54 for AVX2, 9.98 for AVX512
-     //AVX2_ReSetFeauture(@inputrow,@inputmatrix,@outputdata); // 8.64 for AVX2, 7.25 for AVX512
-     //AVX2_UpdFeauture(@inputrow,@inputmatrix,@inputmatrix,@outputdata); // 10.26 for AVX2, 8.76 for AVX512
-     //FillWhiteAcc16(net.model,Threads[1].Board,Threads[1].Pass[1]); // AVX2-231  AVX512-222
-   end;
-t2:=now;
-writeln((t2-t1)*86400:6:2);
-end;
-
 end.

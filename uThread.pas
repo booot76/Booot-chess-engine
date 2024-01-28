@@ -7,7 +7,7 @@
 interface
 uses SyncObjs,SysUtils,uBoard,uSort,Unn,uHash,Classes;
 Const
-  MaxThreads=128;
+  MaxThreads=256;
   MaxPV=130;
 Type
  Thread=class(TThread)
@@ -29,6 +29,7 @@ Type
               AbortSearch : Boolean;
               RootDepth : integer;
               FullDepth : integer;
+              SelDepth  : integer;
               RootMoves: integer;
               nullply  : integer;
               nullclr  : integer;
