@@ -1,16 +1,16 @@
-unit uEval;
+﻿unit uEval;
 
 {$IFDEF FPC}
   {$MODE Delphi}
 {$ENDIF}
 
 interface
-uses uBoard;
+uses uBoard,Unn;
 
 
 Function Evaluate(var Board:TBoard;ThreadID:integer;ply:integer):integer;
 implementation
-   uses uThread,Unn,uBitBoards,uEndgame;
+   uses uThread,uBitBoards,uEndgame;
 
 
 
@@ -20,12 +20,12 @@ var
 begin
   // Быстро оцениваем специальные эндшпили на доске
   evalfun:=SpecialCases(Board);
-  If (evalfun=f_knnk) or (evalfun=f_kbnk) or (evalfun=f_kpk) then
+  If  (evalfun=f_kbnk) or (evalfun=f_kpk) or (evalfun=f_pawnless) or (evalfun=F_MatDraw) then
     begin
-      Result:=EvaluateSpecialEndgame(EvalFun,QueenValueEnd,Board);
+      Result:=EvaluateSpecialEndgame(EvalFun,Board);
       exit;
     end;
-  score:=NetResigma(ForwardPass(Board.SideToMove,Threads[ThreadID].Pass[ply]));
+  score:=ForwardPass(Board.SideToMove,PassThread[ThreadID-1][ply]);
   If evalfun=f_kbpskw then
     begin
       sf:=64;

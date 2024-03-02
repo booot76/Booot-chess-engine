@@ -7,7 +7,7 @@
 interface
 uses SyncObjs,SysUtils,uBoard,uSort,Unn,uHash,Classes;
 Const
-  MaxThreads=128;
+  MaxThreads=256;
   MaxPV=130;
 Type
  Thread=class(TThread)
@@ -18,11 +18,8 @@ Type
   public
    constructor Create(CreateSuspended:boolean;Id:integer);
  end;
-
-
-
+  TForwardThread = array[0..128] of TForwardPass;
   TPv = array[0..MaxPV] of smallint;
-  
   TThread  = record
               Id       : integer;   // Идентификатор
               handle   : LongWord;  // хендл потока
@@ -32,12 +29,12 @@ Type
               AbortSearch : Boolean;
               RootDepth : integer;
               FullDepth : integer;
+              SelDepth  : integer;
               RootMoves: integer;
               nullply  : integer;
               nullclr  : integer;
               Board    : TBoard;
               Tree     : TTree;
-              SortUnit : TSortUnit;
               PVLine   : TPV;
               OldPvMove: integer;
               StablePv : TPV;
@@ -48,9 +45,7 @@ Type
               Fenflag : boolean;
               outname : shortstring;
               outfile : textfile;
-              Pass:array[0..129] of TForwardPass;
               bookposnum : integer;
-              savedblock : boolean;
               TTLocal    :TTable;  // локальный хеш потока (для генерации фен позиций)
               clrflag    :boolean;   // флаг очистки хеша
               hashstart  : Pentry; // стартовая ячейка
@@ -63,7 +58,9 @@ var
    Threads : array [1..MaxThreads] of TThread;
    SMPLock : TCriticalSection;
    IdleEvent : TEvent;
-
+   SortUnitThread : array of TSortUnit;
+   PassThread : array of TForwardThread;
+ //  ThreadsPass : array of TForwardThread;
 
 
 Procedure InitThreads(n:integer);
@@ -150,6 +147,12 @@ var
   //tr:longword;
 begin
    AllThreadsStop:=false;
+ // Инициализация SortUnitThread
+ SetLength(SortUnitThread,0);
+ SetLength(SortUnitThread,n);
+ // PassThread
+ SetLength(PassThread,0);
+ SetLength(PassThread,n+1);
  // Стартуем потоки
   for i:=1 to n do
       begin

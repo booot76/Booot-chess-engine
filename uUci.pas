@@ -32,10 +32,10 @@ Procedure SetRemain;
 begin
   If (game.time=64*3600*1000) then game.remain:=10000 else // Пондеринг всегда в самом быстром режиме проверки
   If (game.time=48*3600*1000) then game.remain:=1000000 else // Режим анализа - всегда в самом медленном режиме проверки
-  If (game.time>5000) then game.remain:=1000000 else // Если больше 5 секунд на ход  - проверка через каждый миллион позиций
-  If (game.time>1000) then game.remain:=200000  else // Если больше 1 секунд на ход  - проверка через каждые 200к позиций
-  If (game.time>300)  then game.remain:=20000   else // Если больше 0,3 секунд на ход  - проверка через каждые 20к позиций
-                           game.remain:=10000; // Если меньше 0,3 секунд на ход  - проверка через каждые 10к позиций
+  If (game.time>5000) then game.remain:=1000000 else // Если больше 5 секунд на ход
+  If (game.time>1000) then game.remain:=100000  else // Если больше 1 секунд на ход
+  If (game.time>500)  then game.remain:=50000   else // Если больше 0,5 секунд на ход
+                           game.remain:=10000; // Если меньше 0,5 секунд на ход
 end;
 Procedure NewGame;
 // запускается при получении команды ucinewgame
@@ -49,7 +49,7 @@ begin
   ClearHash(TTGlobal,game.threads);
   for i:=1 to game.Threads do
    begin
-    ClearHistory(Threads[i].Sortunit,Threads[i].Tree);
+    ClearHistory(SortUnitThread[i-1],Threads[i].Tree);
    end;
 end;
 
@@ -57,6 +57,7 @@ Procedure NewSearch(ThreadId:integer);
 // запускается каждый раз после получения команды go для каждого потока
 begin
   Threads[ThreadId].Board.Nodes:=0;
+   Threads[ThreadId].Board.tbhits:=0;
   Threads[ThreadId].AbortSearch:=false;
   If ThreadId=1 then
     begin
@@ -149,12 +150,12 @@ end;
 Function TakeHashSize(val : integer):integer;
 // Выбирает ближайшее значение хеша, являющееся степенью 2
 const
-  HashSizes : array[1..13] of integer = (16,32,64,128,256,512,1024,2048,4096,8192,16384,32768,65536);
+  HashSizes : array[1..15] of integer = (16,32,64,128,256,512,1024,2048,4096,8192,16384,32768,65536,131072,262144);
 var
   i : integer;
 begin
   i:=1;
-  while (i<=13) and (HashSizes[i]<val) do
+  while (i<=15) and (HashSizes[i]<val) do
     inc(i);
   Result:=HashSizes[i];
 end;
@@ -169,9 +170,11 @@ begin
   if s='' then exit;
   if (pos('eval',s)>0) then
     begin
-      FillWhiteAcc16(Net.model,Threads[1].Board,Threads[1].Pass[1]);
-      FillBlackAcc16(Net.model,Threads[1].Board,Threads[1].Pass[1]);
-      Writeln(' Score = '+InttoStr(Evaluate(Threads[1].Board,1,1)));                         // Статическая оценка позиции
+      FillWhiteAcc16(Globalmodel, Threads[1].Board,PassThread[0][1]);
+      FillBlackAcc16(Globalmodel,Threads[1].Board,PassThread[0][1]);
+      Writeln(' Static Score = '+InttoStr(Evaluate(Threads[1].Board,1,1)));                         // Статическая оценка позиции
+      Writeln('FV Score = ',FV(TTGlobal,1,-mate,mate,0,1,Threads[1].Board,SortUnitThread[0],Threads[1].Tree,Threads[1].PVLine));
+      Writeln(' Best FV moves : ',MakePVString(Threads[1].PVLine));
       Flush(Output);
       exit;
     end;
@@ -190,10 +193,10 @@ begin
     end;
   if pos('uci',s) = 1  then                                                               //uci
     begin
-     Writeln(Output,'id name ' + GetFullVersionName(Net.model));
+     Writeln(Output,'id name ' + GetFullVersionName);
      Writeln(Output,'id author Alex Morozov (booot76@gmail.com)');
      // Тут вываливаем список параметров движка
-     Writeln(Output,'option name Hash type spin default 128 min 16 max 65536');
+     Writeln(Output,'option name Hash type spin default 128 min 16 max 242144');
      Writeln(Output,'option name Ponder type check default false');
      Writeln(Output,'option name Threads type spin default 1 min 1 max '+inttostr(MaxThreads));
      Writeln(Output,'uciok');
@@ -341,11 +344,10 @@ begin
     begin
      for i:=1 to game.Threads do
        Threads[i].AbortSearch:=true;
-     game.time:=game.pondertime;
-     game.rezerv:=game.ponderrezerv;
-     game.oldtime:=game.time;
      SetRemain;
      Threads[1].Board.remain:=0;
+     game.time:=0;
+     game.rezerv:=0;
      Threads[1].WaitPonder:=false;
     end;
   if pos('ponderhit',s)>0  then
@@ -355,6 +357,7 @@ begin
       game.oldtime:=game.time;
       SetRemain;
       Threads[1].Board.remain:=0;
+      Threads[1].WaitPonder:=false;
     end;
 
 end;
@@ -382,7 +385,7 @@ var
    timetot:int64;
 begin
   Timetot:=MilliSecondsBetween(game.StartTime,now);
-  if timetot>=game.time then Threads[1].AbortSearch:=true;
+  if (timetot>=game.time) and (not Threads[1].fenflag) then Threads[1].AbortSearch:=true;
 end;
 
 Procedure WaitPonderhit;

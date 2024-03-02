@@ -24,7 +24,7 @@ Const
   BishopValueMid=380; BishopValueEnd=370;
   RookValueMid=560;   RookValueEnd=600;
   QueenValueMid=1150; QueenValueEnd=1150;
-
+  MinorDif=BishopValueMid-KnightValueMid;
 
   TypOfPiese : array[-king..King] of integer=(king,queen,rook,bishop,knight,pawn,Empty,pawn,knight,bishop,rook,queen,king);
   PieseTypValue : array[Pawn..Queen] of integer = (0,KnightValueMid,BishopValueMid,RookValueMid,QueenValueMid); // Для обновления внутри make непешечного материала на доске. Поэтому ценность пешки =0
@@ -114,6 +114,7 @@ Type
            Key          : int64;
            NonPawnMat   : array[white..black] of integer;
            Nodes        : int64;
+           tbhits       : int64;
            remain       : integer;
            nullcnt      : integer;
          end;
@@ -135,6 +136,7 @@ Type
            nullcnt      : integer;
            WFrame       : integer;
            BFrame       : integer;
+           NetIndex     : integer;
           end;
   Thistory = array[-King..King,a1..h8] of integer;
   PHistory = ^THistory;
@@ -1176,8 +1178,9 @@ begin
   Undo.NonPawnMat[white]:=Board.NonPawnMat[white];
   Undo.NonPawnMat[black]:=Board.NonPawnMat[black];
   undo.nullcnt:=Board.nullcnt;
-  undo.Wframe:=GetWhiteFrameIndex(Net.model,Board);
-  undo.Bframe:=GetBlackFrameIndex(Net.model,Board);
+  undo.Wframe:=GetWhiteFrameIndex(Globalmodel,Board);
+  undo.Bframe:=GetBlackFrameIndex(Globalmodel,Board);
+  undo.NetIndex:=ChooseNNIndex(Board);
 end;
 Procedure MakeMove(move : integer;var Board:TBoard;var Undo:TUndo;isCheck:boolean);
 // Процедура делает ход на доске

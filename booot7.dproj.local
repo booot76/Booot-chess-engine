@@ -1,27 +1,32 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <BorlandProject>
 	<Transactions>
-    <Transaction>1899.12.30 00:00:00.000.295,C:\Users\oleks\Documents\Embarcadero\Studio\Projects\Booot7\resource.rc=</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.563,C:\Users\oleks\Documents\Embarcadero\Studio\Projects\booot7\Ubenchmark.pas=C:\Users\oleks\Documents\Embarcadero\Studio\Projects\booot7\Unit1.pas</Transaction>
     <Transaction>1899.12.30 00:00:00.000.082,C:\Users\oleks\Documents\Embarcadero\Studio\Projects\booot7\uPawn.pas=</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.557,C:\Users\oleks\OneDrive\Alex\Embarcadero\Studio\Projects\Booot7\resource.rc=</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.425,C:\Users\oleks\OneDrive\Alex\Embarcadero\Studio\Projects\Booot7\resource.rc=</Transaction>
     <Transaction>1899.12.30 00:00:00.000.270,C:\Users\oleks\Documents\Embarcadero\Studio\Projects\booot7\uMaterial.pas=</Transaction>
-    <Transaction>1899.12.30 00:00:00.000.563,C:\Users\oleks\Documents\Embarcadero\Studio\Projects\booot7\Unit1.pas=C:\Users\oleks\Documents\Embarcadero\Studio\Projects\booot7\Ubenchmark.pas</Transaction>
-    <Transaction>1899.12.30 00:00:00.000.639,=C:\Users\oleks\Documents\Embarcadero\Studio\Projects\booot7\Unit1.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.295,C:\Users\oleks\Documents\Embarcadero\Studio\Projects\Booot7\resource.rc=</Transaction>
     <Transaction>1899.12.30 00:00:00.000.631,=C:\Users\oleks\Documents\Embarcadero\Studio\Projects\Booot7\resource.rc</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.562,=C:\Users\oleks\Documents\Embarcadero\Studio\Projects\Booot7\resource.rc</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.050,C:\Users\oleks\Documents\Embarcadero\Studio\Projects\Booot7\resource.rc=</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.639,=C:\Users\oleks\Documents\Embarcadero\Studio\Projects\booot7\Unit1.pas</Transaction>
   </Transactions>
 	<ProjectSortOrder AutoSort="0" SortType="0">
-    <File Path="uAttacks.pas"/>
-    <File Path="Ubenchmark.pas"/>
     <File Path="uBitBoards.pas"/>
+    <File Path="uMagic.pas"/>
+    <File Path="uAttacks.pas"/>
     <File Path="uBoard.pas"/>
+    <File Path="uHash.pas"/>
     <File Path="uEndgame.pas"/>
     <File Path="uEval.pas"/>
-    <File Path="uHash.pas"/>
-    <File Path="uKPK.pas"/>
-    <File Path="uMagic.pas"/>
-    <File Path="Unn.pas"/>
     <File Path="uSearch.pas"/>
-    <File Path="uSort.pas"/>
     <File Path="uThread.pas"/>
+    <File Path="uSort.pas"/>
     <File Path="uUci.pas"/>
+    <File Path="uKPK.pas"/>
+    <File Path="Unn.pas"/>
+    <File Path="Ubenchmark.pas"/>
+    <File Path="resource.rc"/>
   </ProjectSortOrder>
 </BorlandProject>
