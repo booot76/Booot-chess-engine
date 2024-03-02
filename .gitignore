@@ -1,3 +1,10 @@
+
+# Ignore local files
+
 *.dproj.local
 *.identcache
 *.lps 
+
+# Ignore directory created by Lazarus
+
+lib/

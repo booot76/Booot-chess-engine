@@ -178,8 +178,8 @@
         <DCCReference Include="uSort.pas"/>
         <DCCReference Include="uUci.pas"/>
         <DCCReference Include="uKPK.pas"/>
-        <DCCReference Include="Unn.pas"/>
-        <DCCReference Include="Ubenchmark.pas"/>
+        <DCCReference Include="uNN.pas"/>
+        <DCCReference Include="uBenchmark.pas"/>
         <RcCompile Include="resource.rc">
             <Form>resource.res</Form>
         </RcCompile>
