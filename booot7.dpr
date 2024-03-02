@@ -29,8 +29,8 @@ uses
   uSort in 'uSort.pas',
   uUci in 'uUci.pas',
   uKPK in 'uKPK.pas',
-  Unn in 'Unn.pas',
-  Ubenchmark in 'Ubenchmark.pas';
+  uNN in 'uNN.pas',
+  uBenchmark in 'uBenchmark.pas';
 
 Procedure EngineInit;
 // Инициализация движка сразу после старта

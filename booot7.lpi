@@ -84,11 +84,11 @@
         <IsPartOfProject Value="True"/>
       </Unit>
       <Unit>
-        <Filename Value="Unn.pas"/>
+        <Filename Value="uNN.pas"/>
         <IsPartOfProject Value="True"/>
       </Unit>
       <Unit>
-        <Filename Value="Ubenchmark.pas"/>
+        <Filename Value="uBenchmark.pas"/>
         <IsPartOfProject Value="True"/>
       </Unit>
     </Units>
