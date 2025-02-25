@@ -5,7 +5,7 @@
 {$ENDIF}
 
 interface
-uses SyncObjs,SysUtils,uBoard,uSort,Unn,uHash,Classes;
+uses SyncObjs,SysUtils,uBoard,uSort,uNN,uHash,Classes;
 Const
   MaxThreads=256;
   MaxPV=130;

@@ -27,7 +27,7 @@ Function isLegal(move:integer;Pinned:TBitBoard; var Board:TBoard):boolean;
 Function isPseudoCorrect(move:integer;var Board:TBoard):boolean;
 Function GoodSee(move:integer;var Board:TBoard;margin:integer):boolean;
 implementation
- uses Unn;
+ uses uNN;
 
 Function KnightAttacksBB(sq:integer):TBitBoard;inline;
  begin

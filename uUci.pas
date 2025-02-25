@@ -20,7 +20,7 @@ Procedure NewGame;
 Procedure SetRemain;
 
 implementation
-   uses uThread,Unn,Ubenchmark;
+   uses uThread,uNN,Ubenchmark;
 
 
 Procedure SetHash(var TT:TTable;size:integer);

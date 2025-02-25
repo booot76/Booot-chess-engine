@@ -1,4 +1,4 @@
-﻿unit Unn;
+﻿unit uNN;
 
 {$IFDEF FPC}
   {$MODE Delphi}
@@ -164,7 +164,7 @@ Type
 var
    Nets : array[0..MaxNets-1] of  TNeuralNetWeights;
    gg,bb :integer;
-  
+
 function GetFullVersionName:ansistring;
 Function loadnet(name:shortstring;var CurrNet:TNeuralNetWeights):boolean;
 Function NetReSigma(CurrNet:PNeuralNet;y:integer):integer;
@@ -1699,7 +1699,7 @@ begin
         then FromPiese:=Pawn
         else FromPiese:=-Pawn;
     end else FromPiese:=Piese;
-  
+
   // Обновляем белый аккумулятор
   WhiteFrameStartIndex:=GetWhiteFrameIndex(Nets[NetIndex].model,Board);
   WhiteMirror:=GetWhiteKingMirror(Nets[NetIndex].model,Board);
