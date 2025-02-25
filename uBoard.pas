@@ -197,7 +197,7 @@ Procedure UnMakeNullMove(var Board:TBoard;var Undo:TUndo);
 var
    rep:Trepetition;
 implementation
-uses uAttacks,DateUtils,uHash,uThread,uSort,Unn,uMagic;
+uses uAttacks,DateUtils,uHash,uThread,uSort,uNN,uMagic;
 
 Procedure ClearBoard(var Board:TBoard);
 var
@@ -1339,7 +1339,7 @@ begin
         else Piese:=-PieseTyp;
       SetPiese(MyColor,DestSq,Piese,PieseTyp,Board);
     end;
- 
+
   // откатываем основной ход
   MovePiese(MyColor,DestSq,FromSq,Piese,PieseTyp,Board);
   // Откатываем взятие

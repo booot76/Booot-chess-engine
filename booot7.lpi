@@ -84,7 +84,7 @@
         <IsPartOfProject Value="True"/>
       </Unit>
       <Unit>
-        <Filename Value="Unn.pas"/>
+        <Filename Value="uNN.pas"/>
         <IsPartOfProject Value="True"/>
       </Unit>
       <Unit>
@@ -96,6 +96,9 @@
   <CompilerOptions>
     <Version Value="11"/>
     <PathDelim Value="\"/>
+    <Target>
+      <Filename Value="booot7"/>
+    </Target>
     <SearchPaths>
       <IncludeFiles Value="$(ProjOutDir)"/>
       <UnitOutputDirectory Value="lib\$(TargetCPU)-$(TargetOS)"/>

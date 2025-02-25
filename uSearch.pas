@@ -9,7 +9,7 @@ uses
   {$ifdef WIN64}
   windows,
   {$endif }
-uBitBoards,uBoard,uThread,uEval,uSort,uAttacks,uHash,SysUtils,DateUtils,SyncObjs,Unn;
+uBitBoards,uBoard,uThread,uEval,uSort,uAttacks,uHash,SysUtils,DateUtils,SyncObjs,uNN;
 
 Type
   Tgame = record
@@ -32,8 +32,8 @@ Type
               syzygyman : integer;
               syzygydepth : integer;
             end;
- 
- 
+
+
 Const
   doScaleEval=True;
 

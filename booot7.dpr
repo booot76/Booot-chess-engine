@@ -14,8 +14,9 @@ uses
   {$ifdef UNIX}
   cthreads,
   {$endif }
+  SysUtils,
   {$ifdef WIN64}
-  windows,SysUtils,
+  windows,
   {$endif }
   uBitBoards in 'uBitBoards.pas',
   uMagic in 'uMagic.pas',
@@ -29,8 +30,8 @@ uses
   uSort in 'uSort.pas',
   uUci in 'uUci.pas',
   uKPK in 'uKPK.pas',
-  Unn in 'Unn.pas',
-  Ubenchmark in 'Ubenchmark.pas';
+  uNN in 'uNN.pas',
+  uBenchmark in 'uBenchmark.pas';
 
 Procedure EngineInit;
 // Инициализация движка сразу после старта
@@ -100,6 +101,6 @@ begin
   //checkbinary(0,'1data.bin',100000);
   //checkbinary(0,'2data.bin',100000);
   //checkbinary(0,'3data.bin',100000);
-  
+
   MainLoop;
 end.

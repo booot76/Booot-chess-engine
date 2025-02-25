@@ -5,7 +5,7 @@
 {$ENDIF}
 
 interface
-uses uBoard,Unn;
+uses uBoard,uNN;
 
 
 
