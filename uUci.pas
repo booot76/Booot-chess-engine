@@ -20,7 +20,7 @@ Procedure NewGame;
 Procedure SetRemain;
 
 implementation
-   uses uThread,uNN,uBenchmark;
+   uses uThread,Unn,Ubenchmark;
 
 
 Procedure SetHash(var TT:TTable;size:integer);
@@ -162,7 +162,7 @@ end;
 Procedure Parser(s:ansistring);
 // Процедура коммуникации с оболочкой - получает и отправляет команды
 var
-   n,wtime,btime,winc,binc,movestocontrol,val,clock,incr,movetime,i : integer;
+   n,wtime,btime,winc,binc,movestocontrol,val,clock,incr,movetime,i,NetIndex : integer;
    fen,mlist:ansistring;
    //pondermove:integer;
    sval:string;
@@ -170,8 +170,9 @@ begin
   if s='' then exit;
   if (pos('eval',s)>0) then
     begin
-      FillWhiteAcc16(Globalmodel, Threads[1].Board,PassThread[0][1]);
-      FillBlackAcc16(Globalmodel,Threads[1].Board,PassThread[0][1]);
+      NetIndex:=ChooseNNIndex(Threads[1].Board);
+      FillWhiteAcc16(Nets[NetIndex].model, Threads[1].Board,PassThread[0][1]);
+      FillBlackAcc16(Nets[NetIndex].model,Threads[1].Board,PassThread[0][1]);
       Writeln(' Static Score = '+InttoStr(Evaluate(Threads[1].Board,1,1)));                         // Статическая оценка позиции
       Writeln('FV Score = ',FV(TTGlobal,1,-mate,mate,0,1,Threads[1].Board,SortUnitThread[0],Threads[1].Tree,Threads[1].PVLine));
       Writeln(' Best FV moves : ',MakePVString(Threads[1].PVLine));
@@ -372,7 +373,7 @@ begin
     // Получили команду на выход
     if (pos('quit',s)>0) then
       begin
-        stopthreads;
+        if game.threads>1 then stopthreads;
         exit;
       end;
     // Разбираем полученную команду

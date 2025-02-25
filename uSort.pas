@@ -8,9 +8,17 @@ interface
 uses uBoard,uAttacks,uBitBoards;
 Const
   MaxKillersPly=127;
-  HistDiv=15000;
-  StatsDiv=30000;
-  CapDiv = 10000;
+  LowHistMax=4;
+
+  HistDiv=16384;
+  StatsDiv=32768;
+
+  CorrDiv=512;
+  CorrLimit=CorrDiv div 4;
+  CorrSize=32768;
+
+  ThreatValue=8192;
+
   TryHashMove=0;
   GenerateCaptures=1;
   TryGoodCaptures=2;
@@ -29,14 +37,17 @@ Const
 
   MVV: array[Empty..King] of integer = (0,100,300,300,500,900,0);
 Type
-  Thistory = array[-King..King,a1..h8] of integer;
-  PHistory = ^THistory;
+  TCorrHist = array[white..black,0..CorrSize-1] of smallint;
+  PHistory  = ^THistory;
   TSortUnit = record
-                History      : THistory;
-                CounterMoves : THistory;
-                Killers      : array[1..MaxKillersply+2,0..1] of integer;
-                HistorySats  : array[false..true,false..true,-King..King,a1..h8] of THistory;
-                CapHistory   : array[-king..King,a1..h8,Empty..King] of integer
+                History         : THistory;
+                CounterMoves    : THistory;
+                Killers         : array[1..MaxKillersply+2,0..1] of integer;
+                HistorySats     : array[false..true,false..true,-King..King,a1..h8] of THistory;
+                CapHistory      : array[-king..King,a1..h8,Empty..King] of smallint;
+                PawnCorrHist    : TcorrHist;
+                WNonPawnCorrHist: TcorrHist;
+                BNonPawnCorrHist: TcorrHist;
               end;
 
 var
@@ -47,14 +58,14 @@ Function GetStatBonus(depth:integer):integer;inline;
 Procedure FullSort(var MoveList:TMoveList;start:integer;stop:integer);
 Function GetHistoryValue(var Sortunit:TSortUnit;var Tree:Ttree;ply:integer;piese:integer;dest:integer):integer;
 Procedure UpdateList(move:integer;start:integer;stop:integer;var MoveList:TmoveList);
-Procedure UpdHistory(var SortUnit:TSortUnit;piese:integer;dest:integer;bonus:integer);
-Procedure UPdHistoryStats(var Tree:TTree;ply:integer;piese:integer;dest:integer;bonus:integer);
-Procedure UpdateStats(var Tree:TTree;ply:integer;piese:integer;dest:integer;bonus:integer);
+Procedure UpdateStats(var Tree:TTree;ply:integer;piese:integer;dest:integer;value:integer);
 Function Next(var MoveList:TMoveList;var Board:TBoard;var SortUnit:TSortUnit;var tree:TTree;var hashmove:integer;var killer1:integer;var killer2:integer;var countermove:integer;ply:integer;depth:integer;skip:boolean) :integer;
 Function NextFV(var MoveList:TMoveList;var Board:TBoard;var SortUnit:TSortUnit;var tree:TTree;var CheckInfo:TCheckInfo;var hashmove:integer;ply:integer;depth:integer;prevsq:integer ):integer;
 Function NextProbCut(var SortUnit:TSortUnit;var MoveList:TMoveList;var Board:TBoard;var tree:TTree;var hashmove:integer;ply:integer;margin:integer):integer;
-Procedure UpdateQuietHistory(move:integer;ply:integer;qsearched:integer;var OldMoves:TmoveList;var SortUnit:TSortUnit;var Board:TBoard;var Tree:Ttree;bonus:integer);
 Procedure UpdateFullHistory(move:integer;depth:integer;ply:integer;qsearched:integer;var OldMoves:TmoveList;capsearched:integer;var OldCaptures:Tmovelist;var SortUnit:TSortUnit;var Board:TBoard;var Tree:Ttree;margin:integer);
+Procedure UpdateQuietMoveHistory(move:integer;ply:integer;var SortUnit:TSortUnit;var Board:TBoard;var Tree:Ttree;value:integer);
+Procedure UpdateKillersCounter(var SortUnit:TSortUnit;var Board:Tboard;var Tree:TTree;move:integer;ply:integer);
+Procedure CellGravity(Cell:Psmallint;value,Range:integer);
 
 implementation
 Procedure ClearHistory(var SortUnit:TSortUnit;var Tree:Ttree);
@@ -67,6 +78,14 @@ begin
      SortUnit.History[i,j]:=0;
      SortUnit.CounterMoves[i,j]:=0;
    end;
+  for i:=white to black do
+  for j:=0 to CorrSize-1 do
+    begin
+      SortUnit.PawnCorrHist[i,j]:=0;
+      SortUnit.WNonPawnCorrHist[i,j]:=0;
+      SortUnit.BNonPawnCorrHist[i,j]:=0;
+    end;
+
   for i:=1 to MaxKillersPly+2 do
    begin
      SortUnit.Killers[i,0]:=0;
@@ -107,26 +126,16 @@ Function GetStatBonus(depth:integer):integer;inline;
 begin
   result:=DepthInc[depth];
 end;
-Procedure UpdHistory(var SortUnit:TSortUnit;piese:integer;dest:integer;bonus:integer);
+Procedure CellGravity(Cell:Psmallint;value,Range:integer);
 begin
-  SortUnit.History[piese,dest]:=Sortunit.History[piese,dest]-((Sortunit.History[piese,dest]*abs(bonus)) div HistDiv);  //-HistDiv .. HistDiv
-  SortUnit.History[piese,dest]:=Sortunit.History[piese,dest]+bonus;
+  Cell^:=Cell^+value-((Cell^*abs(value)) div Range);
 end;
-Procedure UPdHistoryStats(var Tree:TTree;ply:integer;piese:integer;dest:integer;bonus:integer);
+
+Procedure UpdateStats(var Tree:TTree;ply:integer;piese:integer;dest:integer;value:integer);
 begin
-  Tree[ply].CurrStat^[piese,dest]:=Tree[ply].CurrStat^[piese,dest]-((Tree[ply].CurrStat^[piese,dest]*abs(bonus)) div StatsDiv); // -StatsDiv .. StatsDiv
-  Tree[ply].CurrStat^[piese,dest]:=Tree[ply].CurrStat^[piese,dest]+bonus;
-end;
-Procedure UpdCapHistory(var SortUnit:TSortUnit;piese:integer;dest:integer;captured:integer;bonus:integer);
-begin
-  SortUnit.CapHistory[piese,dest,captured]:=Sortunit.CapHistory[piese,dest,captured]-((Sortunit.CapHistory[piese,dest,captured]*abs(bonus)) div CapDiv);  //-CapDiv .. CapDiv
-  SortUnit.CapHistory[piese,dest,captured]:=Sortunit.CapHistory[piese,dest,captured]+bonus;
-end;
-Procedure UpdateStats(var Tree:TTree;ply:integer;piese:integer;dest:integer;bonus:integer);
-begin
-  If (ply>1) and  (Tree[ply-1].CurrMove<>0) then UpdHistoryStats(Tree,ply-1,piese,dest,bonus);
-  If (ply>2) and  (Tree[ply-2].CurrMove<>0) then UpdHistoryStats(Tree,ply-2,piese,dest,bonus);
-  If (ply>4) and  (Tree[ply-4].CurrMove<>0) then UpdHistoryStats(Tree,ply-4,piese,dest,bonus);
+  If (ply>1) and  (Tree[ply-1].CurrMove<>0) then CellGravity(@Tree[ply-1].CurrStat^[piese,dest],value,StatsDiv);
+  If (ply>2) and  (Tree[ply-2].CurrMove<>0) then CellGravity(@Tree[ply-2].CurrStat^[piese,dest],value,StatsDiv);
+  If (ply>4) and  (Tree[ply-4].CurrMove<>0) then CellGravity(@Tree[ply-4].CurrStat^[piese,dest],value,StatsDiv);
 end;
 Function GetHistoryValue(var Sortunit:TSortUnit;var Tree:Ttree;ply:integer;piese:integer;dest:integer):integer;
 var
@@ -138,7 +147,7 @@ begin
   if (ply>4) and  (Tree[ply-4].CurrMove<>0) then res:=res+Tree[ply-4].CurrStat^[piese,dest];
   Result:=res;
 end;
-Function GetQuietScore(var Sortunit:TSortUnit;var Tree:Ttree;ply:integer;piese:integer;dest:integer):integer;
+Function GetQuietScore(var Sortunit:TSortUnit;var Tree:Ttree;ply:integer;move:integer;piese:integer;dest:integer):integer;
 var
   res : integer;
 begin
@@ -156,44 +165,39 @@ begin
   if (ply>1) and  (Tree[ply-1].CurrMove<>0) then res:=res+2*Tree[ply-1].CurrStat^[piese,dest];
   Result:=res;
 end;
-
-Procedure UpdateQuietHistory(move:integer;ply:integer;qsearched:integer;var OldMoves:TmoveList;var SortUnit:TSortUnit;var Board:TBoard;var Tree:Ttree;bonus:integer);
+Procedure UpdateKillersCounter(var SortUnit:TSortUnit;var Board:Tboard;var Tree:TTree;move:integer;ply:integer);
 var
-   Piese,dest,i : integer;
+  piese,dest :integer;
 begin
   // Обновляем киллеры
   if (SortUnit.Killers[ply,0]<>move) then
-    begin
-      SortUnit.Killers[ply,1]:=SortUnit.Killers[ply,0];
-      SortUnit.Killers[ply,0]:=move;
-    end;
-  // Увеличиваем историю для успешного хода
+       begin
+        SortUnit.Killers[ply,1]:=SortUnit.Killers[ply,0];
+        SortUnit.Killers[ply,0]:=move;
+       end;
+      // Записываем ход как опровергающий
+  if (Tree[ply-1].CurrMove<>0) then
+       begin
+        dest:=(Tree[ply-1].CurrMove shr 6) and 63;
+        Piese:=Board.Pos[dest];// Фигура уже стоит на поле dest
+        SortUnit.CounterMoves[Piese,Dest]:=move;
+       end;
+end;
+Procedure UpdateQuietMoveHistory(move:integer;ply:integer;var SortUnit:TSortUnit;var Board:TBoard;var Tree:Ttree;value:integer);
+var
+   Piese,dest : integer;
+begin
   dest:=(move shr 6) and 63;
   Piese:=Board.Pos[move and 63]; // Фигура стоит на поле from
-  UpdHistory(SortUnit,piese,dest,bonus);
-  UpdateStats(Tree,ply,piese,dest,bonus);
-  // Уменьшаем историю для рассмотренных ранее тихих ходов которые не привели к успеху
-  for i:=1 to qsearched do
-   if OldMoves[i].move<>move then
-    begin
-      Dest:=(OldMoves[i].move shr 6) and 63;
-      Piese:=Board.Pos[OldMoves[i].move and 63];
-      UpdHistory(SortUnit,piese,dest,-bonus);
-      UpdateStats(Tree,ply,piese,dest,-bonus);
-    end;
-  // Записываем ход как опровергающий
-  if (Tree[ply-1].CurrMove<>0) then
-    begin
-      dest:=(Tree[ply-1].CurrMove shr 6) and 63;
-      Piese:=Board.Pos[dest];// Фигура уже стоит на поле dest
-      SortUnit.CounterMoves[Piese,Dest]:=move;
-    end;
+  CellGravity(@SortUnit.History[piese,dest],value,HistDiv);
+  UpdateStats(Tree,ply,piese,dest,value);
 end;
+
 Procedure UpdateFullHistory(move:integer;depth:integer;ply:integer;qsearched:integer;var OldMoves:TmoveList;capsearched:integer;var OldCaptures:Tmovelist;var SortUnit:TSortUnit;var Board:TBoard;var Tree:Ttree;margin:integer);
 var
    Piese,dest,i,bonus,captured : integer;
 begin
-  If Margin>=DepthMargin
+  If Margin>=DepthMargin      // 6 elo
     then bonus:=GetStatBonus(depth+1)
     else bonus:=GetStatBonus(depth);
   if (move and CaptureFlag)<>0 then
@@ -201,8 +205,15 @@ begin
       Dest:=(move shr 6) and 63;
       Piese:=Board.Pos[move and 63];
       captured:=TypOfPiese[Board.Pos[dest]];
-      UpdCapHistory(SortUnit,piese,dest,captured,bonus);
-    end else UpdateQuietHistory(move,ply,qsearched,OldMoves,SortUnit,Board,Tree,bonus);
+      CellGravity(@SortUnit.CapHistory[piese,dest,captured],bonus,HistDiv)
+    end else
+    begin
+     UpdateKillersCounter(SortUnit,Board,Tree,move,ply);
+     if ((qsearched>1) or (depth>4)) then UpdateQuietMoveHistory(move,ply,SortUnit,Board,Tree,bonus);
+     // Уменьшаем историю для рассмотренных ранее тихих ходов которые не привели к успеху
+       for i:=1 to qsearched do
+        if OldMoves[i].move<>move then UpdateQuietMoveHistory(OldMoves[i].move,ply,SortUnit,Board,Tree,-bonus);
+    end;
   // Уменьшаем историю для рассмотренных ранее взятий которые не привели к успеху
   for i:=1 to capsearched do
    if OldCaptures[i].move<>move then
@@ -210,7 +221,7 @@ begin
       Dest:=(OldCaptures[i].move shr 6) and 63;
       Piese:=Board.Pos[OldCaptures[i].move and 63];
       Captured:=TypOfPiese[Board.Pos[dest]];
-      UpdCapHistory(SortUnit,piese,dest,captured,-bonus);
+      CellGravity(@SortUnit.CapHistory[piese,dest,captured],-bonus,HistDiv)
     end;
 end;
 Procedure UpdateList(move:integer;start:integer;stop:integer;var MoveList:TmoveList);
@@ -289,13 +300,51 @@ end;
 Procedure ScoreMoves(start:integer;stop:integer;ply:integer;var MoveList:TMoveList;var SortUnit:TSortUnit;var Board:TBoard;var Tree:Ttree);
 // Оценка простых ходов - по истории
 var
-  i,piese,dest : integer;
+  i,piese,from,dest,sq : integer;
+  PawnAttacks,MinorAttacks,RookAttacks,Temp,Threat : int64;
 begin
+  if Board.SideToMove=black
+    then PawnAttacks:=(((Board.Pieses[pawn] and Board.Occupancy[white]) and (not FilesBB[1])) shl 7) or (((Board.Pieses[pawn] and Board.Occupancy[white]) and (not FilesBB[8])) shl 9)
+    else PawnAttacks:=(((Board.Pieses[pawn] and Board.Occupancy[black]) and (not FilesBB[1])) shr 9) or (((Board.Pieses[pawn] and Board.Occupancy[black]) and (not FilesBB[8])) shr 7);
+  MinorAttacks:=PawnAttacks;
+  temp:=Board.Pieses[knight] and Board.Occupancy[Board.SideToMove xor 1];
+  while temp<>0 do
+    begin
+      sq:=BitScanForward(Temp);
+      MinorAttacks:=MinorAttacks or KnightAttacks[sq];
+      Temp:=Temp and (Temp-1);
+    end;
+  temp:=Board.Pieses[bishop] and Board.Occupancy[Board.SideToMove xor 1];
+  while temp<>0 do
+    begin
+      sq:=BitScanForward(Temp);
+      MinorAttacks:=MinorAttacks or BishopAttacksBB(sq,Board.AllPieses);
+      Temp:=Temp and (Temp-1);
+    end;
+  RookAttacks:=MinorAttacks;
+  temp:=Board.Pieses[rook] and Board.Occupancy[Board.SideToMove xor 1];
+  while temp<>0 do
+    begin
+      sq:=BitScanForward(Temp);
+      RookAttacks:=RookAttacks or RookAttacksBB(sq,Board.AllPieses);
+      Temp:=Temp and (Temp-1);
+    end;
   For i:=start to stop do
     begin
+      from:=MoveList[i].move and 63;
       dest:=(MoveList[i].move shr 6) and 63;
       piese:=Board.Pos[MoveList[i].move and 63];// from
-      MoveList[i].value:=GetQuietScore(SortUnit,Tree,ply,piese,dest);
+      MoveList[i].value:=GetQuietScore(SortUnit,Tree,ply,MoveList[i].move,piese,dest);
+      if (TypOfPiese[piese]<>Pawn) and (TypOfPiese[piese]<>King) then
+        begin
+          if TypOfPiese[piese]=Knight then Threat:=PawnAttacks else
+          if TypOfPiese[piese]=Bishop then Threat:=PawnAttacks else
+          if TypOfPiese[piese]=Rook   then Threat:=MinorAttacks else
+          if TypOfPiese[piese]=Queen  then Threat:=RookAttacks else Threat:=0;
+          if (Only[from] and Threat)<>0 then MoveList[i].value:=MoveList[i].value+ThreatValue;
+          if (Only[dest] and Threat)<>0 then MoveList[i].value:=MoveList[i].value-ThreatValue;
+        end;
+
     end;
 end;
 Procedure ScoreEvasions(start:integer;stop:integer;ply:integer;var Movelist:TMoveList;var SortUnit:TSortUnit;var Board:TBoard;var Tree:TTree);
@@ -409,7 +458,7 @@ begin
     end;
    if tree[ply].Status=tryOthers then
     begin
-     // выбираем лучшие тихие ходы (хорошие = с оценкой истории больше 0)
+     // выбираем лучшие тихие ходы
       while  (not skip) and (tree[ply].curr<=tree[ply].max-1) do
         begin
           move:=TakeBest(MOveList,tree[ply].curr,tree[ply].max-1,true);

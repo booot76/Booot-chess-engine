@@ -15,7 +15,7 @@ uses
   cthreads,
   {$endif }
   {$ifdef WIN64}
-  windows,
+  windows,SysUtils,
   {$endif }
   uBitBoards in 'uBitBoards.pas',
   uMagic in 'uMagic.pas',
@@ -29,8 +29,8 @@ uses
   uSort in 'uSort.pas',
   uUci in 'uUci.pas',
   uKPK in 'uKPK.pas',
-  uNN in 'uNN.pas',
-  uBenchmark in 'uBenchmark.pas';
+  Unn in 'Unn.pas',
+  Ubenchmark in 'Ubenchmark.pas';
 
 Procedure EngineInit;
 // Инициализация движка сразу после старта
@@ -38,10 +38,8 @@ var
   i : integer;
 begin
   // грузим нейросеть
-  LoadNet('MYNN1',Nets[0]);
-  LoadNet('MYNN2',Nets[1]);
-  LoadNet('MYNN34',Nets[2]);
-  LoadNet('MYNNREST',Nets[3]);
+  for i := 1 to MaxNets do
+    LoadNet('MYNN'+inttostr(i),Nets[i-1]);
   writeln(GetFullVersionName);
   game.syzygyman:=0;
   game.syzygydepth:=1;
@@ -88,12 +86,20 @@ begin
       if (Paramstr(1)='bench') then bench;
       exit;
     end;
-  //bench;
+  //bb:=0;
+ // gg:=0;
+ // bench;
+ // writeln(gg);
+ // writeln(bb);
  // writeln(False xor False);
   //writeln(SizeOf(TThread));
-  //FenGenerator(8,300,30,'book.fen','8d_',128,1024,'Z:/syzygy345/');
+  //FenGenerator(12,510,30,'book.fen','12d_',128,1024,'d:/syzygy3456/');
   //newgame;
   //speedtest;
-  //CheckBatch('array2',10000);
+
+  //checkbinary(0,'1data.bin',100000);
+  //checkbinary(0,'2data.bin',100000);
+  //checkbinary(0,'3data.bin',100000);
+  
   MainLoop;
 end.
