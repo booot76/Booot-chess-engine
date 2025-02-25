@@ -1,4 +1,3 @@
-MYNN1           RCDATA "booot73_1.nn"
-MYNN2           RCDATA "booot73_2.nn"
-MYNN34          RCDATA "booot73_34.nn"
-MYNNREST        RCDATA "booot73_rest.nn"
+MYNN1           RCDATA "booot2.nn"
+MYNN2           RCDATA "booot4.nn"
+MYNN3           RCDATA "booot58.nn"

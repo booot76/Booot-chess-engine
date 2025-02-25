@@ -8,6 +8,8 @@ interface
 uses uBitBoards,uBoard;
 
 CONST
+
+
 WeakKingMate :array[a1..h8] of integer =
              (  100, 90, 80, 70, 70, 80, 90, 100, //1
                  90, 70, 60, 50, 50, 60, 70,  90, //2
@@ -18,7 +20,7 @@ WeakKingMate :array[a1..h8] of integer =
                  90, 70, 60, 50, 50, 60, 70,  90, //7
                 100, 90, 80, 70, 70, 80, 90, 100);//8
 
-KingDistBonus : array[1..8] of integer = (0,50,40,30,20,10,5,0);
+KingDistBonus : array[1..8] of integer = (0,0,50,25,10,5,2,0);
 
 BN_light: array[a1..h8] of integer =
              (  20, 30, 40, 50, 60, 70, 80,100,   //1
@@ -50,6 +52,7 @@ F_Pawnless=6;
 ScaleNormal=64;
 ScaleDraw=0;
 
+NearlyWin=2500;
 
 
 Function SpecialCases(var Board:TBoard):integer;
@@ -93,16 +96,22 @@ end;
 Function PawnLess(var Board:TBoard):integer;
 //  Оценка беспешечных эндшпилей.
 var
-   score,bonus:integer;
+   score,bonus,extra:integer;
 begin
+  extra:=0;
   score:=Board.NonPawnMat[white]-Board.NonPawnMat[black];
+  if score>TypOfPiese[Bishop] then extra:=NearlyWin else
+  if score<-TypOfPiese[Bishop] then extra:=-NearlyWin;
   if score>MinorDif  then bonus:=WeakKingMate[Board.KingSq[black]]+KingDistBonus[SquareDist[Board.KingSq[white],Board.KingSq[black]]] else
   if score<-MinorDif then bonus:=-WeakKingMate[Board.KingSq[white]]-KingDistBonus[SquareDist[Board.KingSq[white],Board.KingSq[black]]] else
                           bonus:=WeakKingMate[Board.KingSq[black]]-WeakKingMate[Board.KingSq[white]];
   // Если недостаточно преимущества - оценка ближе к ничейной.
-  if abs(score)<=PieseTypValue[bishop]
-    then score:=(score+bonus) div 4
-    else score:=score+bonus;
+  if abs(score)<=PieseTypValue[bishop] then
+    begin
+     score:=(score+bonus) div 4;
+     if (Board.NonPawnMat[white]<=TypOfPiese[Rook]) and (Board.NonPawnMat[black]<=TypOfPiese[Rook]) then score:=score div 2;
+    end
+    else score:=score+bonus+extra;
   if Board.SideToMove=black then score:=-score;
   result:=score;
 end;
@@ -113,7 +122,7 @@ Function KBNK(var Board:TBoard):integer;
 var
   score:integer;
 begin
-  score:=PieseTypValue[bishop]+PieseTypValue[knight];
+  score:=PieseTypValue[bishop]+PieseTypValue[knight]+NearlyWin;
   if (Board.NonPawnMat[black]=0)  then    // Белые ставят мат
     begin
       if (Board.Pieses[bishop] and DarkSquaresBB)<>0

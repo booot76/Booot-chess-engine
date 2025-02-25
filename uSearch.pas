@@ -35,6 +35,7 @@ Type
  
  
 Const
+  doScaleEval=True;
 
   BuferSize=10000;
   MaxPly=127;
@@ -69,14 +70,16 @@ Const
 
   CountMoveDepth=16;
 
-  FutilityMargin=100;
+  FutilityMargin=120;
 
-  SingularDepth=7;
+  SingularDepth=6;
 
   HistoryDepth=3;
 
   IIDDepth = 8;
   IIDRed=7;
+
+  HistLMRDiv=16000;
 type
    TBufferFen = array[0..BuferSize] of shortstring;
 var
@@ -110,6 +113,8 @@ Function FVQuiet(ThreadID:integer;alpha:integer;beta:integer;depth:integer;ply:i
 Procedure gamegen(ThreadId:integer;var cnt:integer;var FENS:TBufferFen);
 Procedure FenGenerator(depth:integer;megafens:integer;cpu:integer;book:shortstring;outfilename:shortstring;hashmb:integer;poshashmb:integer;egtbpath:PAnsiChar);
 Procedure SingleGenerator(ThreadID:integer;var bookposnum:integer);
+
+
 implementation
 uses uUci;
 Function MakePvString(var PV:TPV):ansistring;
@@ -234,14 +239,25 @@ begin
     end;
   Result:=false;
 end;
-
+Function CanUseBetterScore(nodetyp:integer;score:integer;level:integer):boolean;
+var
+  f1,f2 : boolean;
+begin
+  f1:=((nodetyp and HashLower)<>0) and (score>=level);
+  f2:=((nodetyp and HashUpper)<>0) and (score<level);
+  Result:=f1 or f2;
+end;
 Function draw_value(var Board:TBoard):integer;
 begin
   Result:=2*(Board.Nodes and 1)-1;
 end;
-Function Scale_Eval(eval:integer;var Board:TBoard):integer;
+Function ScaleEval(eval:integer;var Board:TBoard;var SortUnit:TSortUnit):integer;
 begin
-  result:=(eval*(200-Board.Rule50)) div 200;
+  eval:=((200-Board.Rule50)*eval) div 200;
+  eval:=eval+(32*SortUnit.PawnCorrHist[Board.SideToMove,Board.PawnKey and (CorrSize-1)]) div 512;
+  eval:=eval+(40*SortUnit.WnonPawnCorrHist[Board.SideToMove,Board.NonPawnKey[white] and (CorrSize-1)]) div 512;
+  eval:=eval+(40*SortUnit.BnonPawnCorrHist[Board.SideToMove,Board.NonPawnKey[black] and (CorrSize-1)]) div 512;
+  result:=eval;
 end;
 Function isCastle(piese:integer;from:integer;dest:integer):boolean;inline;
 begin
@@ -255,9 +271,9 @@ Function LMRReduction(imp:boolean;depth:integer;searched:integer):integer;
 begin
   if depth>64 then depth:=64;
   if searched>64 then searched:=64;
-  r:=reductions[depth]*reductions[searched];
-  k:=round((r+1000)/1000);
-  if (not imp) then k :=k+1;
+  r:=reductions[depth]*reductions[searched]+250;
+  if (not imp) then r :=r+r/3;
+  k:=trunc(r/1000);
   if k<0 then k:=0;
   result:=k;
 end;
@@ -337,7 +353,7 @@ begin
           If (ThreadID=1) then PrintFullSearchInfo(ThreadID,BestValue,Threads[ThreadId].PVLine,LowerStat);
           RootBeta:=BestValue+Delta;
           if RootBeta>Inf then RootBeta:=Inf;
-          if abs(Bestvalue)<WinScore then inc(hbc);
+          if abs(Bestvalue)<1200 then inc(hbc);
           // Если оценка просела, то добавляем время на обдумывание
           If (ThreadId=1) and  (game.time<>game.rezerv) then game.time:=game.rezerv;
         end else break;
@@ -348,6 +364,7 @@ begin
       Threads[ThreadId].BestValue:=BestValue;
       Threads[ThreadId].OldPvMove:=CurrBestMove;
       CurrBestMove:=BestMove;
+      Threads[ThreadId].StableMove:=BestMove;
       for i:=1 to Threads[ThreadID].PVLine[0] do
         Threads[ThreadID].StablePV[i]:=Threads[ThreadID].PVLine[i];
       Threads[ThreadID].StablePV[0]:=Threads[ThreadID].PVLine[0];
@@ -363,7 +380,7 @@ begin
         // Если осталось не так много времени - выходим не начиная новую итерацию
        If (game.time<>game.rezerv) and ((MilliSecondsBetween(game.StartTime,now))>(0.7*game.time)) then break;
       end;
-
+     if (Threads[ThreadId].RootMoves=1) and (RootDepth>12) then break;
     end;
 end;
 Procedure Think;
@@ -448,7 +465,7 @@ Function RootSearch(var TT:TTable;ThreadID:integer;alpha:integer;beta:integer;de
 var
    CheckInfo : TCheckInfo;
    Undo : TUndo;
-   BestValue,j,extension,newdepth,value,R,D,move,qsearched,capsearched,hashmove,piese,from,dest,histvalue:integer;
+   BestValue,j,extension,newdepth,value,R,D,move,qsearched,capsearched,hashmove,piese,from,dest,histvalue,NetIndex:integer;
    isCheck,doresearch,pv,hashcap,imp:boolean;
    Line:TPV;
    OldMoves,OldCaptures:TMoveList;
@@ -463,8 +480,9 @@ begin
   FillCheckInfo(CheckInfo,Board);
   SetUndo(Board,Undo);
   // Аккумуляторы
-  FillWhiteAcc16(Globalmodel,Board,PassThread[ThreadId-1][1]);
-  FillBlackAcc16(Globalmodel,Board,PassThread[ThreadId-1][1]);
+  NetIndex:=ChooseNNIndex(Board);
+  FillWhiteAcc16(Nets[NetIndex].model,Board,PassThread[ThreadId-1][1]);
+  FillBlackAcc16(Nets[NetIndex].model,Board,PassThread[ThreadId-1][1]);
   // Печатаем текущую глубину
   If (threadId=1) then
     begin
@@ -477,10 +495,10 @@ begin
   Tree[1].key:=Board.Key;
   tree[1].dblext:=0;
   if Board.CheckersBB=0
-    then Tree[1].StatEval:=Evaluate(Board,1,1)
+    then Tree[1].StatEval:=ScaleEval(Evaluate(Board,ThreadID,1),Board,SortUnit)
     else Tree[1].StatEval:=-Inf;
   hashmove:=RootList[0].move;
-  imp:=false;
+  imp:=true;
   hashcap:=(hashmove and CaptureFlag)<>0;
   // Крутим цикл ходов из корня
   for j:=0 to n-1 do
@@ -497,7 +515,6 @@ begin
            end;
          isCheck:=isMoveCheck(move,CheckInfo,Board);
          extension:=0;
-         if (isCheck) and (((CheckInfo.DiscoverCheckBB and Only[from])<>0) or (GoodSee(move,Board,0))) then extension:=1;
          newdepth:=depth+extension-1;
          Tree[1].CurrMove:=move;
          Tree[1].CurrNum:=j+1;
@@ -513,11 +530,11 @@ begin
              if (depth>=3) and (j>2)  and ((move and CapPromoFlag)=0) then
                begin
                 R:=LMRRED[imp,depth,j+1];
-                If pv then R:=R-3;
+                If pv then R:=R-2;
                 If hashcap then inc(R);
                 if isCheck then dec(R);
                 HistValue:=GetHistoryValue(SortUnit,Tree,1,piese,dest);
-                R:=R-(HistValue div 15000);
+                R:=R-(HistValue div HistLMRDiv);
                 if R>0 then
                   begin
                    D:=newdepth-R;
@@ -526,7 +543,11 @@ begin
                    doresearch:=(value>alpha);
                   end;
                end;
-             if (doresearch) then value:=-Search(TT,ThreadId,-alpha-1,-alpha,newdepth,2,Board,Tree,SortUnit,Line,0,true);
+             if (doresearch) then
+               begin
+                if value>Bestvalue+80 then inc(newdepth);
+                value:=-Search(TT,ThreadId,-alpha-1,-alpha,newdepth,2,Board,Tree,SortUnit,Line,0,true);
+               end;
              if (value>alpha)   then
               begin
                // Если ход из корня меняется - даем дополнительное время чтобы завершить его оценку
@@ -583,7 +604,7 @@ begin
     begin
      // Обновляем историю
      if (BestMove<>0) then UpdateFullHistory(Bestmove,depth,1,qsearched,OldMoves,capsearched,OldCaptures,SortUnit,Board,Tree,BestValue-beta);
-    end else BestValue:=0;
+    end else BestValue:=alpha;
   Result:=BestValue;
 end;
 
@@ -594,8 +615,8 @@ var
   CheckInfo : TCheckInfo;
   MList,OldMoves,OldCaptures:TMoveList;
   value,hashmove,hashvalue,hashdepth,hashtyp,move,searched,qsearched,capsearched,extension,newbeta,newdepth,StaticEval,Eval,R,NullValue,D,BestValue,preddepth,BestMove,HistValue,piese,from,dest: integer;
-  killer1,killer2,countermove,oldstat,hashm,ProbMar,probcnt,pieces,ennpass,probe,bound,maxvalue : integer;
-  pv,isCheck,doresearch,SingularNode,imp,skip,hashcap,badprobcut,quietsingular,LowPV: boolean;
+  killer1,killer2,countermove,oldstat,hashm,ProbMar,probcnt,pieces,ennpass,probe,bound,maxvalue,bonus : integer;
+  pv,isCheck,doresearch,SingularNode,imp,skip,hashcap,badprobcut,quietsingular,LowPV,ttpv: boolean;
   Line : TPV;
   HashIndex : int64;
 begin
@@ -626,7 +647,7 @@ begin
   If (Threads[ThreadId].AbortSearch) or (ply>=MaxPly-1) or (isDraw(ThreadId,Board,tree,ply)) then
     begin
      if (ply>=MaxPly-1) and (Board.CheckersBB=0)
-       then Result:=Evaluate(Board,ThreadID,ply)
+       then Result:=ScaleEval(Evaluate(Board,ThreadID,ply),Board,SortUnit)
        else result:=draw_value(Board);
      exit;
     end;
@@ -647,29 +668,27 @@ begin
       Hashmove:=TT.data[HashIndex].move;
       HashValue:=ValueFromTT(TT.data[HashIndex].value,ply);
       Hashtyp:=TT.data[HashIndex].typage and 3;
+      ttpv:=pv or ((TT.data[HashIndex].typage and HashPv)<>0);
       HashDepth:=TT.data[HashIndex].depth;
       StaticEval:=TT.data[HashIndex].steval;
       if (not pv) then
         begin
          if (hashdepth>=depth) and (HashValue<>-Inf) then
           begin
-            if (((hashtyp and HashLower)<>0) and (hashvalue>=beta)) or (((hashtyp and HashUpper)<>0) and (hashvalue<=alpha))  then
+            if CanUseBetterScore(hashtyp,hashvalue,beta)   then
               begin
                 If HashMove<>0 then
                   begin
                     If HashValue>=beta then
                       begin
-                        If ((Hashmove and CaptureFlag)=0) then UpdateQuietHistory(Hashmove,ply,qsearched,OldMoves,SortUnit,Board,Tree,DepthInc[depth]);
+                        If ((Hashmove and CaptureFlag)=0) then
+                          begin
+                            UpdateKillersCounter(SortUnit,Board,Tree,hashmove,ply);
+                            UpdateQuietMoveHistory(Hashmove,ply,SortUnit,Board,Tree,GetStatBonus(depth));
+                          end;
                         If (tree[ply-1].CurrNum<3) and (Tree[ply-1].CurrMove<>0) and ((Tree[ply-1].CurrMove and CaptureFlag)=0) then UpdateStats(Tree,ply-1,Board.Pos[(tree[ply-1].CurrMove shr 6) and 63],(tree[ply-1].CurrMove shr 6) and 63,-GetStatBonus(depth+1));
                       end else
-                    If ((Hashmove and CaptureFlag)=0) then
-                      begin
-                        value:=-GetStatBonus(depth);
-                        piese:=Board.Pos[Hashmove and 63];
-                        dest:=(Hashmove shr 6) and 63;
-                        UpdHistory(SortUnit,piese,dest,value);
-                        UpdateStats(Tree,ply,piese,dest,value);
-                      end;
+                    If ((Hashmove and CaptureFlag)=0) then UpdateQuietMoveHistory(Hashmove,ply,SortUnit,Board,Tree,-GetStatBonus(depth));
                   end;
                if Board.Rule50<90 then
                 begin
@@ -686,6 +705,7 @@ begin
       HashTyp:=0;
       Hashdepth:=-Maxply;
       StaticEval:=-inf;
+      ttpv:=pv;
     end;
     hashcap:=(HashMove<>0) and ((hashmove and CaptureFlag)<>0) ;
    {$ifdef WIN64}
@@ -702,6 +722,7 @@ begin
               if probe<>EGTB_BAD then
                   begin
                     inc(Board.tbhits);
+                    writeln(Board.tbhits);
                     Board.remain:=Board.remain-1000;
                     if Board.remain<1 then Board.remain:=1;
                     if (probe=EGTB_LOOSE) then  // loose
@@ -722,7 +743,7 @@ begin
                        begin
                         depth:=depth+6;
                         if depth>maxply-1 then depth:=maxply-1;
-                        HashStore(TT,Board.Key,value,depth,bound,0,-inf);
+                        HashStore(TT,Board.Key,value,depth,bound,0,-inf,ttpv);
                         result:=value;
                         exit;
                        end;
@@ -744,20 +765,21 @@ begin
   // Статическая оценка
   if (Board.CheckersBB=0) then
     begin
-     If StaticEval=-inf then
-      begin
-       if (tree[ply].StatKey=Board.Key)
-         then StaticEval:=tree[ply].StatEval
-         else StaticEval:=Evaluate(Board,ThreadID,ply);
-      end;
-     tree[ply].StatEval:=StaticEval;
+     If StaticEval=-inf then StaticEval:=Evaluate(Board,ThreadID,ply);
+     Eval:=scaleeval(StaticEval,Board,SortUnit);
+     tree[ply].StatEval:=Eval;
      tree[ply].StatKey:=Board.Key;
-     Eval:=scale_eval(StaticEval,Board);
      // Уточняем оценку хешем
-     if (HashIndex>=0) and (HashValue<>-Inf) then
+     if (HashIndex>=0) and (HashValue<>-Inf) and CanUSeBetterScore(hashtyp,hashvalue,eval) then Eval:=HashValue;
+     // Апдейт истории прошлого тихого хода
+     if (tree[ply-1].CurrMove<>0) and ((Tree[ply-1].CurrMove and CaptureFlag)=0) and (tree[ply-1].StatEval<>-inf) then
        begin
-         if ((hashtyp and HashUpper)<>0) and (HashValue<Eval) then Eval:=HashValue;
-         if ((hashtyp and HashLower)<>0) and (HashValue>Eval) then Eval:=HashValue;
+         bonus:=-8*(tree[ply-1].StatEval+tree[ply].StatEval-20);
+         if bonus>1800 then bonus:=1800;
+         if bonus<-1800 then bonus:=-1800;
+         dest:=(tree[ply-1].CurrMove shr 6) and 63;
+         piese:=Board.Pos[dest];
+         CellGravity(@SortUnit.History[piese,dest],bonus,HistDiv);
        end;
      imp:=(ply>2) and (Tree[ply].StatEval>tree[ply-2].StatEval); // (+)
      // Если мы не под шахом - включаем дополнительные алгоритмы
@@ -779,11 +801,11 @@ begin
            end;
 
          // NullMove
-        If (not pv) and (Tree[ply-1].CurrMove<>0) and (emove=0) and (Eval>=beta)  and (Board.NonPawnMat[Board.SideToMove]>0)  and (StaticEval>=beta-14*depth+90) and ((ply>=Threads[ThreadId].nullply) or (Threads[Threadid].nullclr<>Board.SideToMove)) then
+        If (not pv) and (Tree[ply-1].CurrMove<>0) and (emove=0) and (beta>-Winscore) and (Eval>=beta)  and (Board.NonPawnMat[Board.SideToMove]>0)  and (tree[ply].StatEval>=beta-14*depth+90) and ((ply>=Threads[ThreadId].nullply) or (Threads[Threadid].nullclr<>Board.SideToMove)) then
            begin
-             R:=4+(depth div 4);
-             extension:=(Eval-beta) div PawnValueMid;
-             if extension>3 then extension:=3;
+             R:=4+(depth div 3);
+             extension:=(Eval-beta) div PawnValueEnd;
+             if extension>4 then extension:=4;
              R:=R+extension;
              MakeNullMove(Board);
              //Копируем аккумуляторы
@@ -798,7 +820,7 @@ begin
              UnMakeNullMove(Board,Undo);
              If NullValue>=beta then
                begin
-                if NullValue>WinScore then NullValue:=beta;
+                if NullValue>=WinScore then NullValue:=beta;
                 If (depth<12) or (Threads[ThreadId].nullply<>0) then
                   begin
                     Result:=NullValue;
@@ -827,7 +849,7 @@ begin
             newdepth:=depth-ProbCutRed;
             tree[ply].Status:=TryHashMove;
             hashm:=hashmove;
-            ProbMar:=NewBeta-StaticEval;
+            ProbMar:=NewBeta-tree[ply].StatEval;
             probcnt:=0;
             move:=NextProbCut(SortUnit,MList,Board,Tree,hashm,ply,ProbMar);
             While (move<>0) do
@@ -846,8 +868,14 @@ begin
                     if value>=newbeta
                       then value:=-Search(TT,ThreadId,-newbeta,-newbeta+1,newdepth,ply+1,Board,Tree,SortUnit,PVLine,0,(not cut));
                     UnMakeMove(move,Board,Undo);
+                    if Threads[ThreadId].AbortSearch then
+                      begin
+                        result:=alpha;
+                        exit;
+                      end;
                     If value>=newbeta then
                       begin
+                        HashStore(TT,Board.Key,ValueToTT(value,ply),newdepth+1,hashlower,move,staticEval,ttpv);
                         Result:=value;
                         exit;
                       end;
@@ -855,17 +883,10 @@ begin
                 move:=NextProbCut(SortUnit,MList,Board,Tree,hashm,ply,ProbMar);
               end;
           end;
+
     // IIR
-    if (game.doIIR) and  (pv) and (Hashmove=0) and (emove=0)  then
-      begin
-         dec(depth,2);
-         if depth<=0 then
-           begin
-             result:=FV(TT,ThreadId,alpha,beta,0,ply,Board,SortUnit,Tree,PVLine);
-             exit;
-           end;
-      end else
-    if (game.doIIR) and (cut) and (hashmove=0) and (depth>=8) and (emove=0) then dec(depth,2);
+    if (game.doIIR) and  (pv) and (Hashmove=0) and (emove=0) and (depth>=3)  then dec(depth,2) else
+      if (game.doIIR) and (cut) and (hashmove=0) and (depth>=7) and (emove=0) then dec(depth,2);
     end else
     begin
      StaticEval:=-Inf;
@@ -907,12 +928,12 @@ begin
         if  (bestvalue>-WinScore)   and (Board.NonPawnMat[Board.SideToMove]>0)  then
          begin
           skip:=(game.doLMP) and (depth<CountMoveDepth) and (searched>=PrunningCount[imp,depth]);
-          If (not isCheck) and ((move and CapPromoFlag)=0)  then
+          If (not isCheck) and ((move and CaptureFlag)=0)  then
            begin
             preddepth:=newdepth-LMRRED[imp,depth,searched];
             if preddepth<1 then preddepth:=1;
             // HistoryPrunning
-            If (preddepth<HistoryDepth) and (move<>killer1) and (move<>killer2) and (move<>countermove)  and (Tree[ply-1].CurrStat^[piese,dest]<0) and (Tree[ply-2].CurrStat^[piese,dest]<0)  then goto l1;
+            If (preddepth<HistoryDepth)   and (Tree[ply-1].CurrStat^[piese,dest]<0) and (Tree[ply-2].CurrStat^[piese,dest]<0)  then goto l1;
             // FutilityPrunning
             if (preddepth<StatixDepth) and (Board.CheckersBB=0) then
               begin
@@ -922,34 +943,40 @@ begin
             // See LowDepth Prunning
             if (tree[ply].Status>TryGoodCaptures) and (not GoodSee(move,Board,-10*preddepth*preddepth)) then goto l1;
            end else
-          If (tree[ply].Status>TryGoodCaptures) and (not GoodSee(Move,Board,-PawnValueEnd*depth)) then goto l1;
+          If (tree[ply].Status>TryGoodCaptures) and (not GoodSee(Move,Board,-PawnValueMid*depth)) then goto l1;
          end;
         if ply<Threads[ThreadId].RootDepth*2 then
          begin
           // Singular
           if (SingularNode) and (move=hashmove) then
             begin
-             newbeta:=hashvalue-2*depth;
+             newbeta:=hashvalue-depth;
              newdepth:=(depth-1) div 2;
              oldstat:=tree[ply].Status;
              value:=Search(TT,ThreadId,newbeta-1,newbeta,newdepth,ply,Board,Tree,SortUnit,PVLine,move,cut);
              tree[ply].Status:=oldstat;
              if value<newbeta then
                begin
-                extension:=1;
-                quietsingular:=not hashcap;
-                if (not pv) and (value<newbeta-15) and (tree[ply-1].dblext<=8) then extension:=2;
+                  quietsingular:=(move and CaptureFlag)=0;
+                  if (not pv)  and (value<newbeta-15) and (tree[ply-1].dblext<=6)
+                    then extension:=2
+                    else extension:=1;
                end
                else if (newbeta>=beta) then
                  begin
                    Result:=newbeta;
                    exit;
                  end
-               else if (HashValue>=beta) or (HashValue<=alpha)  then extension:=-1;
-            end else
-          if (isCheck) and (Tree[ply].Status<>TryBadCaptures) and ((depth>4) or (not game.doLMP)) and ((Tree[ply].Status=TryGoodCaptures) or ((CheckInfo.DiscoverCheckBB and Only[from])<>0) or (GoodSee(move,Board,0))) then extension:=1;
+               else if (HashValue>=beta)  then
+                begin
+                 if pv
+                  then extension:=-1
+                  else extension:=-2;
+                end
+               else if (HashValue<=alpha) then extension:=-1;
+            end;
          end;
-        if extension=2
+        if extension>1
           then tree[ply].dblext:=tree[ply-1].dblext+1
           else tree[ply].dblext:=tree[ply-1].dblext;
         newdepth:=depth+extension-1;
@@ -967,18 +994,18 @@ begin
           if  (depth>=3) and (searched>1) and ((move and CapPromoFlag)=0)  then
             begin
               R:=LMRRED[imp,depth,searched];
-              If pv then
+              If ttpv then       // (+)
                 begin
                  if (not LowPv) then dec(R,2);
                  dec(R);
                 end;
               If hashcap then inc(R);
-              if quietsingular then dec(R);
+              if quietsingular then dec(R); // (+)
               if (cut)  then inc(R,2) else
-                if (move=killer1) or (move=killer2) or (move=countermove) then dec(R);
+                if (move=killer1) or (move=killer2) or (move=countermove) then dec(R); //(+)
               if isCheck then dec(R);
               HistValue:=GetHistoryValue(SortUnit,Tree,ply,piese,dest);
-              R:=R-(HistValue div 15000);
+              R:=R-(HistValue div HistLMRDiv);
               if R>=0
                 then D:=newdepth-R
                 else D:=newdepth+1;
@@ -989,6 +1016,7 @@ begin
           if doresearch then
             begin
               if (not pv) and (D>0) and (value<bestvalue+newdepth) then dec(newdepth);
+              if (value>Bestvalue+50) then inc(newdepth);
               if newdepth>D then value:=-Search(TT,ThreadId,-alpha-1,-alpha,newdepth,ply+1,Board,Tree,SortUnit,Line,0,(not cut));
             end;
           if (pv) and (value>alpha) and (value<beta) then value:=-Search(TT,ThreadId,-beta,-alpha,newdepth,ply+1,Board,Tree,SortUnit,Line,0,false);
@@ -1004,6 +1032,7 @@ begin
             If pv and (value<beta)
               then  alpha:=value
               else  break;
+            if (value>-WinScore) and (depth>=2) and (depth<=12) then dec(depth);
             If pv then AddPv(Bestmove,PVLine,Line);
            end;
          end;
@@ -1040,24 +1069,36 @@ begin
        if bestvalue>maxvalue then bestvalue:=maxvalue;
      If emove=0 then
       begin
+       if BestValue>=beta then hashtyp:=HashLower else
+         if (pv) and (BestMove<>0)
+           then hashtyp:=HashExact
+           else hashtyp:=HashUpper;
        // Сохраняем хеш
-       if BestValue>=beta then HashStore(TT,Board.Key,ValueToTT(Bestvalue,ply),depth,HashLower,Bestmove,staticEval) else
-       if (pv) and (BestMove<>0)
-        then HashStore(TT,Board.Key,valueToTT(bestvalue,ply),depth,HashExact,BestMove,StaticEval)
-        else HashStore(TT,Board.Key,valueToTT(bestvalue,ply),depth,HashUpper,BestMove,StaticEval);
+       HashStore(TT,Board.Key,ValueToTT(Bestvalue,ply),depth,hashtyp,Bestmove,staticEval,ttpv);
+       // коррекция оценки
+       if (Board.CheckersBB=0) and ((bestmove and CaptureFlag)=0) and CanUseBetterScore(hashtyp,bestvalue,tree[ply].StatEval) then
+         begin
+           bonus:=((bestvalue-tree[ply].StatEval)*depth) div 10;
+           if bonus>CorrLimit then bonus:=CorrLimit;
+           if bonus<-CorrLimit then bonus:=-CorrLimit;
+           CellGravity(@SortUnit.PawnCorrHist[Board.SideToMove,Board.PawnKey and (CorrSize-1)],bonus,CorrDiv);
+           CellGravity(@SortUnit.WNonPawnCorrHist[Board.SideToMove,Board.NonPawnKey[white] and (CorrSize-1)],bonus,CorrDiv);
+           CellGravity(@SortUnit.BNonPawnCorrHist[Board.SideToMove,Board.NonPawnKey[black] and (CorrSize-1)],bonus,CorrDiv);
+         end;
+
       end;
-    end else bestvalue:=0;
+    end else bestvalue:=alpha;
   Result:=bestvalue;
 end;
 Function FV(var TT:TTable;ThreadID:integer;alpha:integer;beta:integer;depth:integer;ply:integer;var Board:TBoard;var SortUnit:TSortUnit;var Tree:Ttree;var PVLine:TPV):integer;
 label l1;
 var
-  value,move,bestvalue,futility,qDepth,hashmove,hashvalue,hashdepth,hashtyp,bestmove,cappiese,StaticEval,searched,quietevasions,prevsq,piese,dest: integer;
+  value,move,bestvalue,futility,qDepth,hashmove,hashvalue,hashdepth,hashtyp,bestmove,cappiese,StaticEval,searched,prevsq,piese,dest: integer;
   HashIndex :int64;
   CheckInfo:TCheckInfo;
   MList : TMoveList;
   Undo:TUndo;
-  pv,isCheck,isCapture: boolean;
+  pv,isCheck,isCapture,ttpv: boolean;
   Line:TPV;
 begin
    // Чистим будущий возможный пв перед перебором
@@ -1070,7 +1111,7 @@ begin
   If  (ply>=MaxPly-1) or (isDraw(ThreadId,Board,Tree,ply)) then
     begin
      if (ply>=MaxPly-1) and (Board.CheckersBB=0)
-       then Result:=Evaluate(Board,ThreadId,ply)
+       then Result:=ScaleEval(Evaluate(Board,ThreadId,ply),Board,SortUnit)
        else result:=0;
      exit;
     end;
@@ -1084,17 +1125,15 @@ begin
       Hashmove:=TT.data[HashIndex].move;
       HashValue:=ValueFromTT(TT.data[HashIndex].value,ply);
       Hashtyp:=TT.data[HashIndex].typage and 3;
+      ttpv:=(TT.data[HashIndex].typage and HashPv)<>0;
       HashDepth:=TT.data[HashIndex].depth;
       StaticEval:=TT.data[HashIndex].steval;
       if (not pv) then
         begin
-         if (hashdepth>=qDepth) and (HashValue<>-Inf) then
+         if (hashdepth>=qDepth) and (HashValue<>-Inf) and CanUseBetterScore(hashtyp,hashvalue,beta) then
           begin
-            if (((hashtyp and HashLower)<>0) and (hashvalue>=beta)) or (((hashtyp and HashUpper)<>0) and (hashvalue<=alpha))  then
-              begin
-                Result:=HashValue;
-                exit;
-              end;
+            Result:=HashValue;
+            exit;
           end;
         end;
     end else
@@ -1103,31 +1142,23 @@ begin
       HashValue:=-Inf;
       HashTyp:=0;
       StaticEval:=-inf;
+      ttpv:=false;
     end;
 
   // Статическая оценка и выход если нас она устраивает
   if Board.CheckersBB=0 then
     begin
-      If StaticEval=-inf then
-        begin
-        if tree[ply].StatKey=Board.Key
-          then StaticEval:=tree[ply].StatEval
-          else StaticEval:=Evaluate(Board,ThreadId,ply);
-        end;
-      tree[ply].StatEval:=StaticEval;
+      If StaticEval=-inf then StaticEval:=Evaluate(Board,ThreadId,ply);
+      bestvalue:=ScaleEval(StaticEval,Board,SortUnit);
+      tree[ply].StatEval:=bestvalue;
       tree[ply].StatKey:=Board.Key;
-      bestvalue:=Scale_Eval(StaticEval,Board);
       // Уточняем оценку хешем (+)
-     if (Hashindex>=0) and (HashValue<>-Inf) then
-       begin
-         if ((hashtyp and HashUpper)<>0) and (HashValue<bestvalue) then bestvalue:=HashValue;
-         if ((hashtyp and HashLower)<>0) and (HashValue>bestvalue) then bestvalue:=HashValue;
-       end;
+     if (Hashindex>=0) and (HashValue>-WinScore) and (HashValue<Winscore) and CanUseBetterScore(hashtyp,hashvalue,bestvalue)  then  bestvalue:=HashValue;
       if bestvalue>alpha then
        begin
         if bestvalue>=beta then
          begin
-          if (HashIndex<0) then HashStore(TT,Board.Key,ValueToTT(bestvalue,ply),-5,HashLower,0,StaticEval); //(=)
+          if (HashIndex<0) then HashStore(TT,Board.Key,ValueToTT(bestvalue,ply),-5,HashLower,0,StaticEval,ttpv); //(=)
           Result:=bestvalue;
           exit;
          end;
@@ -1143,7 +1174,6 @@ begin
       tree[ply].StatKey:=Board.Key;
     end;
   // Подготовка к перебору
-  quietevasions:=0;
   Bestmove:=0;
   FillCheckInfo(CheckInfo,Board);
   SetUndo(Board,Undo);
@@ -1162,34 +1192,29 @@ begin
         isCapture:=(move and CaptureFlag)<>0;
         piese:=Board.Pos[move and 63];
         dest:=(move shr 6) and 63;
-        // Futility
-        if  (not isCheck) and (Board.NonPawnMat[Board.SideToMove]>0)  and (futility>-WinScore+MaxPly) and (bestvalue>-WinScore+MaxPly) and ((move and PromoteFlag)=0) and (dest<>prevsq) then
+        if  (bestvalue>-WinScore) and (Board.NonPawnMat[Board.SideToMove]>0)  then
            begin
-             // LMP (+)
-             If searched>2 then goto l1;
-             cappiese:=Board.Pos[dest];
-             value:=Futility+PieseFutilityValue[cappiese];
-             If (cappiese=0) and ((move and CaptureFlag)<>0) then value:=value+PieseFutilityValue[pawn];
-             if value<=alpha then
-               begin
-                 if value>bestvalue then bestvalue:=value;
-                 goto l1;
-               end;
-             if (futility<=alpha) and (not GoodSee(move,Board,1)) then
-               begin
-                 if futility>bestvalue then bestvalue:=futility;
-                 goto l1;
-               end;
-           end;
-        if  (bestvalue>-WinScore+MaxPly) and (Board.NonPawnMat[Board.SideToMove]>0)  then
-          begin
-           if (not GoodSee(move,Board,0)) then goto l1;
-           // HistoryPrunning  (+)
-           if (not isCapture) and (ply>2) and (Tree[ply-1].CurrStat^[piese,dest]<0) and (Tree[ply-2].CurrStat^[piese,dest]<0)  then goto l1;
-           // Early check evasion (+)
-           if (quietevasions>1) then break;
+           // Futility
+            if  (not isCheck)  and (futility>-WinScore)  and ((move and PromoteFlag)=0) and (dest<>prevsq) then
+              begin
+                // LMP (+)
+                If searched>2 then goto l1;
+                cappiese:=Board.Pos[dest];
+                value:=Futility+PieseFutilityValue[cappiese];
+                If (cappiese=0) and ((move and CaptureFlag)<>0) then value:=value+PieseFutilityValue[pawn];
+                if value<=alpha then
+                  begin
+                    if value>bestvalue then bestvalue:=value;
+                    goto l1;
+                  end;
+                if (futility<=alpha) and (not GoodSee(move,Board,1)) then
+                  begin
+                    if futility>bestvalue then bestvalue:=futility;
+                    goto l1;
+                  end;
+              end;
+            if (not GoodSee(move,Board,0)) then goto l1;
           end;
-        if (not isCapture) and (Board.CheckersBB<>0) then inc(quietevasions);
         Tree[ply].CurrMove:=move;
         Tree[ply].CurrStat:=@Sortunit.HistorySats[(Board.CheckersBB<>0),isCapture,piese,dest];
         Tree[ply].CurrNum:=searched;
@@ -1206,14 +1231,15 @@ begin
               Bestmove:=move;
               If (value>=beta) then
                 begin
-                 HashStore(TT,Board.Key,ValueToTT(value,ply),qDepth,HashLower,bestmove,StaticEval);
-                 Result:=value;
+                 HashStore(TT,Board.Key,ValueToTT(bestvalue,ply),qDepth,HashLower,bestmove,StaticEval,ttpv);
+                 Result:=bestvalue;
                  exit;
                 end;
               alpha:=value;
               AddPv(Bestmove,PVLine,Line);
              end;
           end;
+          if (bestvalue>-WinScore) and (Board.CheckersBB<>0) and ((move and CaptureFlag)=0) then break; //(+++)
       end;
   l1:
      move:=NextFV(MList,Board,SortUnit,tree,CheckInfo,hashmove,ply,depth,prevsq);
@@ -1224,13 +1250,13 @@ begin
       result:=-Mate+ply;
       exit;
      end;
-  HashStore(TT,Board.Key,valueToTT(bestvalue,ply),qDepth,HashUpper,BestMove,StaticEval);
+  HashStore(TT,Board.Key,valueToTT(bestvalue,ply),qDepth,HashUpper,BestMove,StaticEval,ttpv);
   Result:=bestvalue;
 end;
 Function FVQuiet(ThreadID:integer;alpha:integer;beta:integer;depth:integer;ply:integer;var Board:TBoard;var SortUnit:TSortUnit;var Tree:Ttree;var PVLine:TPV):integer;
 label l1;
 var
-  value,move,bestvalue,futility,qDepth,hashmove,hashvalue,hashtyp,bestmove,cappiese,StaticEval,searched,quietevasions,prevsq,piese,dest: integer;
+  value,move,bestvalue,futility,qDepth,hashmove,hashvalue,hashtyp,cappiese,StaticEval,searched,prevsq,piese,dest: integer;
   HashIndex :int64;
   CheckInfo:TCheckInfo;
   MList : TMoveList;
@@ -1248,7 +1274,7 @@ begin
   If  (ply>=MaxPly-1) or (isDraw(ThreadId,Board,Tree,ply)) then
     begin
      if (ply>=MaxPly-1) and (Board.CheckersBB=0)
-       then Result:=Evaluate(Board,ThreadId,ply)
+       then Result:=ScaleEval(Evaluate(Board,ThreadId,ply),Board,SortUnit)
        else result:=0;
      exit;
     end;
@@ -1264,9 +1290,9 @@ begin
   if Board.CheckersBB=0 then
     begin
       StaticEval:=Evaluate(Board,ThreadId,ply);
-      tree[ply].StatEval:=StaticEval;
+      bestvalue:=ScaleEval(StaticEval,Board,SortUnit);
+      tree[ply].StatEval:=bestvalue;
       tree[ply].StatKey:=Board.Key;
-      bestvalue:=Scale_Eval(StaticEval,Board);
       if bestvalue>alpha then
        begin
         if bestvalue>=beta then
@@ -1281,12 +1307,11 @@ begin
     begin
       bestvalue:=-Inf;
       futility:=-Inf;
+      StaticEval:=-inf;
       tree[ply].StatEval:=bestvalue;
       tree[ply].StatKey:=Board.Key;
     end;
   // Подготовка к перебору
-  quietevasions:=0;
-  Bestmove:=0;
   FillCheckInfo(CheckInfo,Board);
   SetUndo(Board,Undo);
   tree[ply].Status:=TryHashMove;
@@ -1304,34 +1329,29 @@ begin
         isCapture:=(move and CaptureFlag)<>0;
         piese:=Board.Pos[move and 63];
         dest:=(move shr 6) and 63;
-        // Futility
-        if  (not isCheck) and (Board.NonPawnMat[Board.SideToMove]>0)  and (futility>-WinScore+MaxPly) and (bestvalue>-WinScore+MaxPly) and ((move and PromoteFlag)=0) and (dest<>prevsq) then
+        if  (bestvalue>-WinScore) and (Board.NonPawnMat[Board.SideToMove]>0)  then
            begin
-             // LMP (+)
-             If searched>2 then goto l1;
-             cappiese:=Board.Pos[dest];
-             value:=Futility+PieseFutilityValue[cappiese];
-             If (cappiese=0) and ((move and CaptureFlag)<>0) then value:=value+PieseFutilityValue[pawn];
-             if value<=alpha then
-               begin
-                 if value>bestvalue then bestvalue:=value;
-                 goto l1;
-               end;
-             if (futility<=alpha) and (not GoodSee(move,Board,1)) then
-               begin
-                 if futility>bestvalue then bestvalue:=futility;
-                 goto l1;
-               end;
-           end;
-        if  (bestvalue>-WinScore+MaxPly) and (Board.NonPawnMat[Board.SideToMove]>0)  then
-          begin
-           if (not GoodSee(move,Board,0)) then goto l1;
-           // HistoryPrunning  (+)
-           if (not isCapture) and (ply>2) and (Tree[ply-1].CurrStat^[piese,dest]<0) and (Tree[ply-2].CurrStat^[piese,dest]<0)  then goto l1;
-           // Early check evasion (+)
-           if (quietevasions>1) then break;
+           // Futility
+            if  (not isCheck)  and (futility>-WinScore)  and ((move and PromoteFlag)=0) and (dest<>prevsq) then
+              begin
+                // LMP (+)
+                If searched>2 then goto l1;
+                cappiese:=Board.Pos[dest];
+                value:=Futility+PieseFutilityValue[cappiese];
+                If (cappiese=0) and ((move and CaptureFlag)<>0) then value:=value+PieseFutilityValue[pawn];
+                if value<=alpha then
+                  begin
+                    if value>bestvalue then bestvalue:=value;
+                    goto l1;
+                  end;
+                if (futility<=alpha) and (not GoodSee(move,Board,1)) then
+                  begin
+                    if futility>bestvalue then bestvalue:=futility;
+                    goto l1;
+                  end;
+              end;
+            if (not GoodSee(move,Board,0)) then goto l1;
           end;
-        if (not isCapture) and (Board.CheckersBB<>0) then inc(quietevasions);
         Tree[ply].CurrMove:=move;
         Tree[ply].CurrStat:=@Sortunit.HistorySats[(Board.CheckersBB<>0),isCapture,piese,dest];
         Tree[ply].CurrNum:=searched;
@@ -1345,16 +1365,16 @@ begin
            bestvalue:=value;
            if value>alpha then
              begin
-              Bestmove:=move;
               If (value>=beta) then
                 begin
                  Result:=value;
                  exit;
                 end;
               alpha:=value;
-              AddPv(Bestmove,PVLine,Line);
+              AddPv(move,PVLine,Line);
              end;
           end;
+       if (bestvalue>-WinScore) and (Board.CheckersBB<>0) and ((move and CaptureFlag)=0) then break; //(+++)
       end;
   l1:
      move:=NextFV(MList,Board,SortUnit,tree,CheckInfo,hashmove,ply,depth,prevsq);
@@ -1531,15 +1551,15 @@ const
   writeminply=10;
   maxply=400;
   MaxEval=1200;
-  ResignEval=750;
-  BalanceMargin=100;
+  ResignEval=1100;
+  BalanceMargin=200;
   QuietMargin=200;
   AdaptedDepth=True;
-  QuietBM=True;
+  QuietBM=False;
   NotCheck=False;
-  doQuietMargin=False;
+  doQuietMargin=True;
 var
-  n,i,j,y,value,oldvalue,ply,BestMove,Randomnum,RandomStart,RandomStop,drawcnt,resigncnt,gameres,writeply,FVEval,NextMove,PrevMove,temp,cdepth: integer;
+  n,i,j,y,value,oldvalue,ply,NetIndex,BestMove,Randomnum,RandomStart,RandomStop,drawcnt,resigncnt,gameres,writeply,FVEval,NextMove,PrevMove,temp,cdepth: integer;
   wp,wn,wb,wr,wq,bp,bn,bb,br,bq,wind,bind,probe,ennpass:integer;
   keys : array[0..128] of int64;
   Undo : TUndo;
@@ -1572,8 +1592,9 @@ begin
      SetUndo(Threads[ThreadId].Board,Undo);
      FillCheckInfo(CheckInfo,Threads[ThreadId].Board);
      // Аккумуляторы
-     FillWhiteAcc16(Globalmodel,Threads[ThreadId].Board,PassThread[ThreadId-1][1]);
-     FillBlackAcc16(Globalmodel,Threads[ThreadId].Board,PassThread[ThreadId-1][1]);
+     NetIndex:=ChooseNNIndex(Threads[ThreadId].Board);
+     FillWhiteAcc16(Nets[NetIndex].model,Threads[ThreadId].Board,PassThread[ThreadId-1][1]);
+     FillBlackAcc16(Nets[NetIndex].model,Threads[ThreadId].Board,PassThread[ThreadId-1][1]);
      // Генерируем список ходов из корня позиции
      n:=GenerateLegals(0,Threads[ThreadId].Board,Threads[ThreadId].RootList);
      // Если нет легальных ходов - выход (пат или мат)
@@ -1620,6 +1641,7 @@ begin
              end;
          // Тут делаем перебор и выбираем лучший ход
          // инициализация нового перебора
+
          Threads[ThreadId].Board.remain:=game.remain;
          Threads[ThreadID].Board.Nodes:=0;
          FVPV[0]:=0;
@@ -1655,10 +1677,11 @@ begin
            then PrevMove:=Threads[ThreadId].PVLine[3]
            else PrevMove:=0;
          if abs(value)<=1
-          then inc(drawcnt);
-         if QuietBM then  isQuet:=isQuet and ((bestmove and cappromoflag)=0);
-         if notCheck then isQuet:=isQuet and (not isCheck);
-         if doQuietMargin then  isQuet:=isQuet and (abs(FVEval-value)<=QuietMargin);
+          then inc(drawcnt)
+          else drawcnt:=0;
+         if QuietBM then  isQuet:=isQuet and (bestmove<>0) and ((bestmove and cappromoflag)=0);
+         if notCheck then isQuet:=isQuet and (not isMoveCheck(Bestmove,CheckInfo,Threads[ThreadId].Board));
+         if doQuietMargin then  isQuet:=isQuet and (abs(FVEval-value)<QuietMargin);
        end;
  mm:
      isCheck:=isMoveCheck(Bestmove,CheckInfo,Threads[ThreadId].Board);

@@ -112,6 +112,8 @@ Type
            CheckersBB   : TBitBoard;
            CapturedPiese: integer;
            Key          : int64;
+           NonPawnKey   : array[white..black] of int64;
+           PawnKey      : int64;
            NonPawnMat   : array[white..black] of integer;
            Nodes        : int64;
            tbhits       : int64;
@@ -132,13 +134,17 @@ Type
            CheckersBB   : TBitBoard;
            CapturedPiese: integer;
            Key          : int64;
+           PawnKey      : int64;
+           NonPawnKey   : array[white..black] of int64;
            NonPawnMat   : array[white..black] of integer;
            nullcnt      : integer;
            WFrame       : integer;
            BFrame       : integer;
            NetIndex     : integer;
+           Wmirror      : integer;
+           Bmirror      : integer;
           end;
-  Thistory = array[-King..King,a1..h8] of integer;
+  Thistory = array[-King..King,a1..h8] of smallint;
   PHistory = ^THistory;
   TTreeEntry = record
                  Status   : integer;
@@ -215,6 +221,9 @@ begin
   Board.CheckersBB:=0;
   Board.CapturedPiese:=0;
   Board.Key:=0;
+  Board.PawnKey:=0;
+  Board.NonPawnKey[white]:=0;
+  Board.NonPawnKey[black]:=0;
   Board.NonPawnMat[white]:=0;
   Board.NonPawnMat[black]:=0;
   Board.nullcnt:=0;
@@ -428,7 +437,10 @@ begin
      end;
      Board.MoveNum:=StrToInt(trim(str));
    end else Board.MoveNum:=0;
-  Board.Key:=CalcFullKey(Board);
+  Board.Key:=CalcPosKey(Board);
+  Board.PawnKey:=CalcPawnKey(Board);
+  Board.NonPawnKey[white]:=CalcNonPawnKey(white,Board);
+  Board.NonPawnKey[black]:=CalcNonPawnKey(black,Board);
   Board.NonPawnMat[white]:=CalcNonPawnMat(white,Board);
   Board.NonPawnMat[black]:=CalcNonPawnMat(black,Board);
   Board.nullcnt:=Board.Rule50;
@@ -1175,12 +1187,17 @@ begin
   Undo.CheckersBB:=Board.CheckersBB;
   Undo.CapturedPiese:=Board.CapturedPiese;
   Undo.Key:=Board.Key;
+  Undo.PawnKey:=Board.PawnKey;
+  Undo.NonPawnKey[white]:=Board.NonPawnKey[white];
+  Undo.NonPawnKey[black]:=Board.NonPawnKey[black];
   Undo.NonPawnMat[white]:=Board.NonPawnMat[white];
   Undo.NonPawnMat[black]:=Board.NonPawnMat[black];
   undo.nullcnt:=Board.nullcnt;
-  undo.Wframe:=GetWhiteFrameIndex(Globalmodel,Board);
-  undo.Bframe:=GetBlackFrameIndex(Globalmodel,Board);
   undo.NetIndex:=ChooseNNIndex(Board);
+  undo.Wframe:=GetWhiteFrameIndex(Nets[undo.NetIndex].model,Board);
+  undo.Bframe:=GetBlackFrameIndex(Nets[undo.NetIndex].model,Board);
+  undo.Wmirror:=GetWhiteKingMirror(Nets[undo.NetIndex].model,Board);
+  undo.Bmirror:=GetBlackKingMirror(Nets[undo.NetIndex].model,Board);
 end;
 Procedure MakeMove(move : integer;var Board:TBoard;var Undo:TUndo;isCheck:boolean);
 // Процедура делает ход на доске
@@ -1213,8 +1230,11 @@ begin
           Captured:=Board.Pos[CapSq];
         end;
       CapturedTyp:=TypOfPiese[Captured];
-      if CapturedTyp<>Pawn
-        then Board.NonPawnMat[EnemyColor]:=Board.NonPawnMat[EnemyColor]-PieseTypValue[CapturedTyp];
+      if CapturedTyp<>Pawn then
+        begin
+         Board.NonPawnMat[EnemyColor]:=Board.NonPawnMat[EnemyColor]-PieseTypValue[CapturedTyp];
+         Board.NonPawnKey[EnemyColor]:=Board.NonPawnKey[EnemyColor] xor PieseZobr[EnemyColor,CapturedTyp,CapSq];
+        end else Board.PawnKey:=Board.PawnKey xor PieseZobr[EnemyColor,CapturedTyp,CapSq];
       RemovePiese(EnemyColor,CapSq,CapturedTyp,Board);
       Key:=Key xor PieseZobr[EnemyColor,CapturedTyp,CapSq];
     end;
@@ -1230,6 +1250,8 @@ begin
   // Передвигаем фигуру, которая ходит.
   MovePiese(MyColor,FromSq,DestSq,Piese,PieseTyp,Board);
   Key:=Key xor PieseZobr[MyColor,PieseTyp,FromSq] xor PieseZobr[MyColor,PieseTyp,DestSq];
+  if PieseTyp<>Pawn then Board.NonPawnKey[MyColor]:=Board.NonPawnKey[MyColor] xor PieseZobr[MyColor,PieseTyp,FromSq] xor PieseZobr[MyColor,PieseTyp,DestSq];
+
   // Если рокировка - двигаем вторую
   if Undo.isCastle then
     begin
@@ -1244,10 +1266,12 @@ begin
         end;
       MovePiese(MyColor,RookFromSq,RookDestSq,Board.Pos[RookFromSq],Rook,Board);
       Key:=Key xor PieseZobr[MyColor,Rook,RookFromSq] xor PieseZobr[MyColor,Rook,RookDestSq];
+      Board.NonPawnKey[MyColor]:=Board.NonPawnKey[MyColor] xor PieseZobr[MyColor,Rook,RookFromSq] xor PieseZobr[MyColor,Rook,RookDestSq];
     end;
   // Для пешек - дополнительная работа
   if (PieseTyp=Pawn) then
     begin
+      Board.PawnKey:=Board.PawnKey xor PieseZobr[MyColor,PieseTyp,FromSq] xor PieseZobr[MyColor,PieseTyp,DestSq];
       Board.Rule50:=0;
       // Устанавливаем метку взятия на проходе в случае двойного хода пешкой
       if (FromSq-DestSq=16) or (FromSq-DestSq=-16) then
@@ -1264,6 +1288,8 @@ begin
             else PromoPiese:=-PromoPieseTyp;
           SetPiese(MyColor,DestSq,PromoPiese,PromoPieseTyp,Board);
           Key:=Key xor PieseZobr[MyColor,Pawn,DestSQ] xor PieseZobr[MyColor,PromoPieseTyp,DestSq];
+          Board.PawnKey:=Board.PawnKey xor PieseZobr[MyColor,Pawn,DestSQ];
+          Board.NonPawnKey[Mycolor]:=Board.NonPawnKey[MyColor] xor PieseZobr[MyColor,PromoPieseTyp,DestSq];
           Board.NonPawnMat[MyColor]:=Board.NonPawnMat[MyColor]+PieseTypValue[PromoPieseTyp];
         end;
     end;
@@ -1330,6 +1356,9 @@ begin
   Board.CheckersBB:=Undo.CheckersBB;
   Board.CapturedPiese:=Undo.CapturedPiese;
   Board.Key:=Undo.Key;
+  Board.PawnKey:=Undo.PawnKey;
+  Board.NonPawnKey[white]:=Undo.NonPawnKey[white];
+  Board.NonPawnKey[black]:=Undo.NonPawnKey[black];
   Board.NonPawnMat[white]:=Undo.NonPawnMat[white];
   Board.NonPawnMat[black]:=Undo.NonPawnMat[black];
   Board.nullcnt:=Undo.nullcnt;
@@ -1354,13 +1383,8 @@ begin
   Board.SideToMove:=Board.SideToMove xor 1;
   // Восстанавливаемся из Undo
   Board.EnPassSq:=Undo.EnPassSq;
-  Board.CastleRights:=Undo.CastleRights;
   Board.Rule50:=Undo.Rule50;
-  Board.CheckersBB:=Undo.CheckersBB;
-  Board.CapturedPiese:=Undo.CapturedPiese;
   Board.Key:=Undo.Key;
-  Board.NonPawnMat[white]:=Undo.NonPawnMat[white];
-  Board.NonPawnMat[black]:=Undo.NonPawnMat[black];
   Board.nullcnt:=Undo.nullcnt;
 end;
 
@@ -1484,7 +1508,10 @@ begin
           temp:=temp and (temp-1);
         end;
       NewBoard.CapturedPiese:=-Board.CapturedPiese;
-      NewBoard.Key:=CalcFullKey(NewBoard);
+      NewBoard.Key:=CalcPosKey(NewBoard);
+      NewBoard.PawnKey:=CalcPawnKey(NewBoard);
+      NewBoard.NonPawnKey[white]:=CalcNonPawnKey(white,NewBoard);
+      NewBoard.NonPawnKey[black]:=CalcNonPawnKey(black,NewBoard);
       NewBoard.NonPawnMat[white]:=Board.NonPawnMat[black];
       NewBoard.NonPawnMat[black]:=Board.NonPawnMat[white];
     end;
@@ -1503,6 +1530,9 @@ begin
   NewBoard.CheckersBB:=Board.CheckersBB;
   NewBoard.CapturedPiese:=Board.CapturedPiese;
   NewBoard.Key:=Board.Key;
+  NewBoard.PawnKey:=Board.PawnKey;
+  NewBoard.NonPawnKey[white]:=Board.NonPawnKey[white];
+  NewBoard.NonPawnKey[black]:=Board.NonPawnKey[black];
   NewBoard.NonPawnMat[white]:=Board.NonPawnMat[white];
   NewBoard.NonPawnMat[black]:=Board.NonPawnMat[black];
   NewBoard.nullcnt:=Board.nullcnt;
@@ -1532,6 +1562,9 @@ Result:=false;
  if NewBoard.CheckersBB<>Board.CheckersBB then exit;
  if NewBoard.CapturedPiese<>Board.CapturedPiese then exit;
  if NewBoard.Key<>Board.Key then exit;
+ if NewBoard.PawnKey<>Board.PawnKey then exit;
+ if NewBoard.NonPawnKey[white]<>Board.NonPawnKey[white] then exit;
+ if NewBoard.NonPawnKey[black]<>Board.NonPawnKey[black] then exit;
  if NewBoard.NonPawnMat[white]<>Board.NonPawnMat[white] then exit;
  if NewBoard.NonPawnMat[black]<>Board.NonPawnMat[black] then exit;
  if NewBoard.nullcnt<>Board.nullcnt then exit;

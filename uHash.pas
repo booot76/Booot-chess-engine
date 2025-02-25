@@ -28,15 +28,16 @@ Type
  TCastleZobr = array[0..15] of int64;
 
 Const
-  AgeInc=4;
-  AgeMask=255 and (not (AgeInc-1));
-  FlagMask=AgeInc-1;
+  AgeInc=8;
+  TypMask=AgeInc-1;
+  AgeMask=255 and (not TypMask);
 
   EntrySize=4;
 
   HashLower=1;
   HashUpper=2;
   HashExact=3;
+  HashPV=4;
 
   PieseZobr : TPieseZobr =
    (((-5806046825325303563,-8328424648811089562,8868758241292569811,4881366684015708417,-3790025024278790943,2357318667285771148,1606727246881709434,-5309248615317715964,1962756488991144730,8783154993359605063,7549522424143453667,-5722514236476424809,3605202650950397208,-5989525406507628003,8374841041396179619,6635474344653679202,
@@ -103,50 +104,60 @@ var
 
 Function ValueToTT(value:integer;ply:integer):integer;
 Function ValueFromTT(value:integer;ply:integer):integer;
-Function CalcFullKey(var Board:TBoard):int64;
+Function CalcPosKey(var Board:TBoard):int64;
+Function CalcPawnKey(var Board:TBoard):int64;
+Function CalcNonPawnKey(side:integer;var Board:TBoard):int64;
 Procedure InitTT(var TT:TTable;SizeMB:integer);
 Procedure ClearHash(var TT:TTable;cpus:integer);
 Procedure multiclear(ThreadID:integer);
 Function HashProbe(var TT:TTable;Key : int64):int64;
-Procedure HashStore(var TT:TTable;Key:int64;value:integer;depth:integer;typ:integer;move:integer;steval:integer);
+Procedure HashStore(var TT:TTable;Key:int64;value:integer;depth:integer;typ:integer;move:integer;steval:integer;hashpv:boolean);
 Function FindPonder(var TT:TTable;RootMove:integer;var Board:TBoard):integer;
 
 implementation
 uses uSearch,uAttacks,uThread;
 
-Procedure HashSave(var TT:TTable;index:int64;Key32:cardinal;value:integer;depth:integer;typ:integer;move:integer;steval:integer);inline;
+Function GetAgeDistance(Age:integer;typage:integer):integer; inline;
+var
+   res : integer;
 begin
-  If (TT.data[index].Key32<>(Key32 xor TT.data[index].crc32)) then TT.data[index].move:=move else
-  If (move<>0) and ((TT.data[index].move=0) or (depth>=TT.data[index].depth))  then TT.data[index].move:=move;
-  If (typ=HashExact) or (TT.data[index].Key32<>(Key32 xor TT.data[index].crc32)) or (depth>TT.data[index].depth - 4)   then
+  res:=Age-(typage and AgeMask); // Получилось расстояние =  (AgeNow-hashage)*AgeInc;
+  if res<0 then res:=res+256; // Если перешли через 0
+  Result:=res;
+end;
+Procedure HashSave(var TT:TTable;index:int64;Key32:cardinal;value:integer;depth:integer;typ:integer;move:integer;steval:integer;hashpv:boolean);
+var
+  hpvint:integer;
+begin
+  if hashpv
+    then hpvint:=1
+    else hpvint:=0;
+  If (move<>0) or  (TT.data[index].Key32<>(Key32 xor TT.data[index].crc32)) then TT.data[index].move:=move;
+  If (typ=HashExact) or (TT.data[index].Key32<>(Key32 xor TT.data[index].crc32)) or (GetAgeDistance(TT.Age,TT.data[index].typage)<>0) or (depth+4+2*hpvint>TT.data[index].depth)   then
     begin
      TT.data[index].value:=value;
      TT.data[index].steval:=steval;
      TT.data[index].depth:=depth;
-     TT.data[index].typage:=TT.Age or typ;
-     TT.data[index].crc32:=((steval+32768) shl 16) or ((value+32768) xor (depth+2));
+     TT.data[index].typage:=TT.Age or typ or (hpvint shl 2);
+     TT.data[index].crc32:=((steval+32768) shl 16) or (value+32768);
      TT.data[index].Key32:=Key32  xor TT.data[index].crc32;
     end;
 end;
-Function ValueToTT(value:integer;ply:integer):integer;
+Function ValueToTT(value:integer;ply:integer):integer;inline;
 begin
   if value>=WinScore  then result:=value+ply else
   if (value<>-inf) and (value<=-WinScore) then result:=value-ply else
    result:=value;
 end;
-Function ValueFromTT(value:integer;ply:integer):integer;
+Function ValueFromTT(value:integer;ply:integer):integer; inline;
 begin
   if value>=WinScore  then result:=value-ply else
   if (value<>-inf) and (value<=-WinScore) then result:=value+ply else
    result:=value;
 end;
 Function ScoreEntry(Age:integer;typage:integer;depth:integer):integer;inline;
-var
-  res : integer;
 begin
-  res:=Age-(typage and AgeMask);
-  if res<0 then res:=res+256; // Если перешли через 0
-  result:=depth-res;
+  result:=depth-GetAgeDistance(age,typage);
 end;
 
 Procedure InitTT(var TT:TTable;SizeMB:integer);
@@ -203,7 +214,7 @@ begin
 end;
 
 
-Function CalcFullKey(var Board:TBoard):int64;
+Function CalcPosKey(var Board:TBoard):int64;
 // Вычисляет 64-битный хеш позиции. Медленная функция используется при начальной  установке доски и для дебага.
 var
   Res,temp:int64;
@@ -225,8 +236,42 @@ begin
  if Board.SideToMove=black then res:=res xor ZColor;
  Result:=res;
 end;
-
-
+Function CalcPawnKey(var Board:TBoard):int64;
+// Вычисляет 64-битный хеш пешек. Медленная функция используется при начальной  установке доски и для дебага.
+var
+  Res,temp:int64;
+  sq,color,piese : integer;
+begin
+ res:=0;
+ temp:=Board.Pieses[pawn];
+ while temp<>0 do
+   begin
+     sq:=BitScanForward(temp);
+     piese:=Board.Pos[sq];
+     color:=PieseColor[piese];
+     res:=res xor PieseZobr[color,pawn,sq];
+     temp:=temp and (temp-1);
+   end;
+ Result:=res;
+end;
+Function CalcNonPawnKey(side:integer;var Board:TBoard):int64;
+// Вычисляет 64-битный хеш беспешечного материала. Медленная функция используется при начальной  установке доски и для дебага.
+var
+  Res,temp:int64;
+  sq,piese,piesetyp: integer;
+begin
+ res:=0;
+ temp:=Board.AllPieses and (not Board.Pieses[pawn]) and (Board.Occupancy[side]);
+ while temp<>0 do
+   begin
+     sq:=BitScanForward(temp);
+     piese:=Board.Pos[sq];
+     pieseTyp:=TypOfPiese[piese];
+     res:=res xor PieseZobr[side,piesetyp,sq];
+     temp:=temp and (temp-1);
+   end;
+ Result:=res;
+end;
 Function HashProbe(var TT:TTable;Key : int64):int64;
 var
   Index : int64;
@@ -237,18 +282,18 @@ begin
   Index:=(Key and TT.Mask) * EntrySize;
   Key32:=(Key shr 32);
   for i:=0 to EntrySize-1 do
-    if (TT.data[index+i].Key32=(Key32 xor TT.data[index+i].crc32)) then
+    if (TT.data[index+i].Key32=(Key32 xor TT.data[index+i].crc32)) and (TT.data[index+i].typage<>0) then
       begin
         Result:=index+i;
         // Обновляем свежесть  хеша
-        TT.data[index+i].typage:=TT.Age or (TT.data[index+i].typage and FlagMask);
+        TT.data[index+i].typage:=TT.Age or (TT.data[index+i].typage and TypMask);
         exit;
       end;
 end;
 
 
 
-Procedure HashStore(var TT:TTable;Key:int64;value:integer;depth:integer;typ:integer;move:integer;steval:integer);
+Procedure HashStore(var TT:TTable;Key:int64;value:integer;depth:integer;typ:integer;move:integer;steval:integer;hashpv:boolean);
 var
    i:integer;
    rep,index:int64;
@@ -259,16 +304,16 @@ begin
   Key32:=(Key shr 32);
   for i:=0 to  EntrySize-1 do
     begin
-      if  (TT.data[index+i].Key32=(Key32 xor TT.data[index+i].crc32)) or (TT.data[index+i].Key32=0) then
+      if  (TT.data[index+i].Key32=(Key32 xor TT.data[index+i].crc32))  then // Замещаем уже существующую запись о позиции
         begin
-          HashSave(TT,(index+i),key32,value,depth,typ,move,steval);
+          HashSave(TT,(index+i),key32,value,depth,typ,move,steval,hashpv);
           exit;
         end;
       // Ищем наименее ценную ячейку в букете для замещения
       if (i>0) and (ScoreEntry(TT.Age,TT.data[rep].typage,TT.data[rep].depth)>ScoreEntry(TT.Age,TT.data[index+i].typage,TT.data[index+i].depth)) then rep:=index+i;
     end;
   // Найдена предпочтительная ячейка для замещения - записываем в нее информацию по текущей позиции
-  HashSave(TT,rep,key32,value,depth,typ,move,steval);
+  HashSave(TT,rep,key32,value,depth,typ,move,steval,hashpv);
 end;
 
 Function FindPonder(var TT:TTable;RootMove:integer;var Board:TBoard):integer;

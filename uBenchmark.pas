@@ -1,4 +1,4 @@
-﻿unit uBenchmark;
+﻿unit Ubenchmark;
 
 {$IFDEF FPC}
   {$MODE Delphi}

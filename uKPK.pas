@@ -1,4 +1,4 @@
-unit uKPK;
+﻿unit uKPK;
 
 {$IFDEF FPC}
   {$MODE Delphi}
@@ -14,7 +14,7 @@ Const
   DeadDraw=253;
   StaleMate=254;
   Broken=255;
-  KPKWin=500;
+  KPKWin=800;
   Pawnnum : array[0..23] of integer = (a2,a3,a4,a5,a6,a7,b2,b3,b4,b5,b6,b7,c2,c3,c4,c5,c6,c7,d2,d3,d4,d5,d6,d7);
 
   numpawn : array[a1..h8] of integer =
